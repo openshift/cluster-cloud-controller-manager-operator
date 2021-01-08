@@ -1,0 +1,5 @@
+domain: config.openshift.io
+layout: go.kubebuilder.io/v3-alpha
+projectName: tmp
+repo: github.com/openshift/cluster-cloud-controller-manager-operator/tmp
+version: 3-alpha
