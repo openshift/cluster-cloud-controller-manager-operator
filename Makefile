@@ -58,7 +58,7 @@ generate: controller-gen
 
 # Build the docker image
 .PHONY: image
-image: test
+image:
 	docker build -t ${IMG} .
 
 # Push the docker image

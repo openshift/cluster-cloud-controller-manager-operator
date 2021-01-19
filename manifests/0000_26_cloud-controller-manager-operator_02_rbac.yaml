@@ -37,6 +37,38 @@ rules:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-cloud-controller-manager
+  namespace: openshift-cloud-controller-manager-operator
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - create
+      - update
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: system:openshift:controller:cloud-controller-manager
@@ -51,3 +83,20 @@ subjects:
 - kind: ServiceAccount
   namespace: openshift-cloud-controller-manager-operator
   name: cluster-cloud-controller-manager
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-cloud-controller-manager
+  namespace: openshift-cloud-controller-manager-operator
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cluster-cloud-controller-manager
+subjects:
+  - kind: ServiceAccount
+    namespace: openshift-cloud-controller-manager-operator
+    name: cluster-cloud-controller-manager
