@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"os"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
@@ -40,9 +41,12 @@ import (
 )
 
 const (
-	clusterOperatorName = "cloud-controller-manager"
-	reasonAsExpected    = "AsExpected"
-	infrastructureName  = "cluster"
+	clusterOperatorName           = "cloud-controller-manager"
+	reasonAsExpected              = "AsExpected"
+	unknownVersionValue           = "unknown"
+	operatorVersionKey            = "operator"
+	releaseVersionEnvVariableName = "RELEASE_VERSION"
+	infrastructureName            = "cluster"
 )
 
 var relatedObjects = []configv1.ObjectReference{}
@@ -143,7 +147,7 @@ func (r *CloudOperatorReconciler) statusAvailable(ctx context.Context) error {
 			Status:             configv1.ConditionTrue,
 			LastTransitionTime: metav1.Now(),
 			Reason:             reasonAsExpected,
-			Message:            fmt.Sprintf("Cluster Cloud Controller Manager Operator is available at 0.0.1"),
+			Message:            fmt.Sprintf("Cluster Cloud Controller Manager Operator is available at %s", getReleaseVersion()),
 		},
 		{
 			Type:               configv1.OperatorDegraded,
@@ -168,7 +172,7 @@ func (r *CloudOperatorReconciler) statusAvailable(ctx context.Context) error {
 		},
 	}
 
-	co.Status.Versions = []configv1.OperandVersion{{Name: "operator", Version: "0.0.1"}}
+	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: getReleaseVersion()}}
 	return r.syncStatus(ctx, co, conds)
 }
 
@@ -262,4 +266,13 @@ func infrastructurePredicates() predicate.Funcs {
 		GenericFunc: func(e event.GenericEvent) bool { return isInfrastructureCluster(e.Object) },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return isInfrastructureCluster(e.Object) },
 	}
+}
+
+func getReleaseVersion() string {
+	releaseVersion := os.Getenv(releaseVersionEnvVariableName)
+	if len(releaseVersion) == 0 {
+		releaseVersion = unknownVersionValue
+		klog.Infof("%s environment variable is missing, defaulting to %q", releaseVersionEnvVariableName, unknownVersionValue)
+	}
+	return releaseVersion
 }
