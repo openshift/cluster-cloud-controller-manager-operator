@@ -26,6 +26,7 @@ rules:
   - create
   - list
   - watch
+
 - apiGroups:
   - config.openshift.io
   resources:
@@ -34,6 +35,15 @@ rules:
   - cloud-controller-manager
   verbs:
   - update
+
+- apiGroups:
+  - config.openshift.io
+  resources:
+  - infrastructures
+  verbs:
+  - get
+  - list
+  - watch
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -67,6 +77,16 @@ rules:
       - list
       - create
       - update
+
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - watch
+      - list
+      - patch
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
