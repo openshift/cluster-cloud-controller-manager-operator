@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/tmp/controllers"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/controllers"
 	// +kubebuilder:scaffold:imports
 )
 
