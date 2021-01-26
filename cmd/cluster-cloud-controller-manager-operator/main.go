@@ -48,6 +48,8 @@ var (
 	retryPeriod   = 90 * time.Second
 )
 
+const defaultManagedNamespace = "cluster-cloud-controller-manager"
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(configv1.AddToScheme(scheme))
@@ -89,12 +91,19 @@ func main() {
 		"The duration that non-leader candidates will wait after observing a leadership renewal until attempting to acquire leadership of a led but unrenewed leader slot. This is effectively the maximum duration that a leader can be stopped before it is replaced by another candidate. This is only applicable if leader election is enabled.",
 	)
 
+	managedNamespace := flag.String(
+		"namespace",
+		defaultManagedNamespace,
+		"The namespace for managed objects, where out-of-tree CCM binaries will run.",
+	)
+
 	flag.Parse()
 
 	ctrl.SetLogger(klogr.New().WithName("CCMOperator"))
 
 	syncPeriod := 10 * time.Minute
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Namespace:               *managedNamespace,
 		Scheme:                  scheme,
 		SyncPeriod:              &syncPeriod,
 		MetricsBindAddress:      *metricsAddr,

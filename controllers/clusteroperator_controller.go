@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,7 +31,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 )
@@ -38,6 +42,7 @@ import (
 const (
 	clusterOperatorName = "cloud-controller-manager"
 	reasonAsExpected    = "AsExpected"
+	infrastructureName  = "cluster"
 )
 
 var relatedObjects = []configv1.ObjectReference{}
@@ -45,7 +50,8 @@ var relatedObjects = []configv1.ObjectReference{}
 // CloudOperatorReconciler reconciles a ClusterOperator object
 type CloudOperatorReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme  *runtime.Scheme
+	watcher ObjectWatcher
 }
 
 // +kubebuilder:rbac:groups=config.openshift.io,resources=clusteroperators,verbs=get;list;watch;create;update;patch;delete
@@ -53,13 +59,74 @@ type CloudOperatorReconciler struct {
 // +kubebuilder:rbac:groups=config.openshift.io,resources=clusteroperators/finalizers,verbs=update
 
 // Reconcile will process the cloud-controller-manager clusterOperator
-func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+	infra := &configv1.Infrastructure{}
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureName}, infra); errors.IsNotFound(err) {
+		klog.Infof("Infrastructure cluster does not exist. Skipping...")
+
+		if err := r.statusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
+	} else if err != nil {
+		klog.Errorf("Unable to retrive Infrastructure object: %v", err)
+		return ctrl.Result{}, err
+	}
+
+	resources := getResources(infra)
+	if err := r.sync(ctx, resources); err != nil {
+		klog.Errorf("Unable to sync operands: %s", err)
+	}
 
 	if err := r.statusAvailable(ctx); err != nil {
 		klog.Errorf("Unable to sync cluster operator status: %s", err)
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CloudOperatorReconciler) sync(ctx context.Context, resources []client.Object) error {
+	for _, resource := range resources {
+		if err := applyServerSide(ctx, r.Client, clusterOperatorName, resource); err != nil {
+			klog.Errorf("Unable to apply object %T '%s': %+v", resource, resource.GetName(), err)
+			return err
+		}
+
+		if err := r.watcher.Watch(ctx, resource); err != nil {
+			klog.Errorf("Unable to establish watch on object %T '%s': %+v", resource, resource.GetName(), err)
+			return err
+		}
+	}
+
+	if len(resources) > 0 {
+		klog.Info("Resources applied successfully.")
+	}
+
+	return nil
+}
+
+func applyServerSide(ctx context.Context, c client.Client, owner client.FieldOwner, obj client.Object, opts ...client.PatchOption) error {
+	opts = append([]client.PatchOption{client.ForceOwnership, owner}, opts...)
+	return c.Patch(ctx, obj, client.Apply, opts...)
+}
+
+func getResources(infra *configv1.Infrastructure) []client.Object {
+	if infra.Status == (configv1.InfrastructureStatus{}) {
+		klog.Warning("No platform value found in infrastructure")
+		return nil
+	}
+
+	switch infra.Status.Platform {
+	case configv1.AWSPlatformType:
+		return cloud.GetAWSResources()
+	default:
+		klog.Warning("No recognized cloud provider platform found in infrastructure")
+	}
+
+	return nil
 }
 
 // statusAvailable sets the Available condition to True, with the given reason
@@ -144,17 +211,55 @@ func (r *CloudOperatorReconciler) syncStatus(ctx context.Context, co *configv1.C
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&configv1.ClusterOperator{}, builder.WithPredicates(predicate.Funcs{
-			CreateFunc:  func(e event.CreateEvent) bool { return clusterOperatorFilter(e.Object) },
-			UpdateFunc:  func(e event.UpdateEvent) bool { return clusterOperatorFilter(e.ObjectNew) },
-			GenericFunc: func(e event.GenericEvent) bool { return clusterOperatorFilter(e.Object) },
-			DeleteFunc:  func(e event.DeleteEvent) bool { return clusterOperatorFilter(e.Object) },
-		})).
-		Complete(r)
+	watcher, err := NewObjectWatcher(WatcherOptions{
+		Cache:  mgr.GetCache(),
+		Scheme: mgr.GetScheme(),
+	})
+	if err != nil {
+		return err
+	}
+	r.watcher = watcher
+
+	build := ctrl.NewControllerManagedBy(mgr).
+		For(&configv1.ClusterOperator{}, builder.WithPredicates(clusterOperatorPredicates())).
+		Watches(&source.Kind{Type: &configv1.Infrastructure{}},
+			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
+			builder.WithPredicates(clusterOperatorPredicates())).
+		Watches(&source.Channel{Source: watcher.EventStream()}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
+
+	return build.Complete(r)
 }
 
-func clusterOperatorFilter(obj runtime.Object) bool {
-	clusterOperator, ok := obj.(*configv1.ClusterOperator)
-	return ok && clusterOperator.GetName() == clusterOperatorName
+func clusterOperatorPredicates() predicate.Funcs {
+	isClusterOperator := func(obj runtime.Object) bool {
+		clusterOperator, ok := obj.(*configv1.ClusterOperator)
+		return ok && clusterOperator.GetName() == clusterOperatorName
+	}
+
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return isClusterOperator(e.Object) },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return isClusterOperator(e.ObjectNew) },
+		GenericFunc: func(e event.GenericEvent) bool { return isClusterOperator(e.Object) },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return isClusterOperator(e.Object) },
+	}
+}
+
+func toClusterOperator(client.Object) []reconcile.Request {
+	return []reconcile.Request{{
+		NamespacedName: client.ObjectKey{Name: clusterOperatorName},
+	}}
+}
+
+func infrastructurePredicates() predicate.Funcs {
+	isInfrastructureCluster := func(obj runtime.Object) bool {
+		clusterOperator, ok := obj.(*configv1.Infrastructure)
+		return ok && clusterOperator.GetName() == infrastructureName
+	}
+
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return isInfrastructureCluster(e.Object) },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return isInfrastructureCluster(e.ObjectNew) },
+		GenericFunc: func(e event.GenericEvent) bool { return isInfrastructureCluster(e.Object) },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return isInfrastructureCluster(e.Object) },
+	}
 }
