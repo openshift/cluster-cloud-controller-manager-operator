@@ -1,4 +1,4 @@
-module github.com/openshift/cluster-cloud-controller-manager-operator/tmp
+module github.com/openshift/cluster-cloud-controller-manager-operator
 
 go 1.15
 
