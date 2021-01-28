@@ -48,7 +48,7 @@ var (
 	retryPeriod   = 90 * time.Second
 )
 
-const defaultManagedNamespace = "cluster-cloud-controller-manager"
+const defaultManagedNamespace = "openshift-cloud-controller-manager"
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
