@@ -10,57 +10,6 @@ metadata:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: cloud-controller-manager
-  namespace: kube-system
-  annotations:
-    include.release.openshift.io/self-managed-high-availability: "true"
-    include.release.openshift.io/single-node-developer: "true"
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - serviceaccounts
-    resourceNames:
-      - node-controller
-      - service-controller
-    verbs:
-      - get
-
-  # This grants CCMs permission to list and read all secrets in kube-system.
-  # This is required by client builder to fetch the ServiceAccount token
-  # secret. Ideally we would restrict this to the token secrets of specific
-  # ServiceAccounts.
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    verbs:
-      - list
-      - get
-      - watch
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: cloud-controller-manager
-  namespace: kube-system
-  annotations:
-    include.release.openshift.io/self-managed-high-availability: "true"
-    include.release.openshift.io/single-node-developer: "true"
-roleRef:
-  kind: Role
-  name: cloud-controller-manager
-  apiGroup: rbac.authorization.k8s.io
-subjects:
-  - kind: ServiceAccount
-    namespace: openshift-cloud-controller-manager
-    name: cloud-controller-manager
-
----
-apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: cloud-controller-manager
@@ -115,19 +64,88 @@ metadata:
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
 rules:
-# CCMs run controller watches using the cloud-controller-manager
-# ServiceAccount, but the controllers themselves use credentials from
-# node-manager or service-manager. Consequently we only need to explicitly
-# create read permissions here.
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
 - apiGroups:
   - ""
   resources:
   - nodes
+  verbs:
+  - '*'
+- apiGroups:
+  - ""
+  resources:
+  - nodes/status
+  verbs:
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - services
   verbs:
   - list
+  - patch
+  - update
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - services/status
+  verbs:
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
   - get
+  - list
+  - watch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -145,3 +163,21 @@ subjects:
 - kind: ServiceAccount
   namespace: openshift-cloud-controller-manager
   name: cloud-controller-manager
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloud-controller-manager:apiserver-authentication-reader
+  namespace: kube-system
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+roleRef:
+  kind: Role
+  name: extension-apiserver-authentication-reader
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: cloud-controller-manager
+  namespace: openshift-cloud-controller-manager
