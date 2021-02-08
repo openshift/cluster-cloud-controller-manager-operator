@@ -22,7 +22,7 @@ spec:
       serviceAccountName: cluster-cloud-controller-manager
       containers:
       - name: cluster-cloud-controller-manager
-        image: registry.svc.ci.openshift.org/openshift:cluster-cloud-controller-manager
+        image: registry.svc.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator
         command:
         - "/cluster-controller-manager-operator"
         args:
