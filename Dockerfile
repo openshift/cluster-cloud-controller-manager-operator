@@ -6,5 +6,3 @@ RUN make build
 FROM registry.svc.ci.openshift.org/openshift/origin-v4.0:base
 COPY --from=builder /go/src/github.com/openshift/cluster-cloud-controller-manager-operator/bin/cluster-controller-manager-operator .
 COPY --from=builder /go/src/github.com/openshift/cluster-cloud-controller-manager-operator/manifests manifests
-
-LABEL io.openshift.release.operator true
