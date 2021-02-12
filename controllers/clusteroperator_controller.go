@@ -47,15 +47,15 @@ const (
 	operatorVersionKey            = "operator"
 	releaseVersionEnvVariableName = "RELEASE_VERSION"
 	infrastructureName            = "cluster"
+	defaultManagementNamespace    = "openshift-cloud-controller-manager-operator"
 )
-
-var relatedObjects = []configv1.ObjectReference{}
 
 // CloudOperatorReconciler reconciles a ClusterOperator object
 type CloudOperatorReconciler struct {
 	client.Client
-	Scheme  *runtime.Scheme
-	watcher ObjectWatcher
+	Scheme           *runtime.Scheme
+	watcher          ObjectWatcher
+	ManagedNamespace string
 }
 
 // +kubebuilder:rbac:groups=config.openshift.io,resources=clusteroperators,verbs=get;list;watch;create;update;patch;delete
@@ -90,6 +90,13 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CloudOperatorReconciler) relatedObjects() []configv1.ObjectReference {
+	return []configv1.ObjectReference{
+		{Resource: "namespaces", Name: defaultManagementNamespace},
+		{Resource: "namespaces", Name: r.ManagedNamespace},
+	}
 }
 
 func (r *CloudOperatorReconciler) sync(ctx context.Context, resources []client.Object) error {
@@ -206,8 +213,8 @@ func (r *CloudOperatorReconciler) syncStatus(ctx context.Context, co *configv1.C
 		v1helpers.SetStatusCondition(&co.Status.Conditions, c)
 	}
 
-	if !equality.Semantic.DeepEqual(co.Status.RelatedObjects, relatedObjects) {
-		co.Status.RelatedObjects = relatedObjects
+	if !equality.Semantic.DeepEqual(co.Status.RelatedObjects, r.relatedObjects()) {
+		co.Status.RelatedObjects = r.relatedObjects()
 	}
 
 	return r.Status().Update(ctx, co)
