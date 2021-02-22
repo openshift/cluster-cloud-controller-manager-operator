@@ -9,16 +9,22 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
+	openstack "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
-	timeout = time.Second * 10
+	timeout                 = time.Second * 10
+	testManagementNamespace = "openshift-cloud-controller-manager"
 )
 
 var _ = Describe("Cluster Operator status controller", func() {
@@ -184,4 +190,111 @@ var _ = Describe("toClusterOperator mapping is targeting requests to 'cloud-cont
 		}}
 		Expect(toClusterOperator(object)).To(Equal(requests))
 	})
+})
+
+type mockedWatcher struct {
+	watcher *objectWatcher
+}
+
+func (m *mockedWatcher) getWatchedResources() map[string]struct{} {
+	return m.watcher.watchedResources
+}
+
+var _ = Describe("Component sync controller", func() {
+	var infra *configv1.Infrastructure
+	var operatorController *CloudOperatorReconciler
+	var operands []client.Object
+	var watcher mockedWatcher
+
+	BeforeEach(func() {
+		c, err := cache.New(cfg, cache.Options{})
+		Expect(err).To(Succeed())
+		w, err := NewObjectWatcher(WatcherOptions{Cache: c})
+		Expect(err).To(Succeed())
+
+		infra = &configv1.Infrastructure{}
+		infra.SetName(infrastructureName)
+		operands = nil
+
+		operatorController = &CloudOperatorReconciler{
+			Client:           cl,
+			Scheme:           scheme.Scheme,
+			watcher:          w,
+			ManagedNamespace: testManagementNamespace,
+		}
+		originalWatcher, _ := w.(*objectWatcher)
+		watcher = mockedWatcher{watcher: originalWatcher}
+
+		Expect(cl.Create(context.Background(), infra.DeepCopy())).To(Succeed())
+	})
+
+	AfterEach(func() {
+		Expect(cl.Delete(context.Background(), infra.DeepCopy())).To(Succeed())
+
+		Eventually(func() bool {
+			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra.DeepCopy()))
+		}, timeout).Should(BeTrue())
+
+		for _, operand := range operands {
+			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
+
+			Eventually(func() bool {
+				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
+			}, timeout).Should(BeTrue())
+		}
+	})
+
+	type testCase struct {
+		status   *configv1.InfrastructureStatus
+		expected []client.Object
+	}
+
+	DescribeTable("should ensure resources are provisioned",
+		func(tc testCase) {
+			Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra)).To(Succeed())
+			infra.Status = *tc.status
+			Expect(cl.Status().Update(context.Background(), infra.DeepCopy())).To(Succeed())
+
+			_, err := operatorController.Reconcile(context.Background(), reconcile.Request{})
+			Expect(err).To(Succeed())
+
+			watchMap := watcher.getWatchedResources()
+
+			operands = tc.expected
+			for _, obj := range tc.expected {
+				Expect(watchMap[obj.GetName()]).ToNot(BeNil())
+
+				original, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
+				Expect(err).To(Succeed())
+
+				// Purge fields which are only required by SSA
+				delete(original, "kind")
+				delete(original, "apiVersion")
+
+				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(obj), obj)).To(Succeed())
+				applied, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
+				Expect(err).To(Succeed())
+
+				// Enforsed fields should be equal
+				Expect(equality.Semantic.DeepDerivative(original, applied)).To(BeTrue())
+			}
+		},
+		Entry("Should provision AWS resources", testCase{
+			status: &configv1.InfrastructureStatus{
+				Platform: configv1.AWSPlatformType,
+			},
+			expected: cloud.GetAWSResources(),
+		}),
+		Entry("Should provision OpenStack resources", testCase{
+			status: &configv1.InfrastructureStatus{
+				Platform: configv1.OpenStackPlatformType,
+			},
+			expected: openstack.GetResources(),
+		}),
+		Entry("Should not provision resources for currently unsupported platform", testCase{
+			status: &configv1.InfrastructureStatus{
+				Platform: configv1.IBMCloudPlatformType,
+			},
+		}),
+	)
 })
