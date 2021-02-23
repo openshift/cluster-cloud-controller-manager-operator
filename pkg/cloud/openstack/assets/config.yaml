@@ -1,0 +1,11 @@
+apiVersion: v1
+data:
+  cloud.conf: |
+    [Global]
+    use-clouds = true
+    clouds-file = /etc/kubernetes/secret/clouds.yaml
+    cloud = openstack
+kind: ConfigMap
+metadata:
+  name: openstack-cloud-controller-manager-config
+  namespace: openshift-cloud-controller-manager

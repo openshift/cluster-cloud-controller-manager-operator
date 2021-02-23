@@ -23,6 +23,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -133,6 +134,8 @@ func getResources(infra *configv1.Infrastructure) []client.Object {
 	switch infra.Status.Platform {
 	case configv1.AWSPlatformType:
 		return cloud.GetAWSResources()
+	case configv1.OpenStackPlatformType:
+		return openstack.GetResources()
 	default:
 		klog.Warning("No recognized cloud provider platform found in infrastructure")
 	}
