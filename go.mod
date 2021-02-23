@@ -1,6 +1,6 @@
 module github.com/openshift/cluster-cloud-controller-manager-operator
 
-go 1.15
+go 1.16
 
 require (
 	github.com/onsi/ginkgo v1.14.1
