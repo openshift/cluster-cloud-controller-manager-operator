@@ -37,29 +37,21 @@ function registry_login {
     podman login --tls-verify=false -u kubeadmin -p "${token}" $url
 }
 
-# Rebuild the operator image, push it to the cluster's internal registry, and
-# update the operator deployment to use the new image
+# Rebuild the operator image, push it to the cluster's internal registry,
+# unmanage the operator in CVO, and update the operator deployment to use the
+# new image.
 function update_operator {
     local name=$1
 
-    local repo="cluster-${name}"
     local namespace="openshift-${name}"
     local image="${namespace}/${name}"
-    local sourcedir="${workingdir}/${name}"
 
-    [ ! -d "${sourcedir}" ] && \
-        git clone "https://github.com/openshift/${repo}.git" "${sourcedir}"
-    pushd "${sourcedir}"
-        go mod edit --replace "github.com/openshift/library-go=$librarygo"
-        go mod vendor
-
-        # This dance is so we get build output during execution while also
-        # capturing it
-        mkfifo /tmp/buildah.$$
-        buildah bud -t "${image}" Dockerfile.rhel7 | tee /tmp/buildah.$$ &
-        imageid=$(tail -n -1 /tmp/buildah.$$)
-        rm /tmp/buildah.$$
-    popd
+    # This dance is so we get build output during execution while also
+    # capturing it
+    mkfifo /tmp/buildah.$$
+    buildah bud -t "${image}" Dockerfile.rhel7 | tee /tmp/buildah.$$ &
+    imageid=$(tail -n -1 /tmp/buildah.$$)
+    rm /tmp/buildah.$$
 
     # FIXME(mdbooth): I intended to push to a devel tag, then reference the image by
     # digest, but I couldn't make it work: the pod can't pull the image. Here
@@ -67,6 +59,8 @@ function update_operator {
     # on every invocation to ensure that the deployment pokes its pod, and so we
     # can verify that we're running the image we expect.
     podman push --tls-verify=false "${image}" "${registry}"/"${image}:${imageid}"
+
+    ${scriptdir}/cvo-unmanage.py "${namespace}" "${name}"
 
     oc -n "${namespace}" patch "deploy/${name}" --type=json --patch '
     [{
@@ -76,19 +70,42 @@ function update_operator {
     }]'
 }
 
-librarygo=$1
-workingdir=$2
+function usage {
+    echo "Usage: $0 [-l] [-m] <source dir>"
+    echo "    -l : Rebuild operators using library-go"
+    echo "    -m : Rebuild MCO"
+    echo "    <source dir> : a directory containing git repos"
+}
 
-if [ -z "$librarygo" -o -z "$workingdir" ]; then
-        echo "Usage: $0 <library-go path> <operator source directory>"
-        exit 1
+while getopts ":lmh" opt; do
+    case ${opt} in
+        l ) librarygo=1 ;;
+        m ) mco=1 ;;
+        h )
+            usage
+            exit 0
+            ;;
+        \? )
+            echo "Invalid option: $OPTARG" 1>&2
+            usage 1>&2
+            exit 1
+            ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+sourcedir=$1
+scriptdir=$(dirname $0)
+
+if [ -z "$librarygo" -a -z "$mco" -o -z "$sourcedir" ]; then
+    usage 1>&2 exit 1
 fi
 
 set -x
 
-# Canonicalize paths
-librarygo=$(readlink -e $1)
-workingdir=$(readlink -m $2)
+# Canonicalize directory paths
+sourcedir=$(readlink -m $sourcedir)
+scriptdir=$(readlink -e $scriptdir)
 
 while ! token=$(oc whoami -t); do
     # This is interactive! Not executed if we're already logged in.
@@ -98,28 +115,38 @@ done
 registry=$(get_image_registry)
 registry_login $registry $token
 
-# Remove operators from CVO management
-oc patch clusterversion/version --type=merge --patch '
-{
-    "spec": {
-        "overrides": [
-            {
-                "group": "apps/v1",
-                "kind": "Deployment",
-                "name": "kube-controller-manager-operator",
-                "namespace": "openshift-kube-controller-manager-operator",
-                "unmanaged": true
-            },
-            {
-                "group": "apps/v1",
-                "kind": "Deployment",
-                "name": "kube-apiserver-operator",
-                "namespace": "openshift-kube-apiserver-operator",
-                "unmanaged": true
-            }
-        ]
-    }
-}'
+if [ $librarygo == 1 ]; then
+    librarygodir="${sourcedir}/library-go"
 
-update_operator kube-controller-manager-operator
-update_operator kube-apiserver-operator
+    if [ ! -d "${librarygodir}" ]; then
+        echo "$librarygodir not found" 1>&2
+        exit 1
+    fi
+
+    for operator in kube-controller-manager-operator kube-apiserver-operator; do
+        repo="cluster-${operator}"
+        repodir="${sourcedir}/${repo}"
+        [ ! -d "${repodir}" ] && \
+            git clone "https://github.com/openshift/${repo}.git" "${repodir}"
+        pushd "${repodir}"
+            go mod edit --replace "github.com/openshift/library-go=$librarygodir"
+            go mod vendor
+
+            update_operator $operator
+        popd
+    done
+fi
+
+if [ $mco == 1 ]; then
+    name=machine-config-operator
+    mcodir="${sourcedir}/${name}"
+
+    if [ ! -d "${mcodir}" ]; then
+        echo "$mcodir not found" 1>&2
+        exit 1
+    fi
+
+    pushd "${mcodir}"
+        update_operator $name
+    popd
+fi
