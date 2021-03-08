@@ -112,7 +112,7 @@ while ! token=$(oc whoami -t); do
     oc login -u kubeadmin
 done
 
-registry=$(get_image_registry)
+registry=$(get_image_registry | tail -n -1)
 registry_login $registry $token
 
 if [ $librarygo == 1 ]; then
@@ -137,7 +137,7 @@ if [ $librarygo == 1 ]; then
     done
 fi
 
-if [ $mco == 1 ]; then
+if [ "$mco" == 1 ]; then
     name=machine-config-operator
     mcodir="${sourcedir}/${name}"
 
