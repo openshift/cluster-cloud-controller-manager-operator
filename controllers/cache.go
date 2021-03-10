@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -104,33 +105,64 @@ type eventToChannelHandler struct {
 }
 
 func (e *eventToChannelHandler) OnAdd(obj interface{}) {
-	e.queueEventForObject(obj)
+	e.queueEventForObject(nil, obj)
 }
 
 func (e *eventToChannelHandler) OnUpdate(oldobj, obj interface{}) {
-	e.queueEventForObject(obj)
+	e.queueEventForObject(oldobj, obj)
 }
 
 func (e *eventToChannelHandler) OnDelete(obj interface{}) {
-	e.queueEventForObject(obj)
+	e.queueEventForObject(nil, obj)
 }
 
 // queueEventForObject sends the event onto the channel
-func (e *eventToChannelHandler) queueEventForObject(o interface{}) {
-	if o == nil {
+func (e *eventToChannelHandler) queueEventForObject(oldObj, newObj interface{}) {
+	if newObj == nil {
 		// Can't do anything here
 		return
 	}
-	obj, ok := o.(client.Object)
+	new, ok := newObj.(client.Object)
 	if !ok {
 		return
 	}
-	if obj.GetName() != e.name {
+	if new.GetName() != e.name {
 		// Not the right object, skip
+	}
+
+	if oldObj != nil {
+		old, ok := oldObj.(client.Object)
+		if !ok {
+			return
+		}
+
+		// We'd like to compare both objects ignoring changes in managedFields and resourceVersion
+		// Nither of those fields should be applied, so it is ok to strip
+		// Mitigating issue: https://github.com/kubernetes/kubernetes/issues/100024
+
+		// Copy objects to prevent corruption of cached version
+		oldCopy, ok := old.DeepCopyObject().(client.Object)
+		if !ok {
+			return
+		}
+		newCopy, ok := new.DeepCopyObject().(client.Object)
+		if !ok {
+			return
+		}
+
+		oldCopy.SetManagedFields(nil)
+		newCopy.SetManagedFields(nil)
+		oldCopy.SetResourceVersion("")
+		newCopy.SetResourceVersion("")
+
+		if equality.Semantic.DeepEqual(oldCopy, newCopy) {
+			// No changes to object - no-op
+			return
+		}
 	}
 
 	// Send an event to the events channel
 	e.eventsChan <- event.GenericEvent{
-		Object: obj,
+		Object: new,
 	}
 }
