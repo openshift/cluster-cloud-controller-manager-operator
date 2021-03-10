@@ -1,0 +1,65 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: openstack-cloud-controller-manager
+  namespace: openshift-cloud-controller-manager
+  labels:
+    app: openstack-cloud-controller-manager
+spec:
+  selector:
+    matchLabels:
+      app: openstack-cloud-controller-manager
+  template:
+    metadata:
+      labels:
+        app: openstack-cloud-controller-manager
+    spec:
+      hostNetwork: true
+      serviceAccount: cloud-controller-manager
+      priorityClassName: system-cluster-critical
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: "NoSchedule"
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: openstack-cloud-controller-manager
+          image: docker.io/k8scloudprovider/openstack-cloud-controller-manager:latest
+          imagePullPolicy: "IfNotPresent"
+          env:
+            - name: CLOUD_CONFIG
+              value: /etc/kubernetes/config/cloud.conf
+          args:
+            - /bin/openstack-cloud-controller-manager
+            - --v=1
+            - --cloud-config=$(CLOUD_CONFIG)
+            - --cloud-provider=openstack
+            - --use-service-account-credentials=true
+            - --bind-address=127.0.0.1
+            - --leader-elect-resource-namespace openshift-cloud-controller-manager
+          volumeMounts:
+            - name: secret-occm
+              mountPath: /etc/kubernetes/secret
+              readOnly: true
+            - name: config-occm
+              mountPath: /etc/kubernetes/config
+              readOnly: true
+      volumes:
+        - name: secret-occm
+          secret:
+            secretName: openstack-cloud-credentials
+            items:
+              - key: clouds.yaml
+                path: clouds.yaml
+        - name: config-occm
+          configMap:
+            name: openstack-cloud-controller-manager-config
+            items:
+              - key: cloud.conf
+                path: cloud.conf
