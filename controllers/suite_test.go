@@ -17,6 +17,7 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -24,6 +25,8 @@ import (
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
 
+	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/klogr"
@@ -50,6 +53,7 @@ func TestAPIs(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	var err error
 	logf.SetLogger(klogr.New())
 
 	By("bootstrapping test environment")
@@ -60,8 +64,9 @@ var _ = BeforeSuite(func() {
 	}
 
 	Expect(configv1.Install(scheme.Scheme)).To(Succeed())
+	Expect(v1.AddToScheme(scheme.Scheme)).To(Succeed())
 
-	cfg, err := testEnv.Start()
+	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
@@ -70,6 +75,11 @@ var _ = BeforeSuite(func() {
 	cl, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cl).NotTo(BeNil())
+
+	managedNamespace := &corev1.Namespace{}
+	managedNamespace.SetName(testManagementNamespace)
+
+	Expect(cl.Create(context.Background(), managedNamespace.DeepCopy())).To(Succeed())
 
 })
 

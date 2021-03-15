@@ -83,6 +83,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	resources := getResources(infra)
 	if err := r.sync(ctx, resources); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
+		return ctrl.Result{}, err
 	}
 
 	if err := r.statusAvailable(ctx); err != nil {
