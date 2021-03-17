@@ -22,8 +22,6 @@ func TestOpenStackResources(t *testing.T) {
 	expected := []resourcemeta{
 		{"ConfigMap", "openstack-cloud-controller-manager-config", ccmo_ns},
 		{"Deployment", "openstack-cloud-controller-manager", ccmo_ns},
-		{"Role", "openstack-cloud-controller-manager", ccmo_ns},
-		{"RoleBinding", "cloud-controller-manager", ccmo_ns},
 	}
 	assert.Equal(t, len(expected), len(resources))
 

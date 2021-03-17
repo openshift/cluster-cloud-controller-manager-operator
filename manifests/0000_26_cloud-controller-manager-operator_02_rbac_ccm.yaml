@@ -1,0 +1,147 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: openshift-cloud-controller-manager
+  name: openstack-cloud-controller-manager
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloud-controller-manager
+  namespace: kube-system
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - serviceaccounts
+    resourceNames:
+      - node-controller
+      - service-controller
+    verbs:
+      - get
+
+  # This grants CCMs permission to list and read all secrets in kube-system.
+  # This is required by client builder to fetch the ServiceAccount token
+  # secret. Ideally we would restrict this to the token secrets of specific
+  # ServiceAccounts.
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - list
+      - get
+      - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openstack-cloud-controller-manager
+  namespace: kube-system
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+roleRef:
+  kind: Role
+  name: cloud-controller-manager
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    namespace: openshift-cloud-controller-manager
+    name: openstack-cloud-controller-manager
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openstack-cloud-controller-manager
+  namespace: openshift-cloud-controller-manager
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+roleRef:
+  kind: Role
+  name: openstack-cloud-controller-manager
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    namespace: openshift-cloud-controller-manager
+    name: openstack-cloud-controller-manager
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openstack-cloud-controller-manager
+  namespace: openshift-cloud-controller-manager
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    resourceNames:
+      - cloud-controller-manager
+    verbs:
+      - get
+      - list
+      - create
+      - update
+
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:openshift:operator:provider-cloud-controller-manager
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+rules:
+# OpenStack CCM runs controller watches using the
+# openstack-cloud-controller-manager ServiceAccount, but the controllers
+# themselves use credentials from node-manager or service-manager. Consequently
+# we only need to explicitly create read permissions here.
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - services
+  verbs:
+  - list
+  - watch
+  - get
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:openshift:operator:provider-cloud-controller-manager
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+roleRef:
+  kind: ClusterRole
+  name: system:openshift:operator:provider-cloud-controller-manager
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  namespace: openshift-cloud-controller-manager
+  name: openstack-cloud-controller-manager
