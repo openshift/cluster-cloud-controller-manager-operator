@@ -15,7 +15,7 @@ spec:
         app: openstack-cloud-controller-manager
     spec:
       hostNetwork: true
-      serviceAccount: openstack-cloud-controller-manager
+      serviceAccount: cloud-controller-manager
       priorityClassName: system-cluster-critical
       nodeSelector:
         node-role.kubernetes.io/master: ""
