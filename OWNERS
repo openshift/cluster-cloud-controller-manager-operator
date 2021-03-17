@@ -4,5 +4,6 @@ approvers:
   - Fedosin
   - mandre
   - mdbooth
+  - elmiko
 
 component: "cloud-controller-manager"
