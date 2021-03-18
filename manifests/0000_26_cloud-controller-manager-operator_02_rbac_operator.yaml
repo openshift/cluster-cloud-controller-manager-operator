@@ -99,6 +99,7 @@ metadata:
 roleRef:
   kind: ClusterRole
   name: system:openshift:operator:cloud-controller-manager
+  apiGroup: rbac.authorization.k8s.io
 subjects:
 - kind: ServiceAccount
   namespace: openshift-cloud-controller-manager-operator
@@ -116,6 +117,7 @@ metadata:
 roleRef:
   kind: Role
   name: cluster-cloud-controller-manager
+  apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
     namespace: openshift-cloud-controller-manager-operator
@@ -133,6 +135,7 @@ metadata:
 roleRef:
   kind: ClusterRole
   name: admin
+  apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
     namespace: openshift-cloud-controller-manager-operator
