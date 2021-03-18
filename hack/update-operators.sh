@@ -14,6 +14,8 @@
 
 set -e -o pipefail
 
+ns=openshift-cloud-controller-manager-operator
+
 # Ensure the cluster registry's default route is enabled, and return the route
 function get_image_registry {
     local url
@@ -32,9 +34,11 @@ function get_image_registry {
 # Login to the cluster's internal registry using a token
 function registry_login {
     local url=$1
-    local token=$2
 
-    podman login --tls-verify=false -u kubeadmin -p "${token}" $url
+    local tokensecret=$(oc -n ${ns} get sa/builder -o json | jq -re '.secrets[].name' | grep token)
+    local token=$(oc -n ${ns} get secret/${tokensecret} -o json | jq -re .data.token | base64 -d)
+
+    podman login --tls-verify=false -u ${ns}/builder -p "${token}" $url
 }
 
 # Rebuild the operator image, push it to the cluster's internal registry,
@@ -42,14 +46,12 @@ function registry_login {
 # new image.
 function update_operator {
     local name=$1
-
     local namespace="openshift-${name}"
-    local image="${namespace}/${name}"
 
     # This dance is so we get build output during execution while also
     # capturing it
     mkfifo /tmp/buildah.$$
-    buildah bud -t "${image}" Dockerfile.rhel7 | tee /tmp/buildah.$$ &
+    buildah bud -t "${name}" Dockerfile.rhel7 | tee /tmp/buildah.$$ &
     imageid=$(tail -n -1 /tmp/buildah.$$)
     rm /tmp/buildah.$$
 
@@ -58,7 +60,7 @@ function update_operator {
     # I'm just using image id as a unique tag. We need something which changes
     # on every invocation to ensure that the deployment pokes its pod, and so we
     # can verify that we're running the image we expect.
-    podman push --tls-verify=false "${image}" "${registry}"/"${image}:${imageid}"
+    podman push --tls-verify=false "${name}" "${registry}/${ns}/${name}:${imageid}"
 
     ${scriptdir}/cvo-unmanage.py "${namespace}" "${name}"
 
@@ -66,7 +68,7 @@ function update_operator {
     [{
         "op": "replace",
         "path": "/spec/template/spec/containers/0/image",
-        "value": "image-registry.openshift-image-registry.svc:5000/'${image}':'${imageid}'"
+        "value": "image-registry.openshift-image-registry.svc:5000/'${ns}/${name}':'${imageid}'"
     }]'
 }
 
@@ -107,12 +109,7 @@ set -x
 sourcedir=$(readlink -m $sourcedir)
 scriptdir=$(readlink -e $scriptdir)
 
-while ! token=$(oc whoami -t); do
-    # This is interactive! Not executed if we're already logged in.
-    oc login -u kubeadmin
-done
-
-registry=$(get_image_registry)
+registry=$(get_image_registry | tail -n -1)
 registry_login $registry $token
 
 if [ $librarygo == 1 ]; then
@@ -137,7 +134,7 @@ if [ $librarygo == 1 ]; then
     done
 fi
 
-if [ $mco == 1 ]; then
+if [ "$mco" == 1 ]; then
     name=machine-config-operator
     mcodir="${sourcedir}/${name}"
 
