@@ -6,7 +6,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	k8sYaml "k8s.io/apimachinery/pkg/util/yaml"
 
 	"k8s.io/klog/v2"
@@ -23,8 +22,6 @@ func GetResources() []client.Object {
 	}{
 		{&v1.ConfigMap{}, "assets/config.yaml"},
 		{&appsv1.Deployment{}, "assets/deployment.yaml"},
-		{&rbacv1.Role{}, "assets/rbac/role.yaml"},
-		{&rbacv1.RoleBinding{}, "assets/rbac/rolebinding.yaml"},
 	}
 	ret := make([]client.Object, 0, len(resources))
 
