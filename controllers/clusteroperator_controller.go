@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	"github.com/openshift/library-go/pkg/cloudprovider"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 )
 
@@ -48,6 +49,7 @@ const (
 	operatorVersionKey            = "operator"
 	releaseVersionEnvVariableName = "RELEASE_VERSION"
 	infrastructureName            = "cluster"
+	externalFeatureGateName       = "cluster"
 	defaultManagementNamespace    = "openshift-cloud-controller-manager-operator"
 )
 
@@ -65,6 +67,20 @@ type CloudOperatorReconciler struct {
 
 // Reconcile will process the cloud-controller-manager clusterOperator
 func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+	featureGate := &configv1.FeatureGate{}
+	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
+		klog.Infof("FeatureGate cluster does not exist. Skipping...")
+		if err := r.statusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
+	} else if err != nil {
+		klog.Errorf("Unable to retrive FeatureGate object: %v", err)
+		return ctrl.Result{}, err
+	}
+
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureName}, infra); errors.IsNotFound(err) {
 		klog.Infof("Infrastructure cluster does not exist. Skipping...")
@@ -80,6 +96,23 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
+	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.Platform, featureGate)
+	if err != nil {
+		klog.Errorf("Could not determine external cloud provider state: %v", err)
+		return ctrl.Result{}, err
+	} else if !external {
+		klog.Infof("FeatureGate cluster is not specifying external cloud provider requirement. Skipping...")
+
+		if err := r.statusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
+	}
+
+	// Deploy resources for platform
 	resources := getResources(infra)
 	if err := r.sync(ctx, resources); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
@@ -239,7 +272,10 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&configv1.ClusterOperator{}, builder.WithPredicates(clusterOperatorPredicates())).
 		Watches(&source.Kind{Type: &configv1.Infrastructure{}},
 			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
-			builder.WithPredicates(clusterOperatorPredicates())).
+			builder.WithPredicates(infrastructurePredicates())).
+		Watches(&source.Kind{Type: &configv1.FeatureGate{}},
+			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
+			builder.WithPredicates(featureGatePredicates())).
 		Watches(&source.Channel{Source: watcher.EventStream()}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
 
 	return build.Complete(r)
@@ -267,8 +303,8 @@ func toClusterOperator(client.Object) []reconcile.Request {
 
 func infrastructurePredicates() predicate.Funcs {
 	isInfrastructureCluster := func(obj runtime.Object) bool {
-		clusterOperator, ok := obj.(*configv1.Infrastructure)
-		return ok && clusterOperator.GetName() == infrastructureName
+		infra, ok := obj.(*configv1.Infrastructure)
+		return ok && infra.GetName() == infrastructureName
 	}
 
 	return predicate.Funcs{
@@ -276,6 +312,20 @@ func infrastructurePredicates() predicate.Funcs {
 		UpdateFunc:  func(e event.UpdateEvent) bool { return isInfrastructureCluster(e.ObjectNew) },
 		GenericFunc: func(e event.GenericEvent) bool { return isInfrastructureCluster(e.Object) },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return isInfrastructureCluster(e.Object) },
+	}
+}
+
+func featureGatePredicates() predicate.Funcs {
+	isFeatureGateCluster := func(obj runtime.Object) bool {
+		featureGate, ok := obj.(*configv1.FeatureGate)
+		return ok && featureGate.GetName() == externalFeatureGateName
+	}
+
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return isFeatureGateCluster(e.Object) },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return isFeatureGateCluster(e.ObjectNew) },
+		GenericFunc: func(e event.GenericEvent) bool { return isFeatureGateCluster(e.Object) },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return isFeatureGateCluster(e.Object) },
 	}
 }
 

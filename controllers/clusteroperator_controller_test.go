@@ -11,6 +11,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 	openstack "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
+	"github.com/openshift/library-go/pkg/cloudprovider"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -202,9 +203,19 @@ func (m *mockedWatcher) getWatchedResources() map[string]struct{} {
 
 var _ = Describe("Component sync controller", func() {
 	var infra *configv1.Infrastructure
+	var fg *configv1.FeatureGate
 	var operatorController *CloudOperatorReconciler
 	var operands []client.Object
 	var watcher mockedWatcher
+
+	externalFeatureGateSpec := &configv1.FeatureGateSpec{
+		FeatureGateSelection: configv1.FeatureGateSelection{
+			FeatureSet: configv1.CustomNoUpgrade,
+			CustomNoUpgrade: &configv1.CustomFeatureGates{
+				Enabled: []string{cloudprovider.ExternalCloudProviderFeature},
+			},
+		},
+	}
 
 	BeforeEach(func() {
 		c, err := cache.New(cfg, cache.Options{})
@@ -214,6 +225,10 @@ var _ = Describe("Component sync controller", func() {
 
 		infra = &configv1.Infrastructure{}
 		infra.SetName(infrastructureName)
+
+		fg = &configv1.FeatureGate{}
+		fg.SetName(externalFeatureGateName)
+
 		operands = nil
 
 		operatorController = &CloudOperatorReconciler{
@@ -226,13 +241,16 @@ var _ = Describe("Component sync controller", func() {
 		watcher = mockedWatcher{watcher: originalWatcher}
 
 		Expect(cl.Create(context.Background(), infra.DeepCopy())).To(Succeed())
+		Expect(cl.Create(context.Background(), fg.DeepCopy())).To(Succeed())
 	})
 
 	AfterEach(func() {
 		Expect(cl.Delete(context.Background(), infra.DeepCopy())).To(Succeed())
+		Expect(cl.Delete(context.Background(), fg.DeepCopy())).To(Succeed())
 
 		Eventually(func() bool {
-			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra.DeepCopy()))
+			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra.DeepCopy())) &&
+				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg.DeepCopy()))
 		}, timeout).Should(BeTrue())
 
 		for _, operand := range operands {
@@ -245,8 +263,9 @@ var _ = Describe("Component sync controller", func() {
 	})
 
 	type testCase struct {
-		status   *configv1.InfrastructureStatus
-		expected []client.Object
+		status          *configv1.InfrastructureStatus
+		featureGateSpec *configv1.FeatureGateSpec
+		expected        []client.Object
 	}
 
 	DescribeTable("should ensure resources are provisioned",
@@ -254,6 +273,12 @@ var _ = Describe("Component sync controller", func() {
 			Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra)).To(Succeed())
 			infra.Status = *tc.status
 			Expect(cl.Status().Update(context.Background(), infra.DeepCopy())).To(Succeed())
+
+			if tc.featureGateSpec != nil {
+				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg)).To(Succeed())
+				fg.Spec = *tc.featureGateSpec
+				Expect(cl.Update(context.Background(), fg.DeepCopy())).To(Succeed())
+			}
 
 			_, err := operatorController.Reconcile(context.Background(), reconcile.Request{})
 			Expect(err).To(Succeed())
@@ -283,17 +308,30 @@ var _ = Describe("Component sync controller", func() {
 			status: &configv1.InfrastructureStatus{
 				Platform: configv1.AWSPlatformType,
 			},
-			expected: cloud.GetAWSResources(),
+			featureGateSpec: externalFeatureGateSpec,
+			expected:        cloud.GetAWSResources(),
 		}),
 		Entry("Should provision OpenStack resources", testCase{
 			status: &configv1.InfrastructureStatus{
 				Platform: configv1.OpenStackPlatformType,
 			},
-			expected: openstack.GetResources(),
+			featureGateSpec: externalFeatureGateSpec,
+			expected:        openstack.GetResources(),
 		}),
 		Entry("Should not provision resources for currently unsupported platform", testCase{
 			status: &configv1.InfrastructureStatus{
 				Platform: configv1.IBMCloudPlatformType,
+			},
+			featureGateSpec: externalFeatureGateSpec,
+		}),
+		Entry("Should not provision resources for AWS if external FeatureGate is not present", testCase{
+			status: &configv1.InfrastructureStatus{
+				Platform: configv1.AWSPlatformType,
+			},
+		}),
+		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
+			status: &configv1.InfrastructureStatus{
+				Platform: configv1.OpenStackPlatformType,
 			},
 		}),
 	)
