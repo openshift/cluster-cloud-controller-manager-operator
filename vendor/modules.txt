@@ -113,8 +113,9 @@ github.com/onsi/gomega/types
 # github.com/openshift/api v0.0.0-20201216151826-78a19e96f9eb
 ## explicit
 github.com/openshift/api/config/v1
-# github.com/openshift/library-go v0.0.0-20210106214821-c4d0b9c8d55f
+# github.com/openshift/library-go v0.0.0-20210318152630-323ad8a8f7d8
 ## explicit
+github.com/openshift/library-go/pkg/cloudprovider
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
@@ -289,6 +290,7 @@ k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
 # k8s.io/apiextensions-apiserver v0.20.0
+## explicit
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1
