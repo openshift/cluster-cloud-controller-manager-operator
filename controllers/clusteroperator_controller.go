@@ -128,8 +128,10 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 }
 
 func (r *CloudOperatorReconciler) relatedObjects() []configv1.ObjectReference {
+	// TBD: Add an actual set of object references from getResources method
 	return []configv1.ObjectReference{
 		{Resource: "namespaces", Name: defaultManagementNamespace},
+		{Group: configv1.GroupName, Resource: "clusteroperators", Name: defaultManagementNamespace},
 		{Resource: "namespaces", Name: r.ManagedNamespace},
 	}
 }
