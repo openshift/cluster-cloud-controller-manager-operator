@@ -97,8 +97,16 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	platform, err := getProviderFromInfrastructure(infra)
+	if err != nil {
+		klog.Errorf("Unable to determine platform from infrastructure: %s", err)
+		// Ignoring error here as infrastructure resource needs to be reconciled externally
+		// to provide correct platform
+		return ctrl.Result{}, nil
+	}
+
 	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
-	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.Platform, featureGate)
+	external, err := cloudprovider.IsCloudProviderExternal(platform, featureGate)
 	if err != nil {
 		klog.Errorf("Could not determine external cloud provider state: %v", err)
 		return ctrl.Result{}, err
@@ -113,8 +121,16 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	config, err := r.composeConfig(platform)
+	if err != nil {
+		klog.Errorf("Unable to build operator config %s", err)
+		return ctrl.Result{}, err
+	}
+
 	// Deploy resources for platform
-	resources := getResources(infra)
+	templates := getResources(platform)
+	resources := fillConfigValues(config, templates)
+
 	if err := r.sync(ctx, resources); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
 		return ctrl.Result{}, err
@@ -162,13 +178,8 @@ func applyServerSide(ctx context.Context, c client.Client, owner client.FieldOwn
 	return c.Patch(ctx, obj, client.Apply, opts...)
 }
 
-func getResources(infra *configv1.Infrastructure) []client.Object {
-	if infra.Status == (configv1.InfrastructureStatus{}) {
-		klog.Warning("No platform value found in infrastructure")
-		return nil
-	}
-
-	switch infra.Status.Platform {
+func getResources(platform configv1.PlatformType) []client.Object {
+	switch platform {
 	case configv1.AWSPlatformType:
 		return cloud.GetAWSResources()
 	case configv1.OpenStackPlatformType:
@@ -178,6 +189,21 @@ func getResources(infra *configv1.Infrastructure) []client.Object {
 	}
 
 	return nil
+}
+
+func (r *CloudOperatorReconciler) composeConfig(platform configv1.PlatformType) (operatorConfig, error) {
+	config := operatorConfig{}
+
+	images, err := getImagesFromJSONFile(r.ImagesFile)
+	if err != nil {
+		klog.Errorf("Unable to decode images file from location %s", r.ImagesFile, err)
+		return config, err
+	}
+
+	config.ControllerImage = getProviderControllerFromImages(platform, images)
+	config.ManagedNamespace = r.ManagedNamespace
+
+	return config, nil
 }
 
 // statusAvailable sets the Available condition to True, with the given reason
