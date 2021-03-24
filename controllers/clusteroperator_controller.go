@@ -67,18 +67,12 @@ type CloudOperatorReconciler struct {
 
 // Reconcile will process the cloud-controller-manager clusterOperator
 func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
-	featureGate := &configv1.FeatureGate{}
-	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
-		klog.Infof("FeatureGate cluster does not exist. Skipping...")
-		if err := r.statusAvailable(ctx); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{}, nil
-	} else if err != nil {
-		klog.Errorf("Unable to retrive FeatureGate object: %v", err)
+	allowedToProvision, err := r.provisioningAllowed(ctx)
+	if err != nil {
+		klog.Errorf("Unable to determine cluster state %v", err)
 		return ctrl.Result{}, err
+	} else if !allowedToProvision {
+		return ctrl.Result{}, nil
 	}
 
 	infra := &configv1.Infrastructure{}
@@ -96,22 +90,6 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
-	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.Platform, featureGate)
-	if err != nil {
-		klog.Errorf("Could not determine external cloud provider state: %v", err)
-		return ctrl.Result{}, err
-	} else if !external {
-		klog.Infof("FeatureGate cluster is not specifying external cloud provider requirement. Skipping...")
-
-		if err := r.statusAvailable(ctx); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{}, nil
-	}
-
 	// Deploy resources for platform
 	resources := getResources(infra)
 	if err := r.sync(ctx, resources); err != nil {
@@ -125,6 +103,65 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context) (bool, error) {
+	featureGate := &configv1.FeatureGate{}
+	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
+		klog.Infof("FeatureGate cluster does not exist. Skipping...")
+		if err := r.statusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return false, err
+		}
+
+		return false, nil
+	} else if err != nil {
+		klog.Errorf("Unable to retrive FeatureGate object: %v", err)
+		return false, err
+	}
+
+	infra := &configv1.Infrastructure{}
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureName}, infra); errors.IsNotFound(err) {
+		klog.Infof("Infrastructure cluster does not exist. Skipping...")
+
+		if err := r.statusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return false, err
+		}
+
+		return false, nil
+	} else if err != nil {
+		klog.Errorf("Unable to retrive Infrastructure object: %v", err)
+		return false, err
+	}
+
+	platform, err := getProviderFromInfrastructure(infra)
+	if err != nil {
+		klog.Errorf("Unable to determine platform from infrastructure: %s", err)
+		// Ignoring error here as infrastructure resource needs to be reconciled externally
+		// to provide correct platform
+		return false, nil
+	}
+
+	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
+	external, err := cloudprovider.IsCloudProviderExternal(platform, featureGate)
+	if err != nil {
+		klog.Errorf("Could not determine external cloud provider state: %v", err)
+		return false, err
+	} else if !external {
+		klog.Infof("FeatureGate cluster is not specifying external cloud provider requirement. Skipping...")
+
+		if err := r.statusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return false, err
+		}
+
+		return false, nil
+	}
+
+	// TODO: Add part confirming migration is finised for KCM and KAPI before allowing provisioning
+
+	return true, nil
 }
 
 func (r *CloudOperatorReconciler) relatedObjects() []configv1.ObjectReference {
