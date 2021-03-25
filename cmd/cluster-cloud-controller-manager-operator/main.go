@@ -48,10 +48,7 @@ var (
 	retryPeriod   = 90 * time.Second
 )
 
-const (
-	defaultManagedNamespace = "openshift-cloud-controller-manager"
-	defaultImagesLocation   = "/etc/cloud-controller-manager-config/images.json"
-)
+const defaultManagedNamespace = "openshift-cloud-controller-manager"
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
@@ -100,12 +97,6 @@ func main() {
 		"The namespace for managed objects, where out-of-tree CCM binaries will run.",
 	)
 
-	imagesFile := flag.String(
-		"images-json",
-		defaultImagesLocation,
-		"The location of images file to use by operator for managed CCM binaries.",
-	)
-
 	flag.Parse()
 
 	ctrl.SetLogger(klogr.New().WithName("CCMOperator"))
@@ -134,7 +125,6 @@ func main() {
 		Client:           mgr.GetClient(),
 		Scheme:           mgr.GetScheme(),
 		ManagedNamespace: *managedNamespace,
-		ImagesFile:       *imagesFile,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterOperator")
 		os.Exit(1)

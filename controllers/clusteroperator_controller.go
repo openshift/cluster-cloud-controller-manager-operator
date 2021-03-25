@@ -59,7 +59,6 @@ type CloudOperatorReconciler struct {
 	Scheme           *runtime.Scheme
 	watcher          ObjectWatcher
 	ManagedNamespace string
-	ImagesFile       string
 }
 
 // +kubebuilder:rbac:groups=config.openshift.io,resources=clusteroperators,verbs=get;list;watch;create;update;patch;delete
