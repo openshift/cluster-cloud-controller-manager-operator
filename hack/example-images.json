@@ -1,0 +1,4 @@
+{
+    "cloudControllerManagerAWS": "registry.svc.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.svc.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}
