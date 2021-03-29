@@ -57,4 +57,4 @@ spec:
       - name: images
         configMap:
           defaultMode: 420
-          name: machine-api-operator-images
+          name: cloud-controller-manager-images
