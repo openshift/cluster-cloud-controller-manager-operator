@@ -12,6 +12,8 @@ spec:
       k8s-app: aws-cloud-controller-manager
   template:
     metadata:
+      annotations:
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         k8s-app: aws-cloud-controller-manager
     spec:

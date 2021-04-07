@@ -11,6 +11,8 @@ spec:
       app: openstack-cloud-controller-manager
   template:
     metadata:
+      annotations:
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         app: openstack-cloud-controller-manager
     spec:
