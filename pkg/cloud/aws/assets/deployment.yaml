@@ -48,3 +48,5 @@ spec:
         key: node.kubernetes.io/not-ready
         operator: Exists
         tolerationSeconds: 120
+      - effect: NoSchedule
+        key: node.cloudprovider.kubernetes.io/uninitialized
