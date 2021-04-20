@@ -5,4 +5,12 @@ spec:
   - name: cluster-cloud-controller-manager-operator
     from:
       kind: DockerImage
-      name: registry.svc.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator
+      name: registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator
+  - name: aws-cloud-controller-manager
+    from:
+      kind: DockerImage
+      name: registry.ci.openshift.org/openshift:aws-cloud-controller-manager
+  - name: openstack-cloud-controller-manager
+    from:
+      kind: DockerImage
+      name: registry.ci.openshift.org/openshift:openstack-cloud-controller-manager
