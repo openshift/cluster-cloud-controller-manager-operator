@@ -6,7 +6,7 @@ metadata:
   name: aws-cloud-controller-manager
   namespace: openshift-cloud-controller-manager
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       k8s-app: aws-cloud-controller-manager
@@ -28,6 +28,15 @@ spec:
       hostNetwork: true
       nodeSelector:
         node-role.kubernetes.io/master: ""
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  k8s-app: aws-cloud-controller-manager
       serviceAccountName: cloud-controller-manager
       tolerations:
       - effect: NoSchedule
@@ -41,3 +50,5 @@ spec:
         key: node.kubernetes.io/not-ready
         operator: Exists
         tolerationSeconds: 120
+      - effect: NoSchedule
+        key: node.cloudprovider.kubernetes.io/uninitialized

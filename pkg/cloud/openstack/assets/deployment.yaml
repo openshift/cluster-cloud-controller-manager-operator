@@ -6,6 +6,7 @@ metadata:
   labels:
     app: openstack-cloud-controller-manager
 spec:
+  replicas: 2
   selector:
     matchLabels:
       app: openstack-cloud-controller-manager
@@ -21,6 +22,15 @@ spec:
       priorityClassName: system-cluster-critical
       nodeSelector:
         node-role.kubernetes.io/master: ""
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: openstack-cloud-controller-manager
       tolerations:
         - key: CriticalAddonsOnly
           operator: Exists
