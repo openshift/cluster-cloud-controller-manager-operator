@@ -55,6 +55,10 @@ spec:
             - --use-service-account-credentials=true
             - --bind-address=127.0.0.1
             - --leader-elect-resource-namespace=openshift-cloud-controller-manager
+          resources:
+            requests:
+              cpu: 200m
+              memory: 50Mi
           volumeMounts:
             - name: secret-occm
               mountPath: /etc/kubernetes/secret

@@ -25,6 +25,10 @@ spec:
         image: gcr.io/k8s-staging-provider-aws/cloud-controller-manager:v1.19.0-alpha.1
         imagePullPolicy: IfNotPresent
         name: aws-cloud-controller-manager
+        resources:
+          requests:
+            cpu: 200m
+            memory: 50Mi
       hostNetwork: true
       nodeSelector:
         node-role.kubernetes.io/master: ""
