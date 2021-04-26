@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: machine-config-operator-images
+  namespace: openshift-machine-config-operator
+  annotations:
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+data:
+  images.json: >
+    {
+      "releaseVersion": "0.0.1-snapshot",
+      "machineConfigOperator": "quay.io/dgrigore/machine-config-operator:latest",
+      "etcd": "registry.svc.ci.openshift.org/openshift:etcd",
+      "infraImage": "registry.svc.ci.openshift.org/openshift:pod",
+      "kubeClientAgentImage": "registry.svc.ci.openshift.org/openshift:kube-client-agent",
+      "clusterEtcdOperatorImage": "registry.svc.ci.openshift.org/openshift:cluster-etcd-operator",
+      "keepalivedImage": "registry.svc.ci.openshift.org/openshift:keepalived-ipfailover",
+      "corednsImage": "registry.svc.ci.openshift.org/openshift:coredns",
+      "mdnsPublisherImage": "registry.svc.ci.openshift.org/openshift:mdns-publisher",
+      "haproxyImage": "registry.svc.ci.openshift.org/openshift:haproxy-router",
+      "baremetalRuntimeCfgImage": "registry.svc.ci.openshift.org/openshift:baremetal-runtimecfg",
+      "oauthProxy": "registry.svc.ci.openshift.org/openshift:oauth-proxy"
+    }
+

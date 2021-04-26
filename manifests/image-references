@@ -14,3 +14,7 @@ spec:
     from:
       kind: DockerImage
       name: registry.ci.openshift.org/openshift:openstack-cloud-controller-manager
+  - name: machine-config-operator
+    from:
+      kind: DockerImage
+      name: quay.io/dgrigore/machine-config-operator:latest
