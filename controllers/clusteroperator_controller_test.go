@@ -2,7 +2,9 @@ package controllers
 
 import (
 	"context"
+	"io/ioutil"
 	"os"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -26,6 +28,7 @@ import (
 const (
 	timeout                 = time.Second * 10
 	testManagementNamespace = "openshift-cloud-controller-manager"
+	testImagesFilePath      = "../hack/example-images.json"
 )
 
 var _ = Describe("Cluster Operator status controller", func() {
@@ -236,6 +239,7 @@ var _ = Describe("Component sync controller", func() {
 			Scheme:           scheme.Scheme,
 			watcher:          w,
 			ManagedNamespace: testManagementNamespace,
+			ImagesFile:       testImagesFilePath,
 		}
 		originalWatcher, _ := w.(*objectWatcher)
 		watcher = mockedWatcher{watcher: originalWatcher}
@@ -265,6 +269,7 @@ var _ = Describe("Component sync controller", func() {
 	type testCase struct {
 		status          *configv1.InfrastructureStatus
 		featureGateSpec *configv1.FeatureGateSpec
+		config          operatorConfig
 		expected        []client.Object
 	}
 
@@ -285,8 +290,8 @@ var _ = Describe("Component sync controller", func() {
 
 			watchMap := watcher.getWatchedResources()
 
-			operands = tc.expected
-			for _, obj := range tc.expected {
+			operands = fillConfigValues(tc.config, tc.expected)
+			for _, obj := range operands {
 				Expect(watchMap[obj.GetName()]).ToNot(BeNil())
 
 				original, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
@@ -307,13 +312,27 @@ var _ = Describe("Component sync controller", func() {
 		Entry("Should provision AWS resources", testCase{
 			status: &configv1.InfrastructureStatus{
 				Platform: configv1.AWSPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
 			},
 			featureGateSpec: externalFeatureGateSpec,
-			expected:        cloud.GetAWSResources(),
+			config: operatorConfig{
+				ManagedNamespace: testManagementNamespace,
+				ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			},
+			expected: cloud.GetAWSResources(),
 		}),
 		Entry("Should provision OpenStack resources", testCase{
 			status: &configv1.InfrastructureStatus{
 				Platform: configv1.OpenStackPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.OpenStackPlatformType,
+				},
+			},
+			config: operatorConfig{
+				ManagedNamespace: testManagementNamespace,
+				ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			},
 			featureGateSpec: externalFeatureGateSpec,
 			expected:        openstack.GetResources(),
@@ -321,18 +340,109 @@ var _ = Describe("Component sync controller", func() {
 		Entry("Should not provision resources for currently unsupported platform", testCase{
 			status: &configv1.InfrastructureStatus{
 				Platform: configv1.IBMCloudPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.IBMCloudPlatformType,
+				},
 			},
 			featureGateSpec: externalFeatureGateSpec,
 		}),
 		Entry("Should not provision resources for AWS if external FeatureGate is not present", testCase{
 			status: &configv1.InfrastructureStatus{
 				Platform: configv1.AWSPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
 			},
 		}),
 		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
 			status: &configv1.InfrastructureStatus{
 				Platform: configv1.OpenStackPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.OpenStackPlatformType,
+				},
 			},
 		}),
 	)
 })
+
+func TestComposeConfig(t *testing.T) {
+	tc := []struct {
+		name          string
+		namespace     string
+		platform      configv1.PlatformType
+		imagesContent string
+		expectConfig  operatorConfig
+		expectError   bool
+	}{{
+		name:      "Unmarshal images from file for AWS",
+		namespace: defaultManagementNamespace,
+		platform:  configv1.AWSPlatformType,
+		imagesContent: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+		expectConfig: operatorConfig{
+			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			ManagedNamespace: defaultManagementNamespace,
+		},
+	}, {
+		name:      "Unmarshal images from file for OpenStack",
+		namespace: defaultManagementNamespace,
+		platform:  configv1.OpenStackPlatformType,
+		imagesContent: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+		expectConfig: operatorConfig{
+			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+			ManagedNamespace: defaultManagementNamespace,
+		},
+	}, {
+		name:      "Unmarshal images from file for unknown platform returns nothing",
+		namespace: "otherNamespace",
+		platform:  configv1.NonePlatformType,
+		imagesContent: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+		expectConfig: operatorConfig{
+			ControllerImage:  "",
+			ManagedNamespace: "otherNamespace",
+		},
+	}, {
+		name: "Broken JSON is rejected",
+		imagesContent: `{
+    "cloudControllerManagerAWS": BAD,
+}`,
+		expectError: true,
+	}}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := ioutil.TempFile(os.TempDir(), "images")
+			path := file.Name()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+
+			_, err = file.WriteString(tc.imagesContent)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			r := &CloudOperatorReconciler{
+				ImagesFile:       path,
+				ManagedNamespace: tc.namespace,
+			}
+			config, err := r.composeConfig(tc.platform)
+			if isErr := err != nil; isErr != tc.expectError {
+				t.Fatalf("Unexpected error result: %v", err)
+			}
+
+			if !equality.Semantic.DeepEqual(config, tc.expectConfig) {
+				t.Errorf("Config is not equal:\n%v\nexpected\n%v", config, tc.expectConfig)
+			}
+		})
+	}
+}
