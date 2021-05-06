@@ -11,3 +11,13 @@ status:
   versions:
     - name: operator
       version: "0.0.1-snapshot"
+  relatedObjects:
+    - group: config.openshift.io
+      name: cloud-controller-manager
+      resource: clusteroperators
+    - group: ""
+      name: openshift-cloud-controller-manager
+      resource: namespaces
+    - group: ""
+      name: openshift-cloud-controller-manager-operator
+      resource: namespaces
