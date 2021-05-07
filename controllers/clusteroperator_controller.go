@@ -148,7 +148,7 @@ func (r *CloudOperatorReconciler) relatedObjects() []configv1.ObjectReference {
 	// TBD: Add an actual set of object references from getResources method
 	return []configv1.ObjectReference{
 		{Resource: "namespaces", Name: defaultManagementNamespace},
-		{Group: configv1.GroupName, Resource: "clusteroperators", Name: defaultManagementNamespace},
+		{Group: configv1.GroupName, Resource: "clusteroperators", Name: clusterOperatorName},
 		{Resource: "namespaces", Name: r.ManagedNamespace},
 	}
 }
