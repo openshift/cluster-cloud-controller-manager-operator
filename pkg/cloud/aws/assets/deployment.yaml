@@ -17,6 +17,7 @@ spec:
       labels:
         k8s-app: aws-cloud-controller-manager
     spec:
+      priorityClassName: system-cluster-critical
       containers:
       - args:
         - --cloud-provider=aws
@@ -35,7 +36,7 @@ spec:
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 1
+          - weight: 100
             podAffinityTerm:
               topologyKey: "kubernetes.io/hostname"
               labelSelector:
