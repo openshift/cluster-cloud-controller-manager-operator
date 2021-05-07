@@ -41,7 +41,7 @@ spec:
           value: "true"
           effect: NoSchedule
       containers:
-        - name: openstack-cloud-controller-manager
+        - name: cloud-controller-manager
           image: docker.io/k8scloudprovider/openstack-cloud-controller-manager:latest
           imagePullPolicy: "IfNotPresent"
           env:

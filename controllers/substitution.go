@@ -2,6 +2,7 @@ package controllers
 
 import (
 	v1 "k8s.io/api/apps/v1"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -18,6 +19,7 @@ func setDeploymentImages(config operatorConfig, d *v1.Deployment) {
 			continue
 		}
 
+		klog.Infof("Substituting %q: %s", container.Name, config.ControllerImage)
 		d.Spec.Template.Spec.Containers[i].Image = config.ControllerImage
 	}
 }
