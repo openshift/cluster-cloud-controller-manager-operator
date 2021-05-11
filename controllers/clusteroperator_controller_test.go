@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -18,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -38,13 +38,13 @@ var _ = Describe("Cluster Operator status controller", func() {
 			Client:           cl,
 			Scheme:           scheme.Scheme,
 			ManagedNamespace: defaultManagementNamespace,
+			Recorder:         record.NewFakeRecorder(32),
 		}
 		operator = &configv1.ClusterOperator{}
 		operator.SetName(clusterOperatorName)
 	})
 
 	AfterEach(func() {
-		os.Unsetenv(releaseVersionEnvVariableName)
 		co := &configv1.ClusterOperator{}
 		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
 		if err == nil || !apierrors.IsNotFound(err) {
@@ -64,14 +64,12 @@ var _ = Describe("Cluster Operator status controller", func() {
 
 	DescribeTable("should ensure Cluster Operator status is present",
 		func(tc testCase) {
-			expectedVersion := unknownVersionValue
+			expectedVersion := "unknown"
 
-			By("Setting the release version", func() {
-				if tc.releaseVersionEnvVariableValue != "" {
-					expectedVersion = tc.releaseVersionEnvVariableValue
-					Expect(os.Setenv(releaseVersionEnvVariableName, tc.releaseVersionEnvVariableValue)).To(Succeed())
-				}
-			})
+			if tc.releaseVersionEnvVariableValue != "" {
+				expectedVersion = tc.releaseVersionEnvVariableValue
+				operatorController.ReleaseVersion = tc.releaseVersionEnvVariableValue
+			}
 
 			if tc.namespace != "" {
 				operatorController.ManagedNamespace = tc.namespace
@@ -114,7 +112,7 @@ var _ = Describe("Cluster Operator status controller", func() {
 			Expect(getOp.Status.RelatedObjects).To(Equal(operatorController.relatedObjects()))
 		},
 		Entry("when there's no existing cluster operator nor release version", testCase{
-			releaseVersionEnvVariableValue: "",
+			releaseVersionEnvVariableValue: "unknown",
 			existingCO:                     nil,
 		}),
 		Entry("when there's no existing cluster operator but there's release version", testCase{
@@ -238,6 +236,7 @@ var _ = Describe("Component sync controller", func() {
 			watcher:          w,
 			ManagedNamespace: testManagementNamespace,
 			ImagesFile:       testImagesFilePath,
+			Recorder:         record.NewFakeRecorder(32),
 		}
 		originalWatcher, _ := w.(*objectWatcher)
 		watcher = mockedWatcher{watcher: originalWatcher}

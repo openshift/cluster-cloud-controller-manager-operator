@@ -3,12 +3,12 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,11 +25,9 @@ const (
 )
 
 const (
-	releaseVersionEnvVariableName = "RELEASE_VERSION"
-	clusterOperatorName           = "cloud-controller-manager"
-	operatorVersionKey            = "operator"
-	unknownVersionValue           = "unknown"
-	defaultManagementNamespace    = "openshift-cloud-controller-manager-operator"
+	clusterOperatorName        = "cloud-controller-manager"
+	operatorVersionKey         = "operator"
+	defaultManagementNamespace = "openshift-cloud-controller-manager-operator"
 )
 
 // setStatusDegraded sets the Degraded condition to True, with the given reason and
@@ -42,7 +40,7 @@ func (r *CloudOperatorReconciler) setStatusDegraded(ctx context.Context, reconci
 		return err
 	}
 
-	desiredVersions := []configv1.OperandVersion{{Name: operatorVersionKey, Version: getReleaseVersion()}}
+	desiredVersions := []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	currentVersions := co.Status.Versions
 
 	var message string
@@ -58,7 +56,7 @@ func (r *CloudOperatorReconciler) setStatusDegraded(ctx context.Context, reconci
 		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionFalse, ReasonAsExpected, ""),
 	}
 
-	// r.eventRecorder.Eventf(co, v1.EventTypeWarning, "Status degraded", error)
+	r.Recorder.Eventf(co, corev1.EventTypeWarning, "Status degraded", reconcileErr.Error())
 	klog.V(2).Infof("Syncing status: degraded: %s", message)
 	return r.syncStatus(ctx, co, conds)
 }
@@ -73,7 +71,7 @@ func (r *CloudOperatorReconciler) setStatusProgressing(ctx context.Context) erro
 		return err
 	}
 
-	desiredVersions := []configv1.OperandVersion{{Name: operatorVersionKey, Version: getReleaseVersion()}}
+	desiredVersions := []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	currentVersions := co.Status.Versions
 	var isProgressing configv1.ConditionStatus
 
@@ -81,7 +79,7 @@ func (r *CloudOperatorReconciler) setStatusProgressing(ctx context.Context) erro
 	if !reflect.DeepEqual(desiredVersions, currentVersions) {
 		message = fmt.Sprintf("Progressing towards %s", printOperandVersions(desiredVersions))
 		klog.V(2).Infof("Syncing status: %s", message)
-		// r.eventRecorder.Eventf(co, v1.EventTypeNormal, "Status upgrade", message)
+		r.Recorder.Eventf(co, corev1.EventTypeNormal, "Status upgrade", message)
 		isProgressing = configv1.ConditionTrue
 		reason = ReasonSyncing
 	} else {
@@ -108,13 +106,13 @@ func (r *CloudOperatorReconciler) setStatusAvailable(ctx context.Context) error 
 
 	conds := []configv1.ClusterOperatorStatusCondition{
 		newClusterOperatorStatusCondition(configv1.OperatorAvailable, configv1.ConditionTrue, ReasonAsExpected,
-			fmt.Sprintf("Cluster Cloud Controller Manager Operator is available at %s", getReleaseVersion())),
+			fmt.Sprintf("Cluster Cloud Controller Manager Operator is available at %s", r.ReleaseVersion)),
 		newClusterOperatorStatusCondition(configv1.OperatorProgressing, configv1.ConditionFalse, ReasonAsExpected, ""),
 		newClusterOperatorStatusCondition(configv1.OperatorDegraded, configv1.ConditionFalse, ReasonAsExpected, ""),
 		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionTrue, ReasonAsExpected, ""),
 	}
 
-	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: getReleaseVersion()}}
+	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.V(2).Info("Syncing status: available")
 	return r.syncStatus(ctx, co, conds)
 }
@@ -137,15 +135,6 @@ func newClusterOperatorStatusCondition(conditionType configv1.ClusterStatusCondi
 		Reason:             reason,
 		Message:            message,
 	}
-}
-
-func getReleaseVersion() string {
-	releaseVersion := os.Getenv(releaseVersionEnvVariableName)
-	if len(releaseVersion) == 0 {
-		releaseVersion = unknownVersionValue
-		klog.Infof("%s environment variable is missing, defaulting to %q", releaseVersionEnvVariableName, unknownVersionValue)
-	}
-	return releaseVersion
 }
 
 func (r *CloudOperatorReconciler) getOrCreateClusterOperator(ctx context.Context) (*configv1.ClusterOperator, error) {

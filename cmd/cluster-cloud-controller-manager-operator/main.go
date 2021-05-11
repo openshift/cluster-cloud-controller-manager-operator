@@ -23,6 +23,7 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/klogr"
 	"k8s.io/klog/v2"
@@ -49,8 +50,10 @@ var (
 )
 
 const (
-	defaultManagedNamespace = "openshift-cloud-controller-manager"
-	defaultImagesLocation   = "/etc/cloud-controller-manager-config/images.json"
+	defaultManagedNamespace       = "openshift-cloud-controller-manager"
+	defaultImagesLocation         = "/etc/cloud-controller-manager-config/images.json"
+	releaseVersionEnvVariableName = "RELEASE_VERSION"
+	unknownVersionValue           = "unknown"
 )
 
 func init() {
@@ -133,6 +136,8 @@ func main() {
 	if err = (&controllers.CloudOperatorReconciler{
 		Client:           mgr.GetClient(),
 		Scheme:           mgr.GetScheme(),
+		Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
+		ReleaseVersion:   getReleaseVersion(),
 		ManagedNamespace: *managedNamespace,
 		ImagesFile:       *imagesFile,
 	}).SetupWithManager(mgr); err != nil {
@@ -155,4 +160,13 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func getReleaseVersion() string {
+	releaseVersion := os.Getenv(releaseVersionEnvVariableName)
+	if len(releaseVersion) == 0 {
+		releaseVersion = unknownVersionValue
+		klog.Infof("%s environment variable is missing, defaulting to %q", releaseVersionEnvVariableName, unknownVersionValue)
+	}
+	return releaseVersion
 }

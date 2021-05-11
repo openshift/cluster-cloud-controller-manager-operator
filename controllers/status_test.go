@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -78,13 +78,10 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 	for i, tc := range tCases {
 		startTime := metav1.NewTime(time.Now().Add(-time.Second))
 
-		err := os.Setenv(releaseVersionEnvVariableName, tc.desiredVersion)
-		if err != nil {
-			t.Fatalf("Failed to set RELEASE_VERSION: %v", err)
-		}
-		defer os.Unsetenv(releaseVersionEnvVariableName)
 		optr := CloudOperatorReconciler{
-			Scheme: scheme.Scheme,
+			Scheme:         scheme.Scheme,
+			Recorder:       record.NewFakeRecorder(32),
+			ReleaseVersion: tc.desiredVersion,
 		}
 
 		builder := fake.NewClientBuilder()
@@ -96,7 +93,7 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 		}
 		optr.Client = builder.Build()
 
-		err = optr.setStatusProgressing(context.TODO())
+		err := optr.setStatusProgressing(context.TODO())
 		assert.NoErrorf(t, err, "Failed to set Progressing status on ClusterOperator")
 
 		gotCO, err := optr.getOrCreateClusterOperator(context.TODO())
@@ -203,13 +200,10 @@ func TestOperatorSetStatusDegraded(t *testing.T) {
 	for i, tc := range tCases {
 		startTime := metav1.NewTime(time.Now().Add(-time.Second))
 
-		err := os.Setenv(releaseVersionEnvVariableName, tc.desiredVersion)
-		if err != nil {
-			t.Fatalf("Failed to set RELEASE_VERSION: %v", err)
-		}
-		defer os.Unsetenv(releaseVersionEnvVariableName)
 		optr := CloudOperatorReconciler{
-			Scheme: scheme.Scheme,
+			Scheme:         scheme.Scheme,
+			Recorder:       record.NewFakeRecorder(32),
+			ReleaseVersion: tc.desiredVersion,
 		}
 
 		builder := fake.NewClientBuilder()
@@ -221,7 +215,7 @@ func TestOperatorSetStatusDegraded(t *testing.T) {
 		}
 		optr.Client = builder.Build()
 
-		err = optr.setStatusDegraded(context.TODO(), tc.passErr)
+		err := optr.setStatusDegraded(context.TODO(), tc.passErr)
 		assert.NoErrorf(t, err, "Failed to set Degraded status on ClusterOperator")
 
 		gotCO, err := optr.getOrCreateClusterOperator(context.TODO())
@@ -325,13 +319,10 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 	for i, tc := range tCases {
 		startTime := metav1.NewTime(time.Now().Add(-time.Second))
 
-		err := os.Setenv(releaseVersionEnvVariableName, tc.desiredVersion)
-		if err != nil {
-			t.Fatalf("Failed to set RELEASE_VERSION: %v", err)
-		}
-		defer os.Unsetenv(releaseVersionEnvVariableName)
 		optr := CloudOperatorReconciler{
-			Scheme: scheme.Scheme,
+			Scheme:         scheme.Scheme,
+			Recorder:       record.NewFakeRecorder(32),
+			ReleaseVersion: tc.desiredVersion,
 		}
 
 		builder := fake.NewClientBuilder()
@@ -343,7 +334,7 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 		}
 		optr.Client = builder.Build()
 
-		err = optr.setStatusAvailable(context.TODO())
+		err := optr.setStatusAvailable(context.TODO())
 		assert.NoErrorf(t, err, "Failed to set Available status on ClusterOperator")
 
 		gotCO, err := optr.getOrCreateClusterOperator(context.TODO())

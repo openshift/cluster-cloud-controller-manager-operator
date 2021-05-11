@@ -7,6 +7,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/client-go/tools/record"
 )
 
 func TestGetImagesFromJSONFile(t *testing.T) {
@@ -254,6 +255,7 @@ func TestComposeConfig(t *testing.T) {
 			r := &CloudOperatorReconciler{
 				ImagesFile:       path,
 				ManagedNamespace: tc.namespace,
+				Recorder:         record.NewFakeRecorder(32),
 			}
 			config, err := r.composeConfig(tc.platform)
 			if isErr := err != nil; isErr != tc.expectError {
