@@ -40,6 +40,11 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
+func init() {
+	configv1.Install(scheme.Scheme)
+	v1.AddToScheme(scheme.Scheme)
+}
+
 var cfg *rest.Config
 var cl client.Client
 var testEnv *envtest.Environment
