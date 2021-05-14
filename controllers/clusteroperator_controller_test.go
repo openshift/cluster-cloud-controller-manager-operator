@@ -12,12 +12,15 @@ import (
 	openstack "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -360,4 +363,106 @@ var _ = Describe("Component sync controller", func() {
 			},
 		}),
 	)
+})
+
+var _ = Describe("Apply resources should", func() {
+	var resources []client.Object
+	var reconciler *CloudOperatorReconciler
+	var recorder *record.FakeRecorder
+
+	BeforeEach(func() {
+		c, err := cache.New(cfg, cache.Options{})
+		Expect(err).To(Succeed())
+		w, err := NewObjectWatcher(WatcherOptions{Cache: c})
+		Expect(err).To(Succeed())
+
+		ns := &corev1.Namespace{}
+		ns.SetName("cluster-cloud-controller-manager")
+
+		resources = []client.Object{}
+		if !apierrors.IsNotFound(cl.Get(context.TODO(), client.ObjectKeyFromObject(ns), ns.DeepCopy())) {
+			Expect(cl.Create(context.TODO(), ns.DeepCopy())).ShouldNot(HaveOccurred())
+		}
+
+		recorder = record.NewFakeRecorder(32)
+		reconciler = &CloudOperatorReconciler{
+			Client:   cl,
+			Scheme:   scheme.Scheme,
+			Recorder: recorder,
+			watcher:  w,
+		}
+
+	})
+
+	It("Expect update when resources are not found", func() {
+		resources = append(resources, cloud.GetAWSResources()...)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+	})
+
+	It("Expect update when deployment generation have changed", func() {
+		var dep *appsv1.Deployment
+		for _, res := range cloud.GetAWSResources() {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				dep = deployment
+				break
+			}
+		}
+		resources = append(resources, dep)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		dep.Spec.Replicas = pointer.Int32Ptr(20)
+
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// No update as resource didn't change
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeFalse())
+	})
+
+	It("Expect error when object requsted is incorrect", func() {
+		objects := cloud.GetAWSResources()
+		objects[0].SetNamespace("non-existent")
+
+		updated, err := reconciler.applyResources(context.TODO(), objects)
+		Expect(err).Should(HaveOccurred())
+		Expect(updated).To(BeFalse())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Update failed")))
+	})
+
+	It("Expect no update when resources are applied twice", func() {
+		resources = append(resources, openstack.GetResources()...)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeFalse())
+	})
+
+	AfterEach(func() {
+		for _, operand := range resources {
+			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
+
+			Eventually(func() bool {
+				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
+			}, timeout).Should(BeTrue())
+		}
+		Consistently(recorder.Events).ShouldNot(Receive())
+	})
+
 })

@@ -73,23 +73,20 @@ func (r *CloudOperatorReconciler) setStatusProgressing(ctx context.Context) erro
 
 	desiredVersions := []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	currentVersions := co.Status.Versions
-	var isProgressing configv1.ConditionStatus
 
 	var message, reason string
 	if !reflect.DeepEqual(desiredVersions, currentVersions) {
 		message = fmt.Sprintf("Progressing towards %s", printOperandVersions(desiredVersions))
 		klog.V(2).Infof("Syncing status: %s", message)
 		r.Recorder.Eventf(co, corev1.EventTypeNormal, "Status upgrade", message)
-		isProgressing = configv1.ConditionTrue
 		reason = ReasonSyncing
 	} else {
 		klog.V(2).Info("Syncing status: re-syncing")
 		reason = ReasonAsExpected
-		isProgressing = configv1.ConditionFalse
 	}
 
 	conds := []configv1.ClusterOperatorStatusCondition{
-		newClusterOperatorStatusCondition(configv1.OperatorProgressing, isProgressing, reason, message),
+		newClusterOperatorStatusCondition(configv1.OperatorProgressing, configv1.ConditionTrue, reason, message),
 		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionTrue, ReasonAsExpected, ""),
 	}
 

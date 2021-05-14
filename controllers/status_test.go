@@ -56,7 +56,7 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 			},
 			desiredVersion: "1.0",
 			expectedConditions: []configv1.ClusterOperatorStatusCondition{
-				newClusterOperatorStatusCondition(configv1.OperatorProgressing, configv1.ConditionFalse, ReasonSyncing, ""),
+				newClusterOperatorStatusCondition(configv1.OperatorProgressing, configv1.ConditionTrue, ReasonSyncing, ""),
 				newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionTrue, ReasonAsExpected, ""),
 			},
 		},

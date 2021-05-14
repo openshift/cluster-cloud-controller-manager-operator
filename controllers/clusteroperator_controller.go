@@ -23,6 +23,8 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
+	"github.com/openshift/library-go/pkg/cloudprovider"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -35,8 +37,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-
-	"github.com/openshift/library-go/pkg/cloudprovider"
 )
 
 const (
@@ -143,13 +143,6 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// TODO: Set progressing condition only once we've evaluated there is a change in managed resources
-	// // Sync provider operands
-	// if err := r.statusProgressing(ctx); err != nil {
-	// 	klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-	// 	return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-	// }
-
 	if err := r.sync(ctx, config); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {
@@ -172,30 +165,59 @@ func (r *CloudOperatorReconciler) sync(ctx context.Context, config operatorConfi
 	templates := getResources(config.Platform)
 	resources := fillConfigValues(config, templates)
 
-	for _, resource := range resources {
-		if err := applyServerSide(ctx, r.Client, clusterOperatorName, resource); err != nil {
-			klog.Errorf("Unable to apply object %T '%s': %+v", resource, resource.GetName(), err)
-			return err
-		}
-
-		klog.V(2).Infof("Applied %T %q successfully", resource, client.ObjectKeyFromObject(resource))
-
-		if err := r.watcher.Watch(ctx, resource); err != nil {
-			klog.Errorf("Unable to establish watch on object %T '%s': %+v", resource, resource.GetName(), err)
-			return err
-		}
+	updated, err := r.applyResources(ctx, resources)
+	if err != nil {
+		return err
 	}
-
-	if len(resources) > 0 {
-		klog.Info("Resources applied successfully.")
+	if updated {
+		return r.setStatusProgressing(ctx)
 	}
 
 	return nil
 }
 
-func applyServerSide(ctx context.Context, c client.Client, owner client.FieldOwner, obj client.Object, opts ...client.PatchOption) error {
-	opts = append([]client.PatchOption{client.ForceOwnership, owner}, opts...)
-	return c.Patch(ctx, obj, client.Apply, opts...)
+// applyResources will apply all resources as is to the cluster with
+// server-side apply patch and will enforce all the conflicts
+func (r *CloudOperatorReconciler) applyResources(ctx context.Context, resources []client.Object) (bool, error) {
+	updated := false
+
+	for _, resource := range resources {
+		resourceExisting := resource.DeepCopyObject().(client.Object)
+		err := r.Get(ctx, client.ObjectKeyFromObject(resourceExisting), resourceExisting)
+		if errors.IsNotFound(err) {
+			klog.Infof("Resource %s %q needs to be created, operator progressing...", resource.GetObjectKind().GroupVersionKind(), client.ObjectKeyFromObject(resource))
+			updated = true
+		} else if err != nil {
+			r.Recorder.Event(resource, corev1.EventTypeWarning, "Update failed", err.Error())
+			return false, err
+		}
+
+		resourceUpdated := resource.DeepCopyObject().(client.Object)
+		if err := r.Patch(ctx, resourceUpdated, client.Apply, client.ForceOwnership, client.FieldOwner(clusterOperatorName)); err != nil {
+			klog.Errorf("Unable to apply object %s '%s': %+v", resource.GetObjectKind().GroupVersionKind(), resource.GetName(), err)
+			r.Recorder.Event(resourceExisting, corev1.EventTypeWarning, "Update failed", err.Error())
+			return false, err
+		}
+		klog.V(2).Infof("Applied %s %q successfully", resource.GetObjectKind().GroupVersionKind(), client.ObjectKeyFromObject(resource))
+
+		if resourceExisting.GetGeneration() != resourceUpdated.GetGeneration() {
+			klog.Infof("Resource %s %q generation increased, resource updated, operator progressing...", resource.GetObjectKind().GroupVersionKind(), client.ObjectKeyFromObject(resource))
+			updated = true
+			r.Recorder.Event(resourceExisting, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+		}
+
+		if err := r.watcher.Watch(ctx, resource); err != nil {
+			klog.Errorf("Unable to establish watch on object %s '%s': %+v", resource.GetObjectKind().GroupVersionKind(), resource.GetName(), err)
+			r.Recorder.Event(resourceExisting, corev1.EventTypeWarning, "Establish watch failed", err.Error())
+			return false, err
+		}
+	}
+
+	if len(resources) > 0 {
+		klog.V(2).Info("Resources applied successfully.")
+	}
+
+	return updated, nil
 }
 
 func getResources(platform configv1.PlatformType) []client.Object {
