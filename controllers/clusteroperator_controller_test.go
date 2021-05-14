@@ -2,9 +2,7 @@ package controllers
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
-	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -104,13 +102,13 @@ var _ = Describe("Cluster Operator status controller", func() {
 
 			// check conditions.
 			Expect(v1helpers.IsStatusConditionTrue(getOp.Status.Conditions, configv1.OperatorAvailable)).To(BeTrue())
-			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorAvailable).Reason).To(Equal(reasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorAvailable).Reason).To(Equal(ReasonAsExpected))
 			Expect(v1helpers.IsStatusConditionTrue(getOp.Status.Conditions, configv1.OperatorUpgradeable)).To(BeTrue())
-			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorUpgradeable).Reason).To(Equal(reasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorUpgradeable).Reason).To(Equal(ReasonAsExpected))
 			Expect(v1helpers.IsStatusConditionFalse(getOp.Status.Conditions, configv1.OperatorDegraded)).To(BeTrue())
-			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorDegraded).Reason).To(Equal(reasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorDegraded).Reason).To(Equal(ReasonAsExpected))
 			Expect(v1helpers.IsStatusConditionFalse(getOp.Status.Conditions, configv1.OperatorProgressing)).To(BeTrue())
-			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorProgressing).Reason).To(Equal(reasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorProgressing).Reason).To(Equal(ReasonAsExpected))
 
 			// check related objects.
 			Expect(getOp.Status.RelatedObjects).To(Equal(operatorController.relatedObjects()))
@@ -364,85 +362,3 @@ var _ = Describe("Component sync controller", func() {
 		}),
 	)
 })
-
-func TestComposeConfig(t *testing.T) {
-	tc := []struct {
-		name          string
-		namespace     string
-		platform      configv1.PlatformType
-		imagesContent string
-		expectConfig  operatorConfig
-		expectError   bool
-	}{{
-		name:      "Unmarshal images from file for AWS",
-		namespace: defaultManagementNamespace,
-		platform:  configv1.AWSPlatformType,
-		imagesContent: `{
-    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-}`,
-		expectConfig: operatorConfig{
-			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			ManagedNamespace: defaultManagementNamespace,
-		},
-	}, {
-		name:      "Unmarshal images from file for OpenStack",
-		namespace: defaultManagementNamespace,
-		platform:  configv1.OpenStackPlatformType,
-		imagesContent: `{
-    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-}`,
-		expectConfig: operatorConfig{
-			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
-			ManagedNamespace: defaultManagementNamespace,
-		},
-	}, {
-		name:      "Unmarshal images from file for unknown platform returns nothing",
-		namespace: "otherNamespace",
-		platform:  configv1.NonePlatformType,
-		imagesContent: `{
-    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-}`,
-		expectConfig: operatorConfig{
-			ControllerImage:  "",
-			ManagedNamespace: "otherNamespace",
-		},
-	}, {
-		name: "Broken JSON is rejected",
-		imagesContent: `{
-    "cloudControllerManagerAWS": BAD,
-}`,
-		expectError: true,
-	}}
-
-	for _, tc := range tc {
-		t.Run(tc.name, func(t *testing.T) {
-			file, err := ioutil.TempFile(os.TempDir(), "images")
-			path := file.Name()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer file.Close()
-
-			_, err = file.WriteString(tc.imagesContent)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			r := &CloudOperatorReconciler{
-				ImagesFile:       path,
-				ManagedNamespace: tc.namespace,
-			}
-			config, err := r.composeConfig(tc.platform)
-			if isErr := err != nil; isErr != tc.expectError {
-				t.Fatalf("Unexpected error result: %v", err)
-			}
-
-			if !equality.Semantic.DeepEqual(config, tc.expectConfig) {
-				t.Errorf("Config is not equal:\n%v\nexpected\n%v", config, tc.expectConfig)
-			}
-		})
-	}
-}
