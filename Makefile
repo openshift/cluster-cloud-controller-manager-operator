@@ -24,8 +24,13 @@ unit:
 	go test ./... -coverprofile cover.out
 
 # Build operator binary
-build: fmt vet
+build: fmt vet operator render
+
+operator:
 	go build -o bin/cluster-controller-manager-operator cmd/cluster-cloud-controller-manager-operator/main.go
+
+render:
+	go build -o bin/render cmd/render/main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: fmt vet manifests
