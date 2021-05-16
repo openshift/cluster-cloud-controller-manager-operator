@@ -1,4 +1,4 @@
-package controllers
+package config
 
 import (
 	"io/ioutil"
@@ -6,8 +6,7 @@ import (
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/client-go/tools/record"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetImagesFromJSONFile(t *testing.T) {
@@ -16,7 +15,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 		path           string
 		imagesContent  string
 		expectedImages imagesReference
-		expectError    bool
+		expectError    string
 	}{{
 		name: "Unmarshal images from file",
 		path: "images_file",
@@ -30,7 +29,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 		},
 	}, {
 		name:        "Error on non present file",
-		expectError: true,
+		expectError: "open not_found: no such file or directory",
 	}, {
 		name: "Partial content is accepted",
 		path: "images_file",
@@ -69,7 +68,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 			imagesContent: `{
     "cloudControllerManagerAWS": BAD,
 }`,
-			expectError: true,
+			expectError: "invalid character 'B' looking for beginning of value",
 		},
 	}
 
@@ -79,25 +78,21 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 			if tc.path != "" {
 				file, err := ioutil.TempFile(os.TempDir(), tc.path)
 				path = file.Name()
-				if err != nil {
-					t.Fatal(err)
-				}
+				assert.NoError(t, err)
 				defer file.Close()
 
 				_, err = file.WriteString(tc.imagesContent)
-				if err != nil {
-					t.Fatal(err)
-				}
+				assert.NoError(t, err)
 			}
 
 			images, err := getImagesFromJSONFile(path)
-			if isErr := err != nil; isErr != tc.expectError {
-				t.Fatalf("Unexpected error result: %v", err)
+			if tc.expectError != "" {
+				assert.EqualError(t, err, tc.expectError)
+			} else {
+				assert.NoError(t, err)
 			}
 
-			if !equality.Semantic.DeepEqual(images, tc.expectedImages) {
-				t.Errorf("Images are not set correctly:\n%v\nexpected\n%v", images, tc.expectedImages)
-			}
+			assert.EqualValues(t, tc.expectedImages, images)
 		})
 	}
 }
@@ -107,11 +102,11 @@ func TestGetProviderFromInfrastructure(t *testing.T) {
 		name           string
 		infra          *configv1.Infrastructure
 		expectPlatform configv1.PlatformType
-		expectErr      bool
+		expectErr      string
 	}{{
 		name:      "Passing empty infra causes error",
 		infra:     nil,
-		expectErr: true,
+		expectErr: "platform status is not populated on infrastructure",
 	}, {
 		name: "No platform type causes error",
 		infra: &configv1.Infrastructure{
@@ -119,7 +114,7 @@ func TestGetProviderFromInfrastructure(t *testing.T) {
 				PlatformStatus: &configv1.PlatformStatus{},
 			},
 		},
-		expectErr: true,
+		expectErr: "no platform provider found on infrastructure",
 	}, {
 		name: "All good",
 		infra: &configv1.Infrastructure{
@@ -134,13 +129,13 @@ func TestGetProviderFromInfrastructure(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			platform, err := getProviderFromInfrastructure(tc.infra)
-			if isErr := (err != nil); tc.expectErr != isErr {
-				t.Fatalf("Unexpected error result: %v", err)
+			platform, err := GetProviderFromInfrastructure(tc.infra)
+			if tc.expectErr != "" {
+				assert.EqualError(t, err, tc.expectErr)
+			} else {
+				assert.NoError(t, err)
 			}
-			if platform != tc.expectPlatform {
-				t.Errorf("Unexpected platform %s, expected %s", platform, tc.expectPlatform)
-			}
+			assert.Equal(t, platform, tc.expectPlatform)
 		})
 	}
 }
@@ -175,22 +170,22 @@ func TestGetProviderControllerFromImages(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			image := getProviderControllerFromImages(tc.platformType, images)
-			if image != tc.expectedImage {
-				t.Errorf("Unexpected image %s, expected %s", image, tc.expectedImage)
-			}
+			image := getCloudControllerManagerFromImages(tc.platformType, images)
+			assert.Equal(t, tc.expectedImage, image)
 		})
 	}
 }
 
 func TestComposeConfig(t *testing.T) {
+	defaultManagementNamespace := "test-namespace"
+
 	tc := []struct {
 		name          string
 		namespace     string
 		platform      configv1.PlatformType
 		imagesContent string
-		expectConfig  operatorConfig
-		expectError   bool
+		expectConfig  OperatorConfig
+		expectError   string
 	}{{
 		name:      "Unmarshal images from file for AWS",
 		namespace: defaultManagementNamespace,
@@ -199,7 +194,7 @@ func TestComposeConfig(t *testing.T) {
     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
     "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 }`,
-		expectConfig: operatorConfig{
+		expectConfig: OperatorConfig{
 			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
 			Platform:         configv1.AWSPlatformType,
@@ -212,7 +207,7 @@ func TestComposeConfig(t *testing.T) {
     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
     "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 }`,
-		expectConfig: operatorConfig{
+		expectConfig: OperatorConfig{
 			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
 			Platform:         configv1.OpenStackPlatformType,
@@ -225,7 +220,7 @@ func TestComposeConfig(t *testing.T) {
     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
     "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 }`,
-		expectConfig: operatorConfig{
+		expectConfig: OperatorConfig{
 			ControllerImage:  "",
 			ManagedNamespace: "otherNamespace",
 			Platform:         configv1.NonePlatformType,
@@ -235,36 +230,27 @@ func TestComposeConfig(t *testing.T) {
 		imagesContent: `{
     "cloudControllerManagerAWS": BAD,
 }`,
-		expectError: true,
+		expectError: "invalid character 'B' looking for beginning of value",
 	}}
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
 			file, err := ioutil.TempFile(os.TempDir(), "images")
 			path := file.Name()
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
 			defer file.Close()
 
 			_, err = file.WriteString(tc.imagesContent)
-			if err != nil {
-				t.Fatal(err)
+			assert.NoError(t, err)
+
+			config, err := ComposeConfig(tc.platform, path, tc.namespace)
+			if tc.expectError != "" {
+				assert.EqualError(t, err, tc.expectError)
+			} else {
+				assert.NoError(t, err)
 			}
 
-			r := &CloudOperatorReconciler{
-				ImagesFile:       path,
-				ManagedNamespace: tc.namespace,
-				Recorder:         record.NewFakeRecorder(32),
-			}
-			config, err := r.composeConfig(tc.platform)
-			if isErr := err != nil; isErr != tc.expectError {
-				t.Fatalf("Unexpected error result: %v", err)
-			}
-
-			if !equality.Semantic.DeepEqual(config, tc.expectConfig) {
-				t.Errorf("Config is not equal:\n%v\nexpected\n%v", config, tc.expectConfig)
-			}
+			assert.EqualValues(t, config, tc.expectConfig)
 		})
 	}
 }

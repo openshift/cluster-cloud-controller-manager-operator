@@ -1,4 +1,4 @@
-package controllers
+package config
 
 import (
 	"encoding/json"
@@ -16,16 +16,16 @@ type imagesReference struct {
 	CloudControllerManagerOpenStack string `json:"cloudControllerManagerOpenStack"`
 }
 
-// operatorConfig contains configuration values for templating resources
-type operatorConfig struct {
+// OperatorConfig contains configuration values for templating resources
+type OperatorConfig struct {
 	ManagedNamespace string
 	ControllerImage  string
 	Platform         configv1.PlatformType
 }
 
-func getProviderFromInfrastructure(infra *configv1.Infrastructure) (configv1.PlatformType, error) {
+func GetProviderFromInfrastructure(infra *configv1.Infrastructure) (configv1.PlatformType, error) {
 	if infra == nil || infra.Status.PlatformStatus == nil {
-		return "", fmt.Errorf("platform status is not pupulated on infrastructure")
+		return "", fmt.Errorf("platform status is not populated on infrastructure")
 	}
 	if infra.Status.PlatformStatus.Type == "" {
 		return "", fmt.Errorf("no platform provider found on infrastructure")
@@ -47,7 +47,7 @@ func getImagesFromJSONFile(filePath string) (imagesReference, error) {
 	return i, nil
 }
 
-func getProviderControllerFromImages(platform configv1.PlatformType, images imagesReference) string {
+func getCloudControllerManagerFromImages(platform configv1.PlatformType, images imagesReference) string {
 	switch platform {
 	case configv1.AWSPlatformType:
 		return images.CloudControllerManagerAWS
@@ -58,19 +58,19 @@ func getProviderControllerFromImages(platform configv1.PlatformType, images imag
 	}
 }
 
-func (r *CloudOperatorReconciler) composeConfig(platform configv1.PlatformType) (operatorConfig, error) {
-	config := operatorConfig{
+func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace string) (OperatorConfig, error) {
+	config := OperatorConfig{
 		Platform:         platform,
-		ManagedNamespace: r.ManagedNamespace,
+		ManagedNamespace: managedNamespace,
 	}
 
-	images, err := getImagesFromJSONFile(r.ImagesFile)
+	images, err := getImagesFromJSONFile(imagesFile)
 	if err != nil {
-		klog.Errorf("Unable to decode images file from location %s", r.ImagesFile, err)
+		klog.Errorf("Unable to decode images file from location %s", imagesFile, err)
 		return config, err
 	}
 
-	config.ControllerImage = getProviderControllerFromImages(platform, images)
+	config.ControllerImage = getCloudControllerManagerFromImages(platform, images)
 
 	return config, nil
 }

@@ -22,7 +22,8 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/substitution"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -100,7 +101,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	platform, err := getProviderFromInfrastructure(infra)
+	platform, err := config.GetProviderFromInfrastructure(infra)
 	if err != nil {
 		klog.Errorf("Unable to determine platform from infrastructure: %s", err)
 		// Ignoring error here as infrastructure resource needs to be reconciled externally
@@ -133,7 +134,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	config, err := r.composeConfig(platform)
+	config, err := config.ComposeConfig(platform, r.ImagesFile, r.ManagedNamespace)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {
@@ -160,10 +161,10 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *CloudOperatorReconciler) sync(ctx context.Context, config operatorConfig) error {
+func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig) error {
 	// Deploy resources for platform
-	templates := getResources(config.Platform)
-	resources := fillConfigValues(config, templates)
+	templates := cloud.GetResources(config.Platform)
+	resources := substitution.FillConfigValues(config, templates)
 
 	updated, err := r.applyResources(ctx, resources)
 	if err != nil {
@@ -218,19 +219,6 @@ func (r *CloudOperatorReconciler) applyResources(ctx context.Context, resources 
 	}
 
 	return updated, nil
-}
-
-func getResources(platform configv1.PlatformType) []client.Object {
-	switch platform {
-	case configv1.AWSPlatformType:
-		return cloud.GetAWSResources()
-	case configv1.OpenStackPlatformType:
-		return openstack.GetResources()
-	default:
-		klog.Warning("No recognized cloud provider platform found in infrastructure")
-	}
-
-	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

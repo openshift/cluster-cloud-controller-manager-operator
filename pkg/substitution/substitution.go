@@ -1,6 +1,7 @@
-package controllers
+package substitution
 
 import (
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	v1 "k8s.io/api/apps/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -13,7 +14,7 @@ const (
 )
 
 // setDeploymentImages substitutes controller containers in Deployment with correct image
-func setDeploymentImages(config operatorConfig, d *v1.Deployment) {
+func setDeploymentImages(config config.OperatorConfig, d *v1.Deployment) {
 	for i, container := range d.Spec.Template.Spec.Containers {
 		if container.Name != cloudControllerManagerName {
 			continue
@@ -24,7 +25,7 @@ func setDeploymentImages(config operatorConfig, d *v1.Deployment) {
 	}
 }
 
-func fillConfigValues(config operatorConfig, templates []client.Object) []client.Object {
+func FillConfigValues(config config.OperatorConfig, templates []client.Object) []client.Object {
 	objects := make([]client.Object, len(templates))
 	for i, objectTemplate := range templates {
 		templateCopy := objectTemplate.DeepCopyObject().(client.Object)
