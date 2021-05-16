@@ -8,6 +8,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// GetResources selectively returns a list resources required for
+// provisioning CCM instance in the cluster for the given platform type
+//
+// These resources will be actively maintained by the operator, preventing
+// changes in their spec. However you can extend any resource spec with
+// values not specified in the provided source resource. These changes
+// would be preserved.
 func GetResources(platform configv1.PlatformType) []client.Object {
 	switch platform {
 	case configv1.AWSPlatformType:
@@ -16,6 +23,22 @@ func GetResources(platform configv1.PlatformType) []client.Object {
 		return openstack.GetResources()
 	default:
 		klog.Warningf("Unrecognized platform type %q found in infrastructure", platform)
+		return nil
+	}
+}
+
+// GetBootstrapResources selectively returns a list static pods required for
+// provisioning CCM on bootstrap node for the given platform type
+//
+// This pod is required for platforms that allow multiple Node initialization from
+// a single CCM instance which is not bound to link-local VM IP address and node name.
+// Allows to initalize master Nodes immediately after they are created by the installer.
+func GetBootstrapResources(platform configv1.PlatformType) []client.Object {
+	switch platform {
+	case configv1.AWSPlatformType:
+		return aws.GetBootstrapResources()
+	default:
+		klog.Warning("No recognized cloud provider platform found in infrastructure")
 		return nil
 	}
 }

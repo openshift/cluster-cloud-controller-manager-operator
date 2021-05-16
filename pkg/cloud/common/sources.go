@@ -8,11 +8,17 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// ObjectSource is a holder for the path of the object to read from
+// and typed Object, where the resource content would be unserialized
 type ObjectSource struct {
 	Object client.Object
 	Path   string
 }
 
+// ReadResources is responsible for reading resources from embed path in the binary.
+// This method is for internal use only, and a <provider> should use this method
+// only in init() and later provide a copy of aquired objects. See /pkg/cloud for
+// examples
 func ReadResources(f embed.FS, sources []ObjectSource) ([]client.Object, error) {
 	ret := []client.Object{}
 	for _, source := range sources {
