@@ -23,6 +23,7 @@ var (
 	renderOpts struct {
 		destinationDir        string
 		clusterInfrastructure string
+		imagesFile            string
 	}
 )
 
@@ -30,19 +31,24 @@ func init() {
 	renderCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 	renderCmd.PersistentFlags().StringVar(&renderOpts.destinationDir, "dest-dir", "", "The destination dir where CCCMO writes the generated static pods for CCM.")
 	renderCmd.PersistentFlags().StringVar(&renderOpts.clusterInfrastructure, "cluster-infrastructure-file", "", "Input path for the cluster infrastructure file.")
+	renderCmd.PersistentFlags().StringVar(&renderOpts.imagesFile, "images-file", "", "Input path for the images config map file.")
 	renderCmd.MarkFlagRequired("dest-dir")
 	renderCmd.MarkFlagRequired("cluster-infrastructure-file")
+	renderCmd.MarkFlagRequired("images-file")
 }
 
 func runRenderCmd(cmd *cobra.Command, args []string) error {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
-	if err := validate(renderOpts.destinationDir, renderOpts.clusterInfrastructure); err != nil {
+	if err := validate(
+		renderOpts.destinationDir,
+		renderOpts.clusterInfrastructure,
+		renderOpts.imagesFile); err != nil {
 		return err
 	}
 
-	if err := render.New().Run(renderOpts.destinationDir); err != nil {
+	if err := render.New(renderOpts.clusterInfrastructure, renderOpts.imagesFile).Run(renderOpts.destinationDir); err != nil {
 		return err
 	}
 
@@ -50,13 +56,15 @@ func runRenderCmd(cmd *cobra.Command, args []string) error {
 }
 
 // validate verifies all file and dirs exist
-func validate(destinationDir, clusterInfrastructure string) error {
+func validate(destinationDir, clusterInfrastructure, imagesFile string) error {
 	errs := []error{}
-	if err := isDir(destinationDir); err != nil {
-		errs = append(errs, fmt.Errorf("error reading --dest-dir: %s", err))
-	}
 	if err := isFile(clusterInfrastructure); err != nil {
+		klog.Errorf("error reading --cluster-infrastructure-file=%q: %s", clusterInfrastructure, err)
 		errs = append(errs, fmt.Errorf("error reading --cluster-infrastructure-file: %s", err))
+	}
+	if err := isFile(imagesFile); err != nil {
+		klog.Errorf("error reading --images-file=%q: %s", imagesFile, err)
+		errs = append(errs, fmt.Errorf("error reading --images-file: %s", err))
 	}
 
 	if len(errs) > 0 {
@@ -76,18 +84,6 @@ func isFile(path string) error {
 	}
 	if st.Size() <= 0 {
 		return fmt.Errorf("%q is empty", path)
-	}
-
-	return nil
-}
-
-func isDir(path string) error {
-	st, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !st.Mode().IsDir() {
-		return fmt.Errorf("%q is not a regular file", path)
 	}
 
 	return nil
