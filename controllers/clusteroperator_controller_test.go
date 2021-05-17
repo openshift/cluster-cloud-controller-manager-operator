@@ -2,9 +2,6 @@ package controllers
 
 import (
 	"context"
-	"io/ioutil"
-	"os"
-	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -15,11 +12,15 @@ import (
 	openstack "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -40,13 +41,13 @@ var _ = Describe("Cluster Operator status controller", func() {
 			Client:           cl,
 			Scheme:           scheme.Scheme,
 			ManagedNamespace: defaultManagementNamespace,
+			Recorder:         record.NewFakeRecorder(32),
 		}
 		operator = &configv1.ClusterOperator{}
 		operator.SetName(clusterOperatorName)
 	})
 
 	AfterEach(func() {
-		os.Unsetenv(releaseVersionEnvVariableName)
 		co := &configv1.ClusterOperator{}
 		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
 		if err == nil || !apierrors.IsNotFound(err) {
@@ -66,14 +67,12 @@ var _ = Describe("Cluster Operator status controller", func() {
 
 	DescribeTable("should ensure Cluster Operator status is present",
 		func(tc testCase) {
-			expectedVersion := unknownVersionValue
+			expectedVersion := "unknown"
 
-			By("Setting the release version", func() {
-				if tc.releaseVersionEnvVariableValue != "" {
-					expectedVersion = tc.releaseVersionEnvVariableValue
-					Expect(os.Setenv(releaseVersionEnvVariableName, tc.releaseVersionEnvVariableValue)).To(Succeed())
-				}
-			})
+			if tc.releaseVersionEnvVariableValue != "" {
+				expectedVersion = tc.releaseVersionEnvVariableValue
+				operatorController.ReleaseVersion = tc.releaseVersionEnvVariableValue
+			}
 
 			if tc.namespace != "" {
 				operatorController.ManagedNamespace = tc.namespace
@@ -104,19 +103,19 @@ var _ = Describe("Cluster Operator status controller", func() {
 
 			// check conditions.
 			Expect(v1helpers.IsStatusConditionTrue(getOp.Status.Conditions, configv1.OperatorAvailable)).To(BeTrue())
-			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorAvailable).Reason).To(Equal(reasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorAvailable).Reason).To(Equal(ReasonAsExpected))
 			Expect(v1helpers.IsStatusConditionTrue(getOp.Status.Conditions, configv1.OperatorUpgradeable)).To(BeTrue())
-			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorUpgradeable).Reason).To(Equal(reasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorUpgradeable).Reason).To(Equal(ReasonAsExpected))
 			Expect(v1helpers.IsStatusConditionFalse(getOp.Status.Conditions, configv1.OperatorDegraded)).To(BeTrue())
-			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorDegraded).Reason).To(Equal(reasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorDegraded).Reason).To(Equal(ReasonAsExpected))
 			Expect(v1helpers.IsStatusConditionFalse(getOp.Status.Conditions, configv1.OperatorProgressing)).To(BeTrue())
-			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorProgressing).Reason).To(Equal(reasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorProgressing).Reason).To(Equal(ReasonAsExpected))
 
 			// check related objects.
 			Expect(getOp.Status.RelatedObjects).To(Equal(operatorController.relatedObjects()))
 		},
 		Entry("when there's no existing cluster operator nor release version", testCase{
-			releaseVersionEnvVariableValue: "",
+			releaseVersionEnvVariableValue: "unknown",
 			existingCO:                     nil,
 		}),
 		Entry("when there's no existing cluster operator but there's release version", testCase{
@@ -240,6 +239,7 @@ var _ = Describe("Component sync controller", func() {
 			watcher:          w,
 			ManagedNamespace: testManagementNamespace,
 			ImagesFile:       testImagesFilePath,
+			Recorder:         record.NewFakeRecorder(32),
 		}
 		originalWatcher, _ := w.(*objectWatcher)
 		watcher = mockedWatcher{watcher: originalWatcher}
@@ -365,84 +365,104 @@ var _ = Describe("Component sync controller", func() {
 	)
 })
 
-func TestComposeConfig(t *testing.T) {
-	tc := []struct {
-		name          string
-		namespace     string
-		platform      configv1.PlatformType
-		imagesContent string
-		expectConfig  operatorConfig
-		expectError   bool
-	}{{
-		name:      "Unmarshal images from file for AWS",
-		namespace: defaultManagementNamespace,
-		platform:  configv1.AWSPlatformType,
-		imagesContent: `{
-    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-}`,
-		expectConfig: operatorConfig{
-			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			ManagedNamespace: defaultManagementNamespace,
-		},
-	}, {
-		name:      "Unmarshal images from file for OpenStack",
-		namespace: defaultManagementNamespace,
-		platform:  configv1.OpenStackPlatformType,
-		imagesContent: `{
-    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-}`,
-		expectConfig: operatorConfig{
-			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
-			ManagedNamespace: defaultManagementNamespace,
-		},
-	}, {
-		name:      "Unmarshal images from file for unknown platform returns nothing",
-		namespace: "otherNamespace",
-		platform:  configv1.NonePlatformType,
-		imagesContent: `{
-    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-}`,
-		expectConfig: operatorConfig{
-			ControllerImage:  "",
-			ManagedNamespace: "otherNamespace",
-		},
-	}, {
-		name: "Broken JSON is rejected",
-		imagesContent: `{
-    "cloudControllerManagerAWS": BAD,
-}`,
-		expectError: true,
-	}}
+var _ = Describe("Apply resources should", func() {
+	var resources []client.Object
+	var reconciler *CloudOperatorReconciler
+	var recorder *record.FakeRecorder
 
-	for _, tc := range tc {
-		t.Run(tc.name, func(t *testing.T) {
-			file, err := ioutil.TempFile(os.TempDir(), "images")
-			path := file.Name()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer file.Close()
+	BeforeEach(func() {
+		c, err := cache.New(cfg, cache.Options{})
+		Expect(err).To(Succeed())
+		w, err := NewObjectWatcher(WatcherOptions{Cache: c})
+		Expect(err).To(Succeed())
 
-			_, err = file.WriteString(tc.imagesContent)
-			if err != nil {
-				t.Fatal(err)
-			}
+		ns := &corev1.Namespace{}
+		ns.SetName("cluster-cloud-controller-manager")
 
-			r := &CloudOperatorReconciler{
-				ImagesFile:       path,
-				ManagedNamespace: tc.namespace,
-			}
-			config, err := r.composeConfig(tc.platform)
-			if isErr := err != nil; isErr != tc.expectError {
-				t.Fatalf("Unexpected error result: %v", err)
-			}
+		resources = []client.Object{}
+		if !apierrors.IsNotFound(cl.Get(context.TODO(), client.ObjectKeyFromObject(ns), ns.DeepCopy())) {
+			Expect(cl.Create(context.TODO(), ns.DeepCopy())).ShouldNot(HaveOccurred())
+		}
 
-			if !equality.Semantic.DeepEqual(config, tc.expectConfig) {
-				t.Errorf("Config is not equal:\n%v\nexpected\n%v", config, tc.expectConfig)
+		recorder = record.NewFakeRecorder(32)
+		reconciler = &CloudOperatorReconciler{
+			Client:   cl,
+			Scheme:   scheme.Scheme,
+			Recorder: recorder,
+			watcher:  w,
+		}
+
+	})
+
+	It("Expect update when resources are not found", func() {
+		resources = append(resources, cloud.GetAWSResources()...)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+	})
+
+	It("Expect update when deployment generation have changed", func() {
+		var dep *appsv1.Deployment
+		for _, res := range cloud.GetAWSResources() {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				dep = deployment
+				break
 			}
-		})
-	}
-}
+		}
+		resources = append(resources, dep)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		dep.Spec.Replicas = pointer.Int32Ptr(20)
+
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// No update as resource didn't change
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeFalse())
+	})
+
+	It("Expect error when object requsted is incorrect", func() {
+		objects := cloud.GetAWSResources()
+		objects[0].SetNamespace("non-existent")
+
+		updated, err := reconciler.applyResources(context.TODO(), objects)
+		Expect(err).Should(HaveOccurred())
+		Expect(updated).To(BeFalse())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Update failed")))
+	})
+
+	It("Expect no update when resources are applied twice", func() {
+		resources = append(resources, openstack.GetResources()...)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeFalse())
+	})
+
+	AfterEach(func() {
+		for _, operand := range resources {
+			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
+
+			Eventually(func() bool {
+				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
+			}, timeout).Should(BeTrue())
+		}
+		Consistently(recorder.Events).ShouldNot(Receive())
+	})
+
+})

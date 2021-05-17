@@ -7,6 +7,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/client-go/tools/record"
 )
 
 func TestGetImagesFromJSONFile(t *testing.T) {
@@ -177,6 +178,92 @@ func TestGetProviderControllerFromImages(t *testing.T) {
 			image := getProviderControllerFromImages(tc.platformType, images)
 			if image != tc.expectedImage {
 				t.Errorf("Unexpected image %s, expected %s", image, tc.expectedImage)
+			}
+		})
+	}
+}
+
+func TestComposeConfig(t *testing.T) {
+	tc := []struct {
+		name          string
+		namespace     string
+		platform      configv1.PlatformType
+		imagesContent string
+		expectConfig  operatorConfig
+		expectError   bool
+	}{{
+		name:      "Unmarshal images from file for AWS",
+		namespace: defaultManagementNamespace,
+		platform:  configv1.AWSPlatformType,
+		imagesContent: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+		expectConfig: operatorConfig{
+			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			ManagedNamespace: defaultManagementNamespace,
+			Platform:         configv1.AWSPlatformType,
+		},
+	}, {
+		name:      "Unmarshal images from file for OpenStack",
+		namespace: defaultManagementNamespace,
+		platform:  configv1.OpenStackPlatformType,
+		imagesContent: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+		expectConfig: operatorConfig{
+			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+			ManagedNamespace: defaultManagementNamespace,
+			Platform:         configv1.OpenStackPlatformType,
+		},
+	}, {
+		name:      "Unmarshal images from file for unknown platform returns nothing",
+		namespace: "otherNamespace",
+		platform:  configv1.NonePlatformType,
+		imagesContent: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+		expectConfig: operatorConfig{
+			ControllerImage:  "",
+			ManagedNamespace: "otherNamespace",
+			Platform:         configv1.NonePlatformType,
+		},
+	}, {
+		name: "Broken JSON is rejected",
+		imagesContent: `{
+    "cloudControllerManagerAWS": BAD,
+}`,
+		expectError: true,
+	}}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := ioutil.TempFile(os.TempDir(), "images")
+			path := file.Name()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+
+			_, err = file.WriteString(tc.imagesContent)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			r := &CloudOperatorReconciler{
+				ImagesFile:       path,
+				ManagedNamespace: tc.namespace,
+				Recorder:         record.NewFakeRecorder(32),
+			}
+			config, err := r.composeConfig(tc.platform)
+			if isErr := err != nil; isErr != tc.expectError {
+				t.Fatalf("Unexpected error result: %v", err)
+			}
+
+			if !equality.Semantic.DeepEqual(config, tc.expectConfig) {
+				t.Errorf("Config is not equal:\n%v\nexpected\n%v", config, tc.expectConfig)
 			}
 		})
 	}

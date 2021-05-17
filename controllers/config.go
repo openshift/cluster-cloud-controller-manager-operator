@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"k8s.io/klog/v2"
 )
 
 // imagesReference allows build systems to inject imagesReference for CCCMO components
@@ -19,6 +20,7 @@ type imagesReference struct {
 type operatorConfig struct {
 	ManagedNamespace string
 	ControllerImage  string
+	Platform         configv1.PlatformType
 }
 
 func getProviderFromInfrastructure(infra *configv1.Infrastructure) (configv1.PlatformType, error) {
@@ -54,4 +56,21 @@ func getProviderControllerFromImages(platform configv1.PlatformType, images imag
 	default:
 		return ""
 	}
+}
+
+func (r *CloudOperatorReconciler) composeConfig(platform configv1.PlatformType) (operatorConfig, error) {
+	config := operatorConfig{
+		Platform:         platform,
+		ManagedNamespace: r.ManagedNamespace,
+	}
+
+	images, err := getImagesFromJSONFile(r.ImagesFile)
+	if err != nil {
+		klog.Errorf("Unable to decode images file from location %s", r.ImagesFile, err)
+		return config, err
+	}
+
+	config.ControllerImage = getProviderControllerFromImages(platform, images)
+
+	return config, nil
 }

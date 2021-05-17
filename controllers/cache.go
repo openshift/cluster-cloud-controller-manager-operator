@@ -26,7 +26,7 @@ type ObjectWatcher interface {
 
 func NewObjectWatcher(opts WatcherOptions) (ObjectWatcher, error) {
 	if opts.Cache == nil {
-		return nil, errors.New("Cache is required")
+		return nil, errors.New("cache is required")
 	}
 
 	// Use the default Kubernetes Scheme if unset
@@ -128,6 +128,7 @@ func (e *eventToChannelHandler) queueEventForObject(oldObj, newObj interface{}) 
 	}
 	if new.GetName() != e.name {
 		// Not the right object, skip
+		return
 	}
 
 	if oldObj != nil {
