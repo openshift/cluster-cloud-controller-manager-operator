@@ -7,6 +7,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestGetImagesFromJSONFile(t *testing.T) {
@@ -92,6 +93,61 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
+			assert.EqualValues(t, tc.expectedImages, images)
+		})
+	}
+}
+
+func TestGetImagesFromImagesConfigMap(t *testing.T) {
+	tc := []struct {
+		name            string
+		imagesConfigMap *corev1.ConfigMap
+		expectedImages  imagesReference
+		expectErr       string
+	}{{
+		name: "Image collected successfully",
+		imagesConfigMap: &corev1.ConfigMap{
+			Data: map[string]string{
+				configMapImagesKey: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+			},
+		},
+		expectedImages: imagesReference{
+			CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+		},
+	}, {
+		name: "Images are not collected if the data key differs",
+		imagesConfigMap: &corev1.ConfigMap{
+			Data: map[string]string{
+				"some-images.json": `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+			}},
+		expectErr: "unable to find images key \"images.json\" in ConfigMap /",
+	}, {
+		name: "Images are not collected if the file content is corrupted",
+		imagesConfigMap: &corev1.ConfigMap{
+			Data: map[string]string{
+				configMapImagesKey: "",
+			}},
+		expectErr: "unable to decode images content from ConfigMap /: unexpected end of JSON input",
+	}, {
+		name:      "Empty config map is rejected",
+		expectErr: "unable to find Data field in provided ConfigMap",
+	}}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			images, err := getImagesFromImagesConfigMap(tc.imagesConfigMap)
+			if tc.expectErr != "" {
+				assert.EqualError(t, err, tc.expectErr)
+			} else {
+				assert.NoError(t, err)
+			}
 			assert.EqualValues(t, tc.expectedImages, images)
 		})
 	}
@@ -282,6 +338,120 @@ func TestComposeConfig(t *testing.T) {
 			assert.NoError(t, err)
 
 			config, err := ComposeConfig(tc.platform, path, tc.namespace)
+			if tc.expectError != "" {
+				assert.EqualError(t, err, tc.expectError)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			assert.EqualValues(t, config, tc.expectConfig)
+		})
+	}
+}
+
+func TestComposeBootstrapConfig(t *testing.T) {
+	defaultManagementNamespace := "test-namespace"
+
+	tc := []struct {
+		name            string
+		namespace       string
+		infra           *configv1.Infrastructure
+		imagesConfigMap *corev1.ConfigMap
+		expectConfig    OperatorConfig
+		expectError     string
+	}{{
+		name:      "Unmarshal images from file for AWS",
+		namespace: defaultManagementNamespace,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+		},
+		imagesConfigMap: &corev1.ConfigMap{
+			Data: map[string]string{
+				configMapImagesKey: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+			},
+		},
+		expectConfig: OperatorConfig{
+			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			ManagedNamespace: defaultManagementNamespace,
+			Platform:         configv1.AWSPlatformType,
+		},
+	}, {
+		name:      "Unmarshal images from file for OpenStack",
+		namespace: "otherNamespace",
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.OpenStackPlatformType,
+				},
+			},
+		},
+		imagesConfigMap: &corev1.ConfigMap{
+			Data: map[string]string{
+				configMapImagesKey: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+			},
+		},
+		expectConfig: OperatorConfig{
+			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+			ManagedNamespace: "otherNamespace",
+			Platform:         configv1.OpenStackPlatformType,
+		},
+	}, {
+		name:      "Unmarshal images from file for unknown platform returns nothing",
+		namespace: defaultManagementNamespace,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.NonePlatformType,
+				},
+			},
+		},
+		imagesConfigMap: &corev1.ConfigMap{
+			Data: map[string]string{
+				configMapImagesKey: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+			},
+		},
+		expectConfig: OperatorConfig{
+			ControllerImage:  "",
+			ManagedNamespace: defaultManagementNamespace,
+			Platform:         configv1.NonePlatformType,
+		},
+	}, {
+		name: "Broken JSON is rejected",
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+		},
+		imagesConfigMap: &corev1.ConfigMap{
+			Data: map[string]string{
+				configMapImagesKey: "",
+			},
+		},
+		expectError: "unable to decode images content from ConfigMap /: unexpected end of JSON input",
+	}, {
+		name:        "Incomplete infrastructure file is rejected",
+		infra:       &configv1.Infrastructure{},
+		expectError: "platform status is not populated on infrastructure",
+	}}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			config, err := ComposeBootstrapConfig(tc.infra, tc.imagesConfigMap, tc.namespace)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {
