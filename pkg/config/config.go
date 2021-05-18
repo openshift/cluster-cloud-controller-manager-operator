@@ -123,7 +123,7 @@ func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace 
 func ComposeBootstrapConfig(infra *configv1.Infrastructure, imagesConfig *corev1.ConfigMap, managedNamespace string) (OperatorConfig, error) {
 	platform, err := GetProviderFromInfrastructure(infra)
 	if err != nil {
-		klog.Errorf("Unable to detemine platform from cluster infrastrucutre file %q: %s", client.ObjectKeyFromObject(infra), err)
+		klog.Errorf("Unable to detemine platform from cluster infrastrucutre file: %s", err)
 		return OperatorConfig{}, err
 	}
 
