@@ -11,7 +11,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: operator
+all: build
 
 # Run tests
 ENVTEST_ASSETS_DIR=/tmp/testbin
