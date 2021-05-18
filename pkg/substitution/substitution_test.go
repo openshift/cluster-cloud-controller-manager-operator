@@ -1,11 +1,12 @@
-package controllers
+package substitution
 
 import (
 	"testing"
 
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -14,7 +15,7 @@ func TestSetDeploymentImages(t *testing.T) {
 	tc := []struct {
 		name               string
 		containers         []corev1.Container
-		config             operatorConfig
+		config             config.OperatorConfig
 		expectedContainers []corev1.Container
 	}{{
 		name: "Unknown container name",
@@ -26,7 +27,7 @@ func TestSetDeploymentImages(t *testing.T) {
 			Name:  "different_name",
 			Image: "no_change",
 		}},
-		config: operatorConfig{
+		config: config.OperatorConfig{
 			ControllerImage: "correct_image:tag",
 		},
 	}, {
@@ -39,7 +40,7 @@ func TestSetDeploymentImages(t *testing.T) {
 			Name:  cloudControllerManagerName,
 			Image: "correct_image:tag",
 		}},
-		config: operatorConfig{
+		config: config.OperatorConfig{
 			ControllerImage: "correct_image:tag",
 		},
 	}, {
@@ -58,7 +59,7 @@ func TestSetDeploymentImages(t *testing.T) {
 			Name:  "node-controller-manager",
 			Image: "no_change",
 		}},
-		config: operatorConfig{
+		config: config.OperatorConfig{
 			ControllerImage: "correct_image:tag",
 		},
 	}}
@@ -77,19 +78,19 @@ func TestSetDeploymentImages(t *testing.T) {
 
 			setDeploymentImages(tc.config, deploy)
 
-			if !equality.Semantic.DeepEqual(deploy.Spec.Template.Spec.Containers, tc.expectedContainers) {
-				t.Errorf("Container images are not set correctly:\n%v\nexpected\n%v", deploy.Spec.Template.Spec.Containers, tc.expectedContainers)
-			}
+			assert.EqualValues(t, deploy.Spec.Template.Spec.Containers, tc.expectedContainers)
 		})
 	}
 
 }
 
 func TestFillConfigValues(t *testing.T) {
+	testManagementNamespace := "test-namespace"
+
 	tc := []struct {
 		name            string
 		objects         []client.Object
-		config          operatorConfig
+		config          config.OperatorConfig
 		expectedObjects []client.Object
 	}{{
 		name:    "Substitute object namespace",
@@ -99,7 +100,7 @@ func TestFillConfigValues(t *testing.T) {
 				Namespace: testManagementNamespace,
 			},
 		}},
-		config: operatorConfig{
+		config: config.OperatorConfig{
 			ManagedNamespace: testManagementNamespace,
 		},
 	}, {
@@ -131,7 +132,7 @@ func TestFillConfigValues(t *testing.T) {
 				},
 			},
 		}},
-		config: operatorConfig{
+		config: config.OperatorConfig{
 			ControllerImage:  "correct_image:tag",
 			ManagedNamespace: testManagementNamespace,
 		},
@@ -169,7 +170,7 @@ func TestFillConfigValues(t *testing.T) {
 					},
 				},
 			}},
-		config: operatorConfig{
+		config: config.OperatorConfig{
 			ControllerImage:  "correct_image:tag",
 			ManagedNamespace: testManagementNamespace,
 		},
@@ -177,16 +178,12 @@ func TestFillConfigValues(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-
 			initialObjects := tc.objects
-			updatedObjects := fillConfigValues(tc.config, tc.objects)
+			updatedObjects := FillConfigValues(tc.config, tc.objects)
 
-			if !equality.Semantic.DeepEqual(updatedObjects, tc.expectedObjects) {
-				t.Errorf("Objects are not equal expected: \n%v, \n\nexpected %v", updatedObjects, tc.expectedObjects)
-			}
-			if !equality.Semantic.DeepEqual(initialObjects, tc.objects) {
-				t.Errorf("Objects were mutated in place unexpectingly")
-			}
+			assert.EqualValues(t, updatedObjects, tc.expectedObjects)
+			// Ensure there is no mutation in place
+			assert.EqualValues(t, initialObjects, tc.objects)
 		})
 	}
 }

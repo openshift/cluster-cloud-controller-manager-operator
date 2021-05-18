@@ -9,7 +9,8 @@ import (
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
-	openstack "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/substitution"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 	appsv1 "k8s.io/api/apps/v1"
@@ -269,7 +270,7 @@ var _ = Describe("Component sync controller", func() {
 	type testCase struct {
 		status          *configv1.InfrastructureStatus
 		featureGateSpec *configv1.FeatureGateSpec
-		config          operatorConfig
+		config          config.OperatorConfig
 		expected        []client.Object
 	}
 
@@ -290,7 +291,7 @@ var _ = Describe("Component sync controller", func() {
 
 			watchMap := watcher.getWatchedResources()
 
-			operands = fillConfigValues(tc.config, tc.expected)
+			operands = substitution.FillConfigValues(tc.config, tc.expected)
 			for _, obj := range operands {
 				Expect(watchMap[obj.GetName()]).ToNot(BeNil())
 
@@ -317,11 +318,11 @@ var _ = Describe("Component sync controller", func() {
 				},
 			},
 			featureGateSpec: externalFeatureGateSpec,
-			config: operatorConfig{
+			config: config.OperatorConfig{
 				ManagedNamespace: testManagementNamespace,
 				ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			},
-			expected: cloud.GetAWSResources(),
+			expected: cloud.GetResources(configv1.AWSPlatformType),
 		}),
 		Entry("Should provision OpenStack resources", testCase{
 			status: &configv1.InfrastructureStatus{
@@ -330,12 +331,12 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.OpenStackPlatformType,
 				},
 			},
-			config: operatorConfig{
+			config: config.OperatorConfig{
 				ManagedNamespace: testManagementNamespace,
 				ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			},
 			featureGateSpec: externalFeatureGateSpec,
-			expected:        openstack.GetResources(),
+			expected:        cloud.GetResources(configv1.OpenStackPlatformType),
 		}),
 		Entry("Should not provision resources for currently unsupported platform", testCase{
 			status: &configv1.InfrastructureStatus{
@@ -395,7 +396,7 @@ var _ = Describe("Apply resources should", func() {
 	})
 
 	It("Expect update when resources are not found", func() {
-		resources = append(resources, cloud.GetAWSResources()...)
+		resources = append(resources, cloud.GetResources(configv1.AWSPlatformType)...)
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -405,7 +406,7 @@ var _ = Describe("Apply resources should", func() {
 
 	It("Expect update when deployment generation have changed", func() {
 		var dep *appsv1.Deployment
-		for _, res := range cloud.GetAWSResources() {
+		for _, res := range cloud.GetResources(configv1.AWSPlatformType) {
 			if deployment, ok := res.(*appsv1.Deployment); ok {
 				dep = deployment
 				break
@@ -432,7 +433,7 @@ var _ = Describe("Apply resources should", func() {
 	})
 
 	It("Expect error when object requsted is incorrect", func() {
-		objects := cloud.GetAWSResources()
+		objects := cloud.GetResources(configv1.AWSPlatformType)
 		objects[0].SetNamespace("non-existent")
 
 		updated, err := reconciler.applyResources(context.TODO(), objects)
@@ -442,7 +443,7 @@ var _ = Describe("Apply resources should", func() {
 	})
 
 	It("Expect no update when resources are applied twice", func() {
-		resources = append(resources, openstack.GetResources()...)
+		resources = append(resources, cloud.GetResources(configv1.OpenStackPlatformType)...)
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())

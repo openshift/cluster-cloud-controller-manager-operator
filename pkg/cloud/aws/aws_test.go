@@ -1,4 +1,4 @@
-package openstack
+package aws
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 
 func TestGetResources(t *testing.T) {
 	resources := GetResources()
-	assert.Len(t, resources, 2)
+	assert.Len(t, resources, 1)
 
 	var names, kinds []string
 	for _, r := range resources {
@@ -16,10 +16,6 @@ func TestGetResources(t *testing.T) {
 		kinds = append(kinds, r.GetObjectKind().GroupVersionKind().Kind)
 	}
 
-	assert.Contains(t, names, "openstack-cloud-controller-manager")
-	assert.Contains(t, names, "openstack-cloud-controller-manager-config")
-
+	assert.Contains(t, names, "aws-cloud-controller-manager")
 	assert.Contains(t, kinds, "Deployment")
-	assert.Contains(t, kinds, "ConfigMap")
-
 }
