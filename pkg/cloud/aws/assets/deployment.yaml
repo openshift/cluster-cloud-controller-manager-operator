@@ -57,3 +57,4 @@ spec:
         tolerationSeconds: 120
       - effect: NoSchedule
         key: node.cloudprovider.kubernetes.io/uninitialized
+        value: "true"
