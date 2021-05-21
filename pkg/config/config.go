@@ -13,6 +13,8 @@ import (
 // imagesReference allows build systems to inject imagesReference for CCCMO components
 type imagesReference struct {
 	CloudControllerManagerAWS       string `json:"cloudControllerManagerAWS"`
+	CloudControllerManagerAzure     string `json:"cloudControllerManagerAzure"`
+	CloudNodeManagerAzure           string `json:"cloudNodeManagerAzure"`
 	CloudControllerManagerOpenStack string `json:"cloudControllerManagerOpenStack"`
 }
 
@@ -20,6 +22,7 @@ type imagesReference struct {
 type OperatorConfig struct {
 	ManagedNamespace string
 	ControllerImage  string
+	CloudNodeImage   string
 	Platform         configv1.PlatformType
 }
 
@@ -53,6 +56,17 @@ func getCloudControllerManagerFromImages(platform configv1.PlatformType, images 
 		return images.CloudControllerManagerAWS
 	case configv1.OpenStackPlatformType:
 		return images.CloudControllerManagerOpenStack
+	case configv1.AzurePlatformType:
+		return images.CloudControllerManagerAzure
+	default:
+		return ""
+	}
+}
+
+func getCloudNodeManagerFromImages(platform configv1.PlatformType, images imagesReference) string {
+	switch platform {
+	case configv1.AzurePlatformType:
+		return images.CloudNodeManagerAzure
 	default:
 		return ""
 	}
@@ -71,6 +85,7 @@ func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace 
 	}
 
 	config.ControllerImage = getCloudControllerManagerFromImages(platform, images)
+	config.CloudNodeImage = getCloudNodeManagerFromImages(platform, images)
 
 	return config, nil
 }

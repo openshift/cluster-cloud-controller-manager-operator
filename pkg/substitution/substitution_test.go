@@ -174,6 +174,66 @@ func TestFillConfigValues(t *testing.T) {
 			ControllerImage:  "correct_image:tag",
 			ManagedNamespace: testManagementNamespace,
 		},
+	}, {
+		name: "Substitute image and namespace for more deployment and daemonset",
+		objects: []client.Object{&v1.DaemonSet{
+			Spec: v1.DaemonSetSpec{
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{
+							Name:  cloudNodeManagerName,
+							Image: "expect_change",
+						}},
+					},
+				},
+			},
+		}, &v1.Deployment{
+			Spec: v1.DeploymentSpec{
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{
+							Name:  cloudControllerManagerName,
+							Image: "expect_change",
+						}},
+					},
+				},
+			},
+		}},
+		expectedObjects: []client.Object{
+			&v1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testManagementNamespace,
+				},
+				Spec: v1.DaemonSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  cloudNodeManagerName,
+								Image: "correct_cloud_node_image:tag",
+							}},
+						},
+					},
+				},
+			}, &v1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testManagementNamespace,
+				},
+				Spec: v1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  cloudControllerManagerName,
+								Image: "correct_image:tag",
+							}},
+						},
+					},
+				},
+			}},
+		config: config.OperatorConfig{
+			ControllerImage:  "correct_image:tag",
+			CloudNodeImage:   "correct_cloud_node_image:tag",
+			ManagedNamespace: testManagementNamespace,
+		},
 	}}
 
 	for _, tc := range tc {

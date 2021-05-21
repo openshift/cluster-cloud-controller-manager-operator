@@ -11,6 +11,7 @@ const (
 	// Names in this list are unique and will be substituted with an image from config
 	// cloudControllerManagerName is a name for default CCM controller container any provider may have
 	cloudControllerManagerName = "cloud-controller-manager"
+	cloudNodeManagerName       = "cloud-node-manager"
 )
 
 // setDeploymentImages substitutes controller containers in Deployment with correct image
@@ -20,8 +21,19 @@ func setDeploymentImages(config config.OperatorConfig, d *v1.Deployment) {
 			continue
 		}
 
-		klog.Infof("Substituting %q: %s", container.Name, config.ControllerImage)
+		klog.Infof("Substituting %q in %q with %s", container.Name, d.Kind, config.ControllerImage)
 		d.Spec.Template.Spec.Containers[i].Image = config.ControllerImage
+	}
+}
+
+func setDaemonSetImage(config config.OperatorConfig, d *v1.DaemonSet) {
+	for i, container := range d.Spec.Template.Spec.Containers {
+		if container.Name != cloudNodeManagerName {
+			continue
+		}
+
+		klog.Infof("Substituting %q in %q with %s", container.Name, d.Kind, config.ControllerImage)
+		d.Spec.Template.Spec.Containers[i].Image = config.CloudNodeImage
 	}
 }
 
@@ -33,12 +45,12 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 		// Set namespaces for all object. Namespace on cluster-wide objects is stripped by API server and is not applied
 		templateCopy.SetNamespace(config.ManagedNamespace)
 
-		dep, ok := templateCopy.(*v1.Deployment)
-		if ok {
+		switch dep := templateCopy.(type) {
+		case *v1.Deployment:
 			setDeploymentImages(config, dep)
-			// TODO: add cloud-config calculated hash to annotations to account for redeployment on content change
+		case *v1.DaemonSet:
+			setDaemonSetImage(config, dep)
 		}
-
 		objects[i] = templateCopy
 	}
 	return objects
