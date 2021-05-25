@@ -45,11 +45,11 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 		// Set namespaces for all object. Namespace on cluster-wide objects is stripped by API server and is not applied
 		templateCopy.SetNamespace(config.ManagedNamespace)
 
-		switch dep := templateCopy.(type) {
+		switch obj := templateCopy.(type) {
 		case *v1.Deployment:
-			setDeploymentImages(config, dep)
+			setDeploymentImages(config, obj)
 		case *v1.DaemonSet:
-			setDaemonSetImage(config, dep)
+			setDaemonSetImage(config, obj)
 		}
 		objects[i] = templateCopy
 	}

@@ -84,6 +84,78 @@ func TestSetDeploymentImages(t *testing.T) {
 
 }
 
+func TestSetDaemonsetImages(t *testing.T) {
+	tc := []struct {
+		name               string
+		containers         []corev1.Container
+		config             config.OperatorConfig
+		expectedContainers []corev1.Container
+	}{{
+		name: "Unknown container name",
+		containers: []corev1.Container{{
+			Name:  "different_name",
+			Image: "no_change",
+		}},
+		expectedContainers: []corev1.Container{{
+			Name:  "different_name",
+			Image: "no_change",
+		}},
+		config: config.OperatorConfig{
+			CloudNodeImage: "correct_image:tag",
+		},
+	}, {
+		name: "Substitute cloud-node-manager container image",
+		containers: []corev1.Container{{
+			Name:  cloudNodeManagerName,
+			Image: "expect_change",
+		}},
+		expectedContainers: []corev1.Container{{
+			Name:  cloudNodeManagerName,
+			Image: "correct_image:tag",
+		}},
+		config: config.OperatorConfig{
+			CloudNodeImage: "correct_image:tag",
+		},
+	}, {
+		name: "Combination of container image names",
+		containers: []corev1.Container{{
+			Name:  cloudNodeManagerName,
+			Image: "expect_change",
+		}, {
+			Name:  "some-stuff-there",
+			Image: "no_change",
+		}},
+		expectedContainers: []corev1.Container{{
+			Name:  cloudNodeManagerName,
+			Image: "correct_image:tag",
+		}, {
+			Name:  "some-stuff-there",
+			Image: "no_change",
+		}},
+		config: config.OperatorConfig{
+			CloudNodeImage: "correct_image:tag",
+		},
+	}}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			ds := &v1.DaemonSet{
+				Spec: v1.DaemonSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: tc.containers,
+						},
+					},
+				},
+			}
+
+			setDaemonSetImage(tc.config, ds)
+
+			assert.EqualValues(t, ds.Spec.Template.Spec.Containers, tc.expectedContainers)
+		})
+	}
+}
+
 func TestFillConfigValues(t *testing.T) {
 	testManagementNamespace := "test-namespace"
 
