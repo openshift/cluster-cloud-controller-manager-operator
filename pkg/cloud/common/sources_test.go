@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 //go:embed _testdata/*
@@ -51,6 +53,13 @@ func TestReadResources(t *testing.T) {
 			{Object: &appsv1.Deployment{}, Path: "_testdata/foo"},
 		},
 		expectedError: "error unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go value of type v1.Deployment",
+	}, {
+		name: "Should throw error during unmarshaling into wrong resource type",
+		fs:   badPath,
+		sources: []ObjectSource{
+			{Object: &corev1.PersistentVolume{}, Path: "_testdata/assets/deployment.yaml"},
+		},
+		expectedError: "Some err should be there",
 	}}
 
 	for _, tc := range tc {
