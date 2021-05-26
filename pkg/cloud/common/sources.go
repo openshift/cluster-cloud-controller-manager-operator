@@ -10,7 +10,7 @@ import (
 )
 
 type ObjectSource struct {
-	Object client.Object
+	Object client.Object `validate:"supportedType"`
 	Path   string
 }
 

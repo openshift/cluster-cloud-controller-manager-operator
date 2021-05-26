@@ -4,6 +4,7 @@ import (
 	"embed"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
+	"gopkg.in/validator.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,6 +22,8 @@ var (
 func init() {
 	var err error
 	awsResources, err = common.ReadResources(awsFS, awsSources)
+	utilruntime.Must(err)
+	err = validator.Validate(awsSources)
 	utilruntime.Must(err)
 }
 
