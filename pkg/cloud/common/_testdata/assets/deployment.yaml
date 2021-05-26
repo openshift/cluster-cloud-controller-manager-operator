@@ -4,6 +4,7 @@ metadata:
   name: sample
   namespace: sample
 spec:
+  replicas: 1
   selector:
     matchLabels:
       k8s-app: aws-cloud-controller-manager

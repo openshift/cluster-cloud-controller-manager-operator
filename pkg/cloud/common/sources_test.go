@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 //go:embed _testdata/*
@@ -51,6 +52,20 @@ func TestReadResources(t *testing.T) {
 			{Object: &appsv1.Deployment{}, Path: "_testdata/foo"},
 		},
 		expectedError: "error unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go value of type v1.Deployment",
+	}, {
+		name: "Incorrect resource type should not be unmarshalled",
+		fs:   assetPath,
+		sources: []ObjectSource{
+			{Object: &appsv1.DaemonSet{}, Path: "_testdata/assets/deployment.yaml"},
+		},
+		expectedError: "error unmarshaling JSON: while decoding JSON: json: unknown field \"replicas\"",
+	}, {
+		name: "Incorrect resource type should not be unmarshalled",
+		fs:   assetPath,
+		sources: []ObjectSource{
+			{Object: &v1.PersistentVolume{}, Path: "_testdata/assets/deployment.yaml"},
+		},
+		expectedError: "error unmarshaling JSON: while decoding JSON: json: unknown field \"replicas\"",
 	}}
 
 	for _, tc := range tc {
