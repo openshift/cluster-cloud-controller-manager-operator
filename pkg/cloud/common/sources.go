@@ -1,12 +1,11 @@
 package common
 
 import (
-	"bytes"
 	"embed"
 
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 )
 
 type ObjectSource struct {
@@ -24,8 +23,7 @@ func ReadResources(f embed.FS, sources []ObjectSource) ([]client.Object, error) 
 		}
 
 		object := source.Object.DeepCopyObject().(client.Object)
-		dec := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 1000)
-		if err := dec.Decode(object); err != nil {
+		if err := yaml.UnmarshalStrict(data, object); err != nil {
 			klog.Errorf("Cannot decode data from embedded resource %v: %v", source.Path, err)
 			return nil, err
 		}
