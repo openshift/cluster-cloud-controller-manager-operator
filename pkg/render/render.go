@@ -24,7 +24,7 @@ import (
 const (
 	bootstrapNamespace = "kube-system"
 	bootstrapPrefix    = "bootstrap"
-	// bootstrapFileName is built from bootstrapPrefix, resource kind and name
+	// bootstrapFileName is built from bootstrapPrefix, resource name and kind
 	bootstrapFileName = "%s/%s-%s.yaml"
 )
 
@@ -105,18 +105,20 @@ func (r *Render) readAssets() (*configv1.Infrastructure, *corev1.ConfigMap, erro
 	return infra, imagesConfigMap, nil
 }
 
-// writeAssets writes static pods to disk into <destinationDir>/pod-<bootstrapPrefix>-<podName>
+// writeAssets writes static pods to disk into <destinationDir>/<bootstrapPrefix>/<resourceName>-<resourceKind>.yaml
 func writeAssets(destinationDir string, resources []client.Object) error {
-	for _, resource := range resources {
-		filename := fmt.Sprintf(bootstrapFileName, bootstrapPrefix, strings.ToLower(resource.GetObjectKind().GroupVersionKind().Kind), resource.GetName())
-		klog.Infof("Writing file %q on disk", filename)
+	// Create bootstrap directory in advance to ensure it is present for any provider
+	manifestsDir := filepath.Join(destinationDir, bootstrapPrefix)
+	if err := os.MkdirAll(manifestsDir, fs.ModePerm); err != nil {
+		klog.Errorf("Unable to create destination dir %q: %v", manifestsDir, err)
+		return err
+	}
 
+	for _, resource := range resources {
+		filename := fmt.Sprintf(bootstrapFileName, bootstrapPrefix, resource.GetName(), strings.ToLower(resource.GetObjectKind().GroupVersionKind().Kind))
 		path := filepath.Join(destinationDir, filename)
-		dirname := filepath.Dir(path)
-		if err := os.MkdirAll(dirname, fs.ModePerm); err != nil {
-			klog.Errorf("Unable to create destination dir %q: %v", dirname, err)
-			return err
-		}
+
+		klog.Infof("Writing file %q on disk", path)
 		file, err := os.Create(path)
 		if err != nil {
 			klog.Errorf("Failed to open %q: %v", path, err)
