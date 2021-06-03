@@ -26,6 +26,7 @@ func init() {
 	utilruntime.Must(err)
 }
 
+// GetResources returns a list of OpenStack resources for provisioning CCM in running cluster
 func GetResources() []client.Object {
 	resources := make([]client.Object, len(openStackResources))
 	for i := range openStackResources {
