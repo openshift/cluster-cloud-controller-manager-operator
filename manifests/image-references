@@ -10,6 +10,14 @@ spec:
     from:
       kind: DockerImage
       name: registry.ci.openshift.org/openshift:aws-cloud-controller-manager
+  - name: azure-cloud-controller-manager
+    from:
+      kind: DockerImage
+      name: registry.ci.openshift.org/openshift:azure-cloud-controller-manager
+  - name: azure-cloud-node-manager
+    from:
+      kind: DockerImage
+      name: registry.ci.openshift.org/openshift:azure-cloud-node-manager
   - name: openstack-cloud-controller-manager
     from:
       kind: DockerImage

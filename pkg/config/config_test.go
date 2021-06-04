@@ -176,6 +176,44 @@ func TestGetProviderControllerFromImages(t *testing.T) {
 	}
 }
 
+func TestGetNodeControllerFromImages(t *testing.T) {
+	images := imagesReference{
+		CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+		CloudControllerManagerAzure:     "registry.ci.openshift.org/openshift:azure-cloud-controller-manager",
+		CloudNodeManagerAzure:           "registry.ci.openshift.org/openshift:azure-cloud-node-manager",
+		CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+	}
+
+	tc := []struct {
+		name          string
+		platformType  configv1.PlatformType
+		expectedImage string
+	}{{
+		name:          "AWS platorm",
+		platformType:  configv1.AWSPlatformType,
+		expectedImage: "",
+	}, {
+		name:          "Azure platorm",
+		platformType:  configv1.AzurePlatformType,
+		expectedImage: "registry.ci.openshift.org/openshift:azure-cloud-node-manager",
+	}, {
+		name:          "OpenStack platorm",
+		platformType:  configv1.OpenStackPlatformType,
+		expectedImage: "",
+	}, {
+		name:          "Unknown platorm",
+		platformType:  "unknown",
+		expectedImage: "",
+	}}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			image := getCloudNodeManagerFromImages(tc.platformType, images)
+			assert.Equal(t, tc.expectedImage, image)
+		})
+	}
+}
+
 func TestComposeConfig(t *testing.T) {
 	defaultManagementNamespace := "test-namespace"
 
