@@ -287,22 +287,20 @@ func TestWriteAssets(t *testing.T) {
 			}
 			for _, res := range tc.objects {
 				filename := fmt.Sprintf("%s-%s.yaml", res.GetName(), strings.ToLower(res.GetObjectKind().GroupVersionKind().Kind))
-				found := assert.Contains(t, names, filename)
+				assert.Contains(t, names, filename)
 
-				if found {
-					// Object copy with some required fields emptied
-					collectedObject := res.DeepCopyObject().(client.Object)
-					collectedObject.SetName("")
-					collectedObject.SetNamespace("")
-					data, err := os.ReadFile(path.Join(destination, bootstrapPrefix, filename))
-					assert.NoError(t, err)
+				// Object copy with some required fields emptied
+				collectedObject := res.DeepCopyObject().(client.Object)
+				collectedObject.SetName("")
+				collectedObject.SetNamespace("")
+				data, err := os.ReadFile(path.Join(destination, bootstrapPrefix, filename))
+				assert.NoError(t, err)
 
-					// Fill object with data from disc
-					err = yaml.UnmarshalStrict(data, collectedObject)
-					assert.NoError(t, err)
+				// Fill object with data from disc
+				err = yaml.UnmarshalStrict(data, collectedObject)
+				assert.NoError(t, err)
 
-					assert.Equal(t, collectedObject, res)
-				}
+				assert.Equal(t, collectedObject, res)
 			}
 		})
 	}

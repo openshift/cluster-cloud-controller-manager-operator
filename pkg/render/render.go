@@ -1,7 +1,6 @@
 package render
 
 import (
-	"bytes"
 	"fmt"
 	"io/fs"
 	"io/ioutil"
@@ -14,11 +13,10 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/substitution"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer/json"
-	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -27,12 +25,6 @@ const (
 	// bootstrapFileName is built from bootstrapPrefix, resource name and kind
 	bootstrapFileName = "%s/%s-%s.yaml"
 )
-
-var scheme *runtime.Scheme
-
-func init() {
-	scheme = runtime.NewScheme()
-}
 
 // Render defines render config for use in bootstrap mode
 type Render struct {
@@ -83,8 +75,7 @@ func (r *Render) readAssets() (*configv1.Infrastructure, *corev1.ConfigMap, erro
 	}
 
 	infra := &configv1.Infrastructure{}
-	dec := k8syaml.NewYAMLOrJSONDecoder(bytes.NewReader(infraData), 1000)
-	if err := dec.Decode(infra); err != nil {
+	if err := yaml.UnmarshalStrict(infraData, infra); err != nil {
 		klog.Errorf("Cannot decode data into configv1.Infrastructure from %q: %v", r.infrastructureFile, err)
 		return nil, nil, err
 	}
@@ -96,8 +87,7 @@ func (r *Render) readAssets() (*configv1.Infrastructure, *corev1.ConfigMap, erro
 	}
 
 	imagesConfigMap := &corev1.ConfigMap{}
-	dec = k8syaml.NewYAMLOrJSONDecoder(bytes.NewReader(imagesData), 1000)
-	if err := dec.Decode(imagesConfigMap); err != nil {
+	if err := yaml.UnmarshalStrict(imagesData, imagesConfigMap); err != nil {
 		klog.Errorf("Cannot decode data into v1.ConfigMap from %q: %v", r.imagesFile, err)
 		return nil, nil, err
 	}
@@ -119,13 +109,14 @@ func writeAssets(destinationDir string, resources []client.Object) error {
 		path := filepath.Join(destinationDir, filename)
 
 		klog.Infof("Writing file %q on disk", path)
-		file, err := os.Create(path)
-		if err != nil {
+		data, err := yaml.Marshal(resource)
+		// As we operate with client.Object we never expect this call to fail.
+		utilruntime.HandleError(err)
+
+		if err := os.WriteFile(path, data, 0666); err != nil {
 			klog.Errorf("Failed to open %q: %v", path, err)
 			return err
 		}
-		defer file.Close()
-		json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme).Encode(resource, file)
 	}
 	return nil
 }
