@@ -7,6 +7,7 @@ require (
 	github.com/onsi/gomega v1.10.2
 	github.com/openshift/api v0.0.0-20201216151826-78a19e96f9eb
 	github.com/openshift/library-go v0.0.0-20210318152630-323ad8a8f7d8
+	github.com/spf13/cobra v1.1.1
 	github.com/stretchr/testify v1.7.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	k8s.io/api v0.20.0
