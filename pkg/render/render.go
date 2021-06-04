@@ -32,13 +32,17 @@ type Render struct {
 	infrastructureFile string
 	// path to rendered cloud-controller-manager-images ConfigMap manifest for image references to use
 	imagesFile string
+	// path to populated cloud-config ConfigMap manifest from cluster-config-operator
+	// where cloud-config could be extracted for use in CCM static pod
+	cloudConfigFile string
 }
 
 // New returns controller for render
-func New(infrastructureFile, imagesFile string) *Render {
+func New(infrastructureFile, imagesFile, cloudConfigFile string) *Render {
 	return &Render{
 		infrastructureFile: infrastructureFile,
 		imagesFile:         imagesFile,
+		cloudConfigFile:    cloudConfigFile,
 	}
 }
 

@@ -216,7 +216,7 @@ func TestRenderRun(t *testing.T) {
 				infrastructureFile = path
 			}
 
-			r := New(infrastructureFile, imagesFile)
+			r := New(infrastructureFile, imagesFile, "")
 			err = r.Run(destination)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
