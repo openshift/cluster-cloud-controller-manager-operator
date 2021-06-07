@@ -50,6 +50,8 @@ Additionally,
 provides detailed information about how the operator will be deployed,
 operated, and upgraded.
 
+More detailed guide is in [#hacking-guide](./docs/dev/hacking-guide.md)
+
 ## Development
 
 **Prerequisites**
