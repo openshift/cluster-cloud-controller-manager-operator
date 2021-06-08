@@ -2,53 +2,83 @@ package aws
 
 import (
 	"embed"
+	"encoding/json"
+	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
 	//go:embed assets/*
-	awsFS embed.FS
+	fs embed.FS
 	//go:embed bootstrap/*
-	awsBootstrapFS embed.FS
+	bootstrapFs embed.FS
+)
 
-	awsResources, awsBootstrapResoureces []client.Object
-	awsSources                           = []common.ObjectSource{
+var (
+	templateSources = []common.TemplateSource{
 		{Object: &appsv1.Deployment{}, Path: "assets/deployment.yaml"},
 	}
-	awsBootstrapSources = []common.ObjectSource{
+
+	bootstrapTemplateSources = []common.TemplateSource{
 		{Object: &corev1.Pod{}, Path: "bootstrap/pod.yaml"},
 	}
 )
 
-func init() {
+type imagesReference struct {
+	CloudControllerManager string `json:"cloudControllerManagerAWS"`
+}
+
+type awsAssets struct {
+	platform           configv1.PlatformType
+	Images             imagesReference
+	operatorConfig     config.OperatorConfig
+	templates          []common.ObjectTemplate
+	bootstrapTemplates []common.ObjectTemplate
+}
+
+func (assets *awsAssets) GetResources() ([]client.Object, error) {
+	return common.RenderTemplates(assets.templates, assets)
+
+}
+
+func (assets *awsAssets) GetBootsrapResources() ([]client.Object, error) {
+	return common.RenderTemplates(assets.bootstrapTemplates, assets)
+
+}
+
+func (assets *awsAssets) GetOperatorConfig() config.OperatorConfig {
+	return assets.operatorConfig
+}
+
+func (assets *awsAssets) GetPlatformType() configv1.PlatformType {
+	return assets.platform
+}
+
+func NewAssets(config config.OperatorConfig) (common.ProviderAssets, error) {
+	assets := awsAssets{}
+	assets.operatorConfig = config
+	assets.platform = config.Platform
+	assets.Images = imagesReference{}
+	if err := json.Unmarshal(config.ImagesFileContent, &assets.Images); err != nil {
+		return nil, err
+	}
+
 	var err error
-	awsResources, err = common.ReadResources(awsFS, awsSources)
-	utilruntime.Must(err)
-	awsBootstrapResoureces, err = common.ReadResources(awsBootstrapFS, awsBootstrapSources)
-	utilruntime.Must(err)
-}
 
-// GetResources returns a list of AWS resources for provisioning CCM in running cluster
-func GetResources() []client.Object {
-	resources := make([]client.Object, len(awsResources))
-	for i := range awsResources {
-		resources[i] = awsResources[i].DeepCopyObject().(client.Object)
+	assets.bootstrapTemplates, err = common.ReadTemplates(bootstrapFs, bootstrapTemplateSources)
+	if err != nil {
+		return nil, err
 	}
 
-	return resources
-}
-
-// GetBootstrapResources returns a list static pods for provisioning CCM on bootstrap node for AWS
-func GetBootstrapResources() []client.Object {
-	resources := make([]client.Object, len(awsBootstrapResoureces))
-	for i := range awsBootstrapResoureces {
-		resources[i] = awsBootstrapResoureces[i].DeepCopyObject().(client.Object)
+	assets.templates, err = common.ReadTemplates(fs, templateSources)
+	if err != nil {
+		return nil, err
 	}
 
-	return resources
+	return &assets, nil
 }

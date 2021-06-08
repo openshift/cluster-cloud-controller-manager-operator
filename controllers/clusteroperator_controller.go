@@ -23,7 +23,6 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/substitution"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -41,19 +40,18 @@ import (
 )
 
 const (
-	infrastructureName      = "cluster"
 	externalFeatureGateName = "cluster"
+	infrastructureName      = "cluster"
 )
 
 // CloudOperatorReconciler reconciles a ClusterOperator object
 type CloudOperatorReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	Recorder         record.EventRecorder
-	watcher          ObjectWatcher
-	ReleaseVersion   string
-	ManagedNamespace string
-	ImagesFile       string
+	Scheme         *runtime.Scheme
+	Recorder       record.EventRecorder
+	watcher        ObjectWatcher
+	ReleaseVersion string
+	OperatorConfig config.OperatorConfig
 }
 
 // +kubebuilder:rbac:groups=config.openshift.io,resources=clusteroperators,verbs=get;list;watch;create;update;patch;delete
@@ -81,40 +79,8 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	infra := &configv1.Infrastructure{}
-	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureName}, infra); errors.IsNotFound(err) {
-		klog.Infof("Infrastructure cluster does not exist. Skipping...")
-
-		if err := r.setStatusAvailable(ctx); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{}, nil
-	} else if err != nil {
-		klog.Errorf("Unable to retrive Infrastructure object: %v", err)
-
-		if err := r.setStatusDegraded(ctx, err); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
-		return ctrl.Result{}, err
-	}
-
-	platform, err := config.GetProviderFromInfrastructure(infra)
-	if err != nil {
-		klog.Errorf("Unable to determine platform from infrastructure: %s", err)
-		// Ignoring error here as infrastructure resource needs to be reconciled externally
-		// to provide correct platform
-		if err := r.setStatusAvailable(ctx); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-
 	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
-	external, err := cloudprovider.IsCloudProviderExternal(platform, featureGate)
+	external, err := cloudprovider.IsCloudProviderExternal(r.OperatorConfig.Platform, featureGate)
 	if err != nil {
 		klog.Errorf("Could not determine external cloud provider state: %v", err)
 
@@ -134,17 +100,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	config, err := config.ComposeConfig(platform, r.ImagesFile, r.ManagedNamespace)
-	if err != nil {
-		klog.Errorf("Unable to build operator config %s", err)
-		if err := r.setStatusDegraded(ctx, err); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
-		return ctrl.Result{}, err
-	}
-
-	if err := r.sync(ctx, config); err != nil {
+	if err := r.sync(ctx); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
@@ -161,10 +117,16 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig) error {
+func (r *CloudOperatorReconciler) sync(ctx context.Context) error {
 	// Deploy resources for platform
-	templates := cloud.GetResources(config.Platform)
-	resources := substitution.FillConfigValues(config, templates)
+	assets, err := cloud.GetAssets(r.OperatorConfig)
+	if err != nil {
+		return err
+	}
+	resources, err := assets.GetResources()
+	if err != nil {
+		return err
+	}
 
 	updated, err := r.applyResources(ctx, resources)
 	if err != nil {

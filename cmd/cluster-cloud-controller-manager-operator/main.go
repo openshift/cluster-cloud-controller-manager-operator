@@ -17,7 +17,10 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
+	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"os"
 	"time"
 
@@ -32,11 +35,14 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/controllers"
 	// +kubebuilder:scaffold:imports
+
+	operatorconfig "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
 var (
@@ -54,6 +60,7 @@ const (
 	defaultImagesLocation         = "/etc/cloud-controller-manager-config/images.json"
 	releaseVersionEnvVariableName = "RELEASE_VERSION"
 	unknownVersionValue           = "unknown"
+	infrastructureName            = "cluster"
 )
 
 func init() {
@@ -133,13 +140,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	platformType, err := getPlatformType(mgr.GetAPIReader())
+	if err != nil {
+		setupLog.Error(err, "unable to get platform type from infrastructure resource")
+		os.Exit(1)
+	}
+
+	operatorConfig, err := operatorconfig.ComposeConfig(platformType, *imagesFile, *managedNamespace)
+	if err != nil {
+		setupLog.Error(err, "can not compose operator config")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.CloudOperatorReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
-		ReleaseVersion:   getReleaseVersion(),
-		ManagedNamespace: *managedNamespace,
-		ImagesFile:       *imagesFile,
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		Recorder:       mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
+		ReleaseVersion: getReleaseVersion(),
+		OperatorConfig: operatorConfig,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterOperator")
 		os.Exit(1)
@@ -160,6 +178,18 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func getPlatformType(cl client.Reader) (configv1.PlatformType, error) {
+	infra := &configv1.Infrastructure{}
+	ctx := context.Background()
+
+	if err := cl.Get(ctx, client.ObjectKey{Name: infrastructureName}, infra); errors.IsNotFound(err) {
+		return "", fmt.Errorf("Infrastructure resources does not exist. Can not obtain platform type.")
+	} else if err != nil {
+		return "", err
+	}
+	return operatorconfig.GetProviderFromInfrastructure(infra)
 }
 
 func getReleaseVersion() string {

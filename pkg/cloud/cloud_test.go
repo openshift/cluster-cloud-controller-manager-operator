@@ -1,71 +1,89 @@
 package cloud
 
 import (
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/stretchr/testify/assert"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+func getConfigForPlatform(platform configv1.PlatformType) config.OperatorConfig {
+	return config.OperatorConfig{
+		ManagedNamespace:  "test",
+		Platform:          platform,
+		ImagesFileContent: []byte("{}"),
+	}
+}
 
 func TestGetResources(t *testing.T) {
 	tc := []struct {
-		name     string
-		platform configv1.PlatformType
-		expected []client.Object
+		name                 string
+		config               config.OperatorConfig
+		expectedGetAssetsErr string
 	}{{
-		name:     "AWS resources returned as expected",
-		platform: configv1.AWSPlatformType,
-		expected: aws.GetResources(),
+		name:   "AWS resources returned as expected",
+		config: getConfigForPlatform(configv1.AWSPlatformType),
 	}, {
-		name:     "OpenStack resources returned as expected",
-		platform: configv1.OpenStackPlatformType,
-		expected: openstack.GetResources(),
+		name:   "OpenStack resources returned as expected",
+		config: getConfigForPlatform(configv1.OpenStackPlatformType),
 	}, {
-		name:     "GCP resources are empty, as the platform is not yet supported",
-		platform: configv1.GCPPlatformType,
+		name:                 "GCP not yet supported",
+		config:               getConfigForPlatform(configv1.GCPPlatformType),
+		expectedGetAssetsErr: `platform type "GCP" not yet supported`,
 	}, {
-		name:     "Azure resources are empty, as the platform is not yet supported",
-		platform: configv1.AzurePlatformType,
+		name:                 "Azure not yet supported",
+		config:               getConfigForPlatform(configv1.AzurePlatformType),
+		expectedGetAssetsErr: `platform type "Azure" not yet supported`,
 	}, {
-		name:     "VSphere resources are empty, as the platform is not yet supported",
-		platform: configv1.VSpherePlatformType,
+		name:                 "VSphere not yet supported",
+		config:               getConfigForPlatform(configv1.VSpherePlatformType),
+		expectedGetAssetsErr: `platform type "VSphere" not yet supported`,
 	}, {
-		name:     "OVirt resources are empty, as the platform is not yet supported",
-		platform: configv1.OvirtPlatformType,
+		name:                 "OVirt not yet supported",
+		config:               getConfigForPlatform(configv1.OvirtPlatformType),
+		expectedGetAssetsErr: `platform type "oVirt" not yet supported`,
 	}, {
-		name:     "IBMCloud resources are empty, as the platform is not yet supported",
-		platform: configv1.IBMCloudPlatformType,
+		name:                 "IBMCloud not yet supported",
+		config:               getConfigForPlatform(configv1.IBMCloudPlatformType),
+		expectedGetAssetsErr: `platform type "IBMCloud" not yet supported`,
 	}, {
-		name:     "Libvirt resources are empty",
-		platform: configv1.LibvirtPlatformType,
+		name:                 "Libvirt not yet supported",
+		config:               getConfigForPlatform(configv1.LibvirtPlatformType),
+		expectedGetAssetsErr: `platform type "Libvirt" not yet supported`,
 	}, {
-		name:     "Kubevirt resources are empty",
-		platform: configv1.KubevirtPlatformType,
+		name:                 "Kubevirt not yet supported",
+		config:               getConfigForPlatform(configv1.KubevirtPlatformType),
+		expectedGetAssetsErr: `platform type "KubeVirt" not yet supported`,
 	}, {
-		name:     "BareMetal resources are empty",
-		platform: configv1.BareMetalPlatformType,
+		name:                 "BareMetal not yet supported",
+		config:               getConfigForPlatform(configv1.BareMetalPlatformType),
+		expectedGetAssetsErr: `platform type "BareMetal" not yet supported`,
 	}, {
-		name:     "None platform resources are empty",
-		platform: configv1.NonePlatformType,
+		name:                 "None not yet supported",
+		config:               getConfigForPlatform(configv1.NonePlatformType),
+		expectedGetAssetsErr: `platform type "None" not yet supported`,
 	}}
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			resources := GetResources(tc.platform)
+			assets, err := GetAssets(tc.config)
 
-			assert.Equal(t, len(tc.expected), len(resources))
-			assert.EqualValues(t, tc.expected, resources)
+			if tc.expectedGetAssetsErr != "" {
+				assert.EqualError(t, err, tc.expectedGetAssetsErr)
+			} else {
+				assert.NoError(t, err)
 
-			// Edit and repeat procedure to ensure modification in place is not present
-			if len(resources) > 0 {
+				_, ok := assets.(ProviderAssets)
+				assert.True(t, ok)
+
+				resources, err := assets.GetResources()
+				assert.NoError(t, err)
+
+				// Edit and repeat procedure to ensure modification in place is not present
 				resources[0].SetName("different")
-				newResources := GetResources(tc.platform)
-
-				assert.Equal(t, len(tc.expected), len(newResources))
-				assert.EqualValues(t, tc.expected, newResources)
+				newResources, err := assets.GetResources()
+				assert.NoError(t, err)
 				assert.NotEqualValues(t, resources, newResources)
 			}
 		})
@@ -74,62 +92,79 @@ func TestGetResources(t *testing.T) {
 
 func TestGetBootstrapResources(t *testing.T) {
 	tc := []struct {
-		name     string
-		platform configv1.PlatformType
-		expected []client.Object
+		name                    string
+		config                  config.OperatorConfig
+		expectedGetAssetsErr    string
+		expectedGetBootstrapErr string
 	}{{
-		name:     "AWS resources returned as expected",
-		platform: configv1.AWSPlatformType,
-		expected: aws.GetBootstrapResources(),
+		name:   "AWS resources returned as expected",
+		config: getConfigForPlatform(configv1.AWSPlatformType),
 	}, {
-		name:     "OpenStack resources are empty, as the platform is not yet supported",
-		platform: configv1.OpenStackPlatformType,
+		name:                    "OpenStack bootstrap does not yet supported",
+		expectedGetBootstrapErr: "bootstrap assets are not implemented yet",
+		config:                  getConfigForPlatform(configv1.OpenStackPlatformType),
 	}, {
-		name:     "GCP resources are empty, as the platform is not yet supported",
-		platform: configv1.GCPPlatformType,
+		name:                 "GCP resources are empty, as the platform is not yet supported",
+		config:               getConfigForPlatform(configv1.GCPPlatformType),
+		expectedGetAssetsErr: `platform type "GCP" not yet supported`,
 	}, {
-		name:     "Azure resources are empty, as the platform is not yet supported",
-		platform: configv1.AzurePlatformType,
+		name:                 "Azure resources are empty, as the platform is not yet supported",
+		config:               getConfigForPlatform(configv1.AzurePlatformType),
+		expectedGetAssetsErr: `platform type "Azure" not yet supported`,
 	}, {
-		name:     "VSphere resources are empty, as the platform is not yet supported",
-		platform: configv1.VSpherePlatformType,
+		name:                 "VSphere resources are empty, as the platform is not yet supported",
+		config:               getConfigForPlatform(configv1.VSpherePlatformType),
+		expectedGetAssetsErr: `platform type "VSphere" not yet supported`,
 	}, {
-		name:     "OVirt resources are empty, as the platform is not yet supported",
-		platform: configv1.OvirtPlatformType,
+		name:                 "OVirt resources are empty, as the platform is not yet supported",
+		config:               getConfigForPlatform(configv1.OvirtPlatformType),
+		expectedGetAssetsErr: `platform type "oVirt" not yet supported`,
 	}, {
-		name:     "IBMCloud resources are empty, as the platform is not yet supported",
-		platform: configv1.IBMCloudPlatformType,
+		name:                 "IBMCloud resources are empty, as the platform is not yet supported",
+		config:               getConfigForPlatform(configv1.IBMCloudPlatformType),
+		expectedGetAssetsErr: `platform type "IBMCloud" not yet supported`,
 	}, {
-		name:     "Libvirt resources are empty",
-		platform: configv1.LibvirtPlatformType,
+		name:                 "Libvirt resources are empty",
+		config:               getConfigForPlatform(configv1.LibvirtPlatformType),
+		expectedGetAssetsErr: `platform type "Libvirt" not yet supported`,
 	}, {
-		name:     "Kubevirt resources are empty",
-		platform: configv1.KubevirtPlatformType,
+		name:                 "Kubevirt resources are empty",
+		config:               getConfigForPlatform(configv1.KubevirtPlatformType),
+		expectedGetAssetsErr: `platform type "KubeVirt" not yet supported`,
 	}, {
-		name:     "BareMetal resources are empty",
-		platform: configv1.BareMetalPlatformType,
+		name:                 "BareMetal resources are empty",
+		config:               getConfigForPlatform(configv1.BareMetalPlatformType),
+		expectedGetAssetsErr: `platform type "BareMetal" not yet supported`,
 	}, {
-		name:     "None platform resources are empty",
-		platform: configv1.NonePlatformType,
+		name:                 "None platform resources are empty",
+		config:               getConfigForPlatform(configv1.NonePlatformType),
+		expectedGetAssetsErr: `platform type "None" not yet supported`,
 	}}
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			resources := GetBootstrapResources(tc.platform)
+			assets, err := GetAssets(tc.config)
 
-			assert.Equal(t, len(tc.expected), len(resources))
-			assert.EqualValues(t, tc.expected, resources)
+			if tc.expectedGetAssetsErr != "" {
+				assert.EqualError(t, err, tc.expectedGetAssetsErr)
+			} else {
+				assert.NoError(t, err)
 
-			if len(resources) > 0 {
-				// Edit and repeat procedure to ensure modification in place is not present
-				for _, resource := range resources {
-					resource.SetName("different")
+				_, ok := assets.(ProviderAssets)
+				assert.True(t, ok)
+
+				resources, err := assets.GetBootsrapResources()
+
+				if tc.expectedGetBootstrapErr != "" {
+					assert.EqualError(t, err, tc.expectedGetBootstrapErr)
+				} else {
+					assert.NoError(t, err)
+					// Edit and repeat procedure to ensure modification in place is not present
+					resources[0].SetName("different")
+					newResources, err := assets.GetBootsrapResources()
+					assert.NoError(t, err)
+					assert.NotEqualValues(t, resources, newResources)
 				}
-				newResources := GetBootstrapResources(tc.platform)
-
-				assert.Equal(t, len(tc.expected), len(newResources))
-				assert.EqualValues(t, tc.expected, newResources)
-				assert.NotEqualValues(t, resources, newResources)
 			}
 		})
 	}

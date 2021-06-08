@@ -1,13 +1,29 @@
 package aws
 
 import (
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
+var operatorConfig = config.OperatorConfig{
+	ManagedNamespace:  "test-namespace",
+	Platform:          "AWS",
+	ImagesFileContent: []byte("{\"cloudControllerManagerAWS\": \"registry.ci.openshift.org/openshift:aws-cloud-controller-manager\"}"),
+}
+
+func TestNewAwsAssetsObject(t *testing.T) {
+	assetsRenderer, err := NewAssets(operatorConfig)
+	assert.NoError(t, err)
+	assert.Equal(t, assetsRenderer.(*awsAssets).Images.CloudControllerManager, "registry.ci.openshift.org/openshift:aws-cloud-controller-manager")
+}
+
 func TestGetResources(t *testing.T) {
-	resources := GetResources()
+	assetsRenderer, err := NewAssets(operatorConfig)
+	assert.NoError(t, err)
+	resources, err := assetsRenderer.GetResources()
+	assert.NoError(t, err)
 	assert.Len(t, resources, 1)
 
 	var names, kinds []string
@@ -21,7 +37,10 @@ func TestGetResources(t *testing.T) {
 }
 
 func TestGetBootstrapResources(t *testing.T) {
-	resources := GetBootstrapResources()
+	assetsRenderer, err := NewAssets(operatorConfig)
+	assert.NoError(t, err)
+	resources, err := assetsRenderer.GetBootsrapResources()
+	assert.NoError(t, err)
 	assert.Len(t, resources, 1)
 
 	var names, kinds []string

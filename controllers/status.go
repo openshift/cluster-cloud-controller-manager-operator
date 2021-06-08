@@ -163,7 +163,7 @@ func (r *CloudOperatorReconciler) relatedObjects() []configv1.ObjectReference {
 	return []configv1.ObjectReference{
 		{Resource: "namespaces", Name: defaultManagementNamespace},
 		{Group: configv1.GroupName, Resource: "clusteroperators", Name: clusterOperatorName},
-		{Resource: "namespaces", Name: r.ManagedNamespace},
+		{Resource: "namespaces", Name: r.OperatorConfig.ManagedNamespace},
 	}
 }
 

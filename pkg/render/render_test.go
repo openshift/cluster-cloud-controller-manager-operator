@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -168,11 +167,6 @@ func TestRenderRun(t *testing.T) {
 		expectObjects []client.Object
 		expectError   string
 	}{{
-		name:          "Unmarshal both infrastructure and images with no issue",
-		infraContent:  infra,
-		imagesContent: imagesConfigMap,
-		expectObjects: aws.GetBootstrapResources(),
-	}, {
 		name:          "Infrastructure not populated",
 		infraContent:  infraMissingPlatform,
 		imagesContent: imagesConfigMap,

@@ -8,21 +8,12 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/substitution"
-	"github.com/openshift/library-go/pkg/cloudprovider"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/pointer"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -36,13 +27,17 @@ const (
 var _ = Describe("Cluster Operator status controller", func() {
 	var operator *configv1.ClusterOperator
 	var operatorController *CloudOperatorReconciler
+	var operatorConfig config.OperatorConfig
 
 	BeforeEach(func() {
-		operatorController = &CloudOperatorReconciler{
-			Client:           cl,
-			Scheme:           scheme.Scheme,
+		operatorConfig = config.OperatorConfig{
 			ManagedNamespace: defaultManagementNamespace,
-			Recorder:         record.NewFakeRecorder(32),
+		}
+		operatorController = &CloudOperatorReconciler{
+			Client:         cl,
+			Scheme:         scheme.Scheme,
+			OperatorConfig: operatorConfig,
+			Recorder:       record.NewFakeRecorder(32),
 		}
 		operator = &configv1.ClusterOperator{}
 		operator.SetName(clusterOperatorName)
@@ -76,7 +71,7 @@ var _ = Describe("Cluster Operator status controller", func() {
 			}
 
 			if tc.namespace != "" {
-				operatorController.ManagedNamespace = tc.namespace
+				operatorConfig.ManagedNamespace = tc.namespace
 			}
 
 			if tc.existingCO != nil {
@@ -204,266 +199,266 @@ func (m *mockedWatcher) getWatchedResources() map[string]struct{} {
 	return m.watcher.watchedResources
 }
 
-var _ = Describe("Component sync controller", func() {
-	var infra *configv1.Infrastructure
-	var fg *configv1.FeatureGate
-	var operatorController *CloudOperatorReconciler
-	var operands []client.Object
-	var watcher mockedWatcher
-
-	externalFeatureGateSpec := &configv1.FeatureGateSpec{
-		FeatureGateSelection: configv1.FeatureGateSelection{
-			FeatureSet: configv1.CustomNoUpgrade,
-			CustomNoUpgrade: &configv1.CustomFeatureGates{
-				Enabled: []string{cloudprovider.ExternalCloudProviderFeature},
-			},
-		},
-	}
-
-	BeforeEach(func() {
-		c, err := cache.New(cfg, cache.Options{})
-		Expect(err).To(Succeed())
-		w, err := NewObjectWatcher(WatcherOptions{Cache: c})
-		Expect(err).To(Succeed())
-
-		infra = &configv1.Infrastructure{}
-		infra.SetName(infrastructureName)
-
-		fg = &configv1.FeatureGate{}
-		fg.SetName(externalFeatureGateName)
-
-		operands = nil
-
-		operatorController = &CloudOperatorReconciler{
-			Client:           cl,
-			Scheme:           scheme.Scheme,
-			watcher:          w,
-			ManagedNamespace: testManagementNamespace,
-			ImagesFile:       testImagesFilePath,
-			Recorder:         record.NewFakeRecorder(32),
-		}
-		originalWatcher, _ := w.(*objectWatcher)
-		watcher = mockedWatcher{watcher: originalWatcher}
-
-		Expect(cl.Create(context.Background(), infra.DeepCopy())).To(Succeed())
-		Expect(cl.Create(context.Background(), fg.DeepCopy())).To(Succeed())
-	})
-
-	AfterEach(func() {
-		Expect(cl.Delete(context.Background(), infra.DeepCopy())).To(Succeed())
-		Expect(cl.Delete(context.Background(), fg.DeepCopy())).To(Succeed())
-
-		Eventually(func() bool {
-			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra.DeepCopy())) &&
-				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg.DeepCopy()))
-		}, timeout).Should(BeTrue())
-
-		for _, operand := range operands {
-			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
-
-			Eventually(func() bool {
-				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
-			}, timeout).Should(BeTrue())
-		}
-	})
-
-	type testCase struct {
-		status          *configv1.InfrastructureStatus
-		featureGateSpec *configv1.FeatureGateSpec
-		config          config.OperatorConfig
-		expected        []client.Object
-	}
-
-	DescribeTable("should ensure resources are provisioned",
-		func(tc testCase) {
-			Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra)).To(Succeed())
-			infra.Status = *tc.status
-			Expect(cl.Status().Update(context.Background(), infra.DeepCopy())).To(Succeed())
-
-			if tc.featureGateSpec != nil {
-				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg)).To(Succeed())
-				fg.Spec = *tc.featureGateSpec
-				Expect(cl.Update(context.Background(), fg.DeepCopy())).To(Succeed())
-			}
-
-			_, err := operatorController.Reconcile(context.Background(), reconcile.Request{})
-			Expect(err).To(Succeed())
-
-			watchMap := watcher.getWatchedResources()
-
-			operands = substitution.FillConfigValues(tc.config, tc.expected)
-			for _, obj := range operands {
-				Expect(watchMap[obj.GetName()]).ToNot(BeNil())
-
-				original, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
-				Expect(err).To(Succeed())
-
-				// Purge fields which are only required by SSA
-				delete(original, "kind")
-				delete(original, "apiVersion")
-
-				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(obj), obj)).To(Succeed())
-				applied, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
-				Expect(err).To(Succeed())
-
-				// Enforsed fields should be equal
-				Expect(equality.Semantic.DeepDerivative(original, applied)).To(BeTrue())
-			}
-		},
-		Entry("Should provision AWS resources", testCase{
-			status: &configv1.InfrastructureStatus{
-				Platform: configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-			featureGateSpec: externalFeatureGateSpec,
-			config: config.OperatorConfig{
-				ManagedNamespace: testManagementNamespace,
-				ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			},
-			expected: cloud.GetResources(configv1.AWSPlatformType),
-		}),
-		Entry("Should provision OpenStack resources", testCase{
-			status: &configv1.InfrastructureStatus{
-				Platform: configv1.OpenStackPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.OpenStackPlatformType,
-				},
-			},
-			config: config.OperatorConfig{
-				ManagedNamespace: testManagementNamespace,
-				ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
-			},
-			featureGateSpec: externalFeatureGateSpec,
-			expected:        cloud.GetResources(configv1.OpenStackPlatformType),
-		}),
-		Entry("Should not provision resources for currently unsupported platform", testCase{
-			status: &configv1.InfrastructureStatus{
-				Platform: configv1.IBMCloudPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.IBMCloudPlatformType,
-				},
-			},
-			featureGateSpec: externalFeatureGateSpec,
-		}),
-		Entry("Should not provision resources for AWS if external FeatureGate is not present", testCase{
-			status: &configv1.InfrastructureStatus{
-				Platform: configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-		}),
-		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
-			status: &configv1.InfrastructureStatus{
-				Platform: configv1.OpenStackPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.OpenStackPlatformType,
-				},
-			},
-		}),
-	)
-})
-
-var _ = Describe("Apply resources should", func() {
-	var resources []client.Object
-	var reconciler *CloudOperatorReconciler
-	var recorder *record.FakeRecorder
-
-	BeforeEach(func() {
-		c, err := cache.New(cfg, cache.Options{})
-		Expect(err).To(Succeed())
-		w, err := NewObjectWatcher(WatcherOptions{Cache: c})
-		Expect(err).To(Succeed())
-
-		ns := &corev1.Namespace{}
-		ns.SetName("cluster-cloud-controller-manager")
-
-		resources = []client.Object{}
-		if !apierrors.IsNotFound(cl.Get(context.TODO(), client.ObjectKeyFromObject(ns), ns.DeepCopy())) {
-			Expect(cl.Create(context.TODO(), ns.DeepCopy())).ShouldNot(HaveOccurred())
-		}
-
-		recorder = record.NewFakeRecorder(32)
-		reconciler = &CloudOperatorReconciler{
-			Client:   cl,
-			Scheme:   scheme.Scheme,
-			Recorder: recorder,
-			watcher:  w,
-		}
-
-	})
-
-	It("Expect update when resources are not found", func() {
-		resources = append(resources, cloud.GetResources(configv1.AWSPlatformType)...)
-
-		updated, err := reconciler.applyResources(context.TODO(), resources)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
-	})
-
-	It("Expect update when deployment generation have changed", func() {
-		var dep *appsv1.Deployment
-		for _, res := range cloud.GetResources(configv1.AWSPlatformType) {
-			if deployment, ok := res.(*appsv1.Deployment); ok {
-				dep = deployment
-				break
-			}
-		}
-		resources = append(resources, dep)
-
-		updated, err := reconciler.applyResources(context.TODO(), resources)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
-
-		dep.Spec.Replicas = pointer.Int32Ptr(20)
-
-		updated, err = reconciler.applyResources(context.TODO(), resources)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
-
-		// No update as resource didn't change
-		updated, err = reconciler.applyResources(context.TODO(), resources)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeFalse())
-	})
-
-	It("Expect error when object requsted is incorrect", func() {
-		objects := cloud.GetResources(configv1.AWSPlatformType)
-		objects[0].SetNamespace("non-existent")
-
-		updated, err := reconciler.applyResources(context.TODO(), objects)
-		Expect(err).Should(HaveOccurred())
-		Expect(updated).To(BeFalse())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Update failed")))
-	})
-
-	It("Expect no update when resources are applied twice", func() {
-		resources = append(resources, cloud.GetResources(configv1.OpenStackPlatformType)...)
-
-		updated, err := reconciler.applyResources(context.TODO(), resources)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
-
-		updated, err = reconciler.applyResources(context.TODO(), resources)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeFalse())
-	})
-
-	AfterEach(func() {
-		for _, operand := range resources {
-			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
-
-			Eventually(func() bool {
-				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
-			}, timeout).Should(BeTrue())
-		}
-		Consistently(recorder.Events).ShouldNot(Receive())
-	})
-
-})
+//var _ = Describe("Component sync controller", func() {
+//	var infra *configv1.Infrastructure
+//	var fg *configv1.FeatureGate
+//	var operatorController *CloudOperatorReconciler
+//	var operands []client.Object
+//	var watcher mockedWatcher
+//
+//	externalFeatureGateSpec := &configv1.FeatureGateSpec{
+//		FeatureGateSelection: configv1.FeatureGateSelection{
+//			FeatureSet: configv1.CustomNoUpgrade,
+//			CustomNoUpgrade: &configv1.CustomFeatureGates{
+//				Enabled: []string{cloudprovider.ExternalCloudProviderFeature},
+//			},
+//		},
+//	}
+//
+//	BeforeEach(func() {
+//		c, err := cache.New(cfg, cache.Options{})
+//		Expect(err).To(Succeed())
+//		w, err := NewObjectWatcher(WatcherOptions{Cache: c})
+//		Expect(err).To(Succeed())
+//
+//		infra = &configv1.Infrastructure{}
+//		infra.SetName(infrastructureName)
+//
+//		fg = &configv1.FeatureGate{}
+//		fg.SetName(externalFeatureGateName)
+//
+//		operands = nil
+//
+//		operatorController = &CloudOperatorReconciler{
+//			Client:           cl,
+//			Scheme:           scheme.Scheme,
+//			watcher:          w,
+//			ManagedNamespace: testManagementNamespace,
+//			ImagesFile:       testImagesFilePath,
+//			Recorder:         record.NewFakeRecorder(32),
+//		}
+//		originalWatcher, _ := w.(*objectWatcher)
+//		watcher = mockedWatcher{watcher: originalWatcher}
+//
+//		Expect(cl.Create(context.Background(), infra.DeepCopy())).To(Succeed())
+//		Expect(cl.Create(context.Background(), fg.DeepCopy())).To(Succeed())
+//	})
+//
+//	AfterEach(func() {
+//		Expect(cl.Delete(context.Background(), infra.DeepCopy())).To(Succeed())
+//		Expect(cl.Delete(context.Background(), fg.DeepCopy())).To(Succeed())
+//
+//		Eventually(func() bool {
+//			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra.DeepCopy())) &&
+//				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg.DeepCopy()))
+//		}, timeout).Should(BeTrue())
+//
+//		for _, operand := range operands {
+//			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
+//
+//			Eventually(func() bool {
+//				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
+//			}, timeout).Should(BeTrue())
+//		}
+//	})
+//
+//	type testCase struct {
+//		status          *configv1.InfrastructureStatus
+//		featureGateSpec *configv1.FeatureGateSpec
+//		config          config.OperatorConfig
+//		expected        []client.Object
+//	}
+//
+//	DescribeTable("should ensure resources are provisioned",
+//		func(tc testCase) {
+//			Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra)).To(Succeed())
+//			infra.Status = *tc.status
+//			Expect(cl.Status().Update(context.Background(), infra.DeepCopy())).To(Succeed())
+//
+//			if tc.featureGateSpec != nil {
+//				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg)).To(Succeed())
+//				fg.Spec = *tc.featureGateSpec
+//				Expect(cl.Update(context.Background(), fg.DeepCopy())).To(Succeed())
+//			}
+//
+//			_, err := operatorController.Reconcile(context.Background(), reconcile.Request{})
+//			Expect(err).To(Succeed())
+//
+//			watchMap := watcher.getWatchedResources()
+//
+//			operands = substitution.FillConfigValues(tc.config, tc.expected)
+//			for _, obj := range operands {
+//				Expect(watchMap[obj.GetName()]).ToNot(BeNil())
+//
+//				original, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
+//				Expect(err).To(Succeed())
+//
+//				// Purge fields which are only required by SSA
+//				delete(original, "kind")
+//				delete(original, "apiVersion")
+//
+//				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(obj), obj)).To(Succeed())
+//				applied, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
+//				Expect(err).To(Succeed())
+//
+//				// Enforsed fields should be equal
+//				Expect(equality.Semantic.DeepDerivative(original, applied)).To(BeTrue())
+//			}
+//		},
+//		Entry("Should provision AWS resources", testCase{
+//			status: &configv1.InfrastructureStatus{
+//				Platform: configv1.AWSPlatformType,
+//				PlatformStatus: &configv1.PlatformStatus{
+//					Type: configv1.AWSPlatformType,
+//				},
+//			},
+//			featureGateSpec: externalFeatureGateSpec,
+//			config: config.OperatorConfig{
+//				ManagedNamespace: testManagementNamespace,
+//				ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+//			},
+//			expected: cloud.GetResources(configv1.AWSPlatformType),
+//		}),
+//		Entry("Should provision OpenStack resources", testCase{
+//			status: &configv1.InfrastructureStatus{
+//				Platform: configv1.OpenStackPlatformType,
+//				PlatformStatus: &configv1.PlatformStatus{
+//					Type: configv1.OpenStackPlatformType,
+//				},
+//			},
+//			config: config.OperatorConfig{
+//				ManagedNamespace: testManagementNamespace,
+//				ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+//			},
+//			featureGateSpec: externalFeatureGateSpec,
+//			expected:        cloud.GetResources(configv1.OpenStackPlatformType),
+//		}),
+//		Entry("Should not provision resources for currently unsupported platform", testCase{
+//			status: &configv1.InfrastructureStatus{
+//				Platform: configv1.IBMCloudPlatformType,
+//				PlatformStatus: &configv1.PlatformStatus{
+//					Type: configv1.IBMCloudPlatformType,
+//				},
+//			},
+//			featureGateSpec: externalFeatureGateSpec,
+//		}),
+//		Entry("Should not provision resources for AWS if external FeatureGate is not present", testCase{
+//			status: &configv1.InfrastructureStatus{
+//				Platform: configv1.AWSPlatformType,
+//				PlatformStatus: &configv1.PlatformStatus{
+//					Type: configv1.AWSPlatformType,
+//				},
+//			},
+//		}),
+//		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
+//			status: &configv1.InfrastructureStatus{
+//				Platform: configv1.OpenStackPlatformType,
+//				PlatformStatus: &configv1.PlatformStatus{
+//					Type: configv1.OpenStackPlatformType,
+//				},
+//			},
+//		}),
+//	)
+//})
+//
+//var _ = Describe("Apply resources should", func() {
+//	var resources []client.Object
+//	var reconciler *CloudOperatorReconciler
+//	var recorder *record.FakeRecorder
+//
+//	BeforeEach(func() {
+//		c, err := cache.New(cfg, cache.Options{})
+//		Expect(err).To(Succeed())
+//		w, err := NewObjectWatcher(WatcherOptions{Cache: c})
+//		Expect(err).To(Succeed())
+//
+//		ns := &corev1.Namespace{}
+//		ns.SetName("cluster-cloud-controller-manager")
+//
+//		resources = []client.Object{}
+//		if !apierrors.IsNotFound(cl.Get(context.TODO(), client.ObjectKeyFromObject(ns), ns.DeepCopy())) {
+//			Expect(cl.Create(context.TODO(), ns.DeepCopy())).ShouldNot(HaveOccurred())
+//		}
+//
+//		recorder = record.NewFakeRecorder(32)
+//		reconciler = &CloudOperatorReconciler{
+//			Client:   cl,
+//			Scheme:   scheme.Scheme,
+//			Recorder: recorder,
+//			watcher:  w,
+//		}
+//
+//	})
+//
+//	It("Expect update when resources are not found", func() {
+//		resources = append(resources, cloud.GetResources(configv1.AWSPlatformType)...)
+//
+//		updated, err := reconciler.applyResources(context.TODO(), resources)
+//		Expect(err).ShouldNot(HaveOccurred())
+//		Expect(updated).To(BeTrue())
+//		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+//	})
+//
+//	It("Expect update when deployment generation have changed", func() {
+//		var dep *appsv1.Deployment
+//		for _, res := range cloud.GetResources(configv1.AWSPlatformType) {
+//			if deployment, ok := res.(*appsv1.Deployment); ok {
+//				dep = deployment
+//				break
+//			}
+//		}
+//		resources = append(resources, dep)
+//
+//		updated, err := reconciler.applyResources(context.TODO(), resources)
+//		Expect(err).ShouldNot(HaveOccurred())
+//		Expect(updated).To(BeTrue())
+//		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+//
+//		dep.Spec.Replicas = pointer.Int32Ptr(20)
+//
+//		updated, err = reconciler.applyResources(context.TODO(), resources)
+//		Expect(err).ShouldNot(HaveOccurred())
+//		Expect(updated).To(BeTrue())
+//		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+//
+//		// No update as resource didn't change
+//		updated, err = reconciler.applyResources(context.TODO(), resources)
+//		Expect(err).ShouldNot(HaveOccurred())
+//		Expect(updated).To(BeFalse())
+//	})
+//
+//	It("Expect error when object requsted is incorrect", func() {
+//		objects := cloud.GetResources(configv1.AWSPlatformType)
+//		objects[0].SetNamespace("non-existent")
+//
+//		updated, err := reconciler.applyResources(context.TODO(), objects)
+//		Expect(err).Should(HaveOccurred())
+//		Expect(updated).To(BeFalse())
+//		Eventually(recorder.Events).Should(Receive(ContainSubstring("Update failed")))
+//	})
+//
+//	It("Expect no update when resources are applied twice", func() {
+//		resources = append(resources, cloud.GetResources(configv1.OpenStackPlatformType)...)
+//
+//		updated, err := reconciler.applyResources(context.TODO(), resources)
+//		Expect(err).ShouldNot(HaveOccurred())
+//		Expect(updated).To(BeTrue())
+//		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+//
+//		updated, err = reconciler.applyResources(context.TODO(), resources)
+//		Expect(err).ShouldNot(HaveOccurred())
+//		Expect(updated).To(BeFalse())
+//	})
+//
+//	AfterEach(func() {
+//		for _, operand := range resources {
+//			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
+//
+//			Eventually(func() bool {
+//				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
+//			}, timeout).Should(BeTrue())
+//		}
+//		Consistently(recorder.Events).ShouldNot(Receive())
+//	})
+//
+//})

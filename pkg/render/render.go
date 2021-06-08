@@ -12,7 +12,6 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/substitution"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
@@ -64,8 +63,16 @@ func (r *Render) Run(destinationDir string) error {
 		return err
 	}
 
-	templates := cloud.GetBootstrapResources(config.Platform)
-	resources := substitution.FillConfigValues(config, templates)
+	assets, err := cloud.GetAssets(config)
+	if err != nil {
+		klog.Errorf("Cannot get assets: %v", err)
+		return err
+	}
+	resources, err := assets.GetBootsrapResources()
+	if err != nil {
+		klog.Errorf("Cannot get bootstrap resources: %v", err)
+		return err
+	}
 
 	for _, resource := range resources {
 		klog.Infof("Collected resource %s %q successfully", resource.GetObjectKind().GroupVersionKind(), client.ObjectKeyFromObject(resource))
