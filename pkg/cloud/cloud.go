@@ -3,6 +3,7 @@ package cloud
 import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,6 +38,8 @@ func GetBootstrapResources(platform configv1.PlatformType) []client.Object {
 	switch platform {
 	case configv1.AWSPlatformType:
 		return aws.GetBootstrapResources()
+	case configv1.AzurePlatformType:
+		return azure.GetBootstrapResources()
 	default:
 		klog.Warning("No recognized cloud provider platform found in infrastructure")
 		return nil

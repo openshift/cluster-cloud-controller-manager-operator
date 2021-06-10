@@ -5,6 +5,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -88,8 +89,9 @@ func TestGetBootstrapResources(t *testing.T) {
 		name:     "GCP resources are empty, as the platform is not yet supported",
 		platform: configv1.GCPPlatformType,
 	}, {
-		name:     "Azure resources are empty, as the platform is not yet supported",
+		name:     "Azure resources returned as expected",
 		platform: configv1.AzurePlatformType,
+		expected: azure.GetBootstrapResources(),
 	}, {
 		name:     "VSphere resources are empty, as the platform is not yet supported",
 		platform: configv1.VSpherePlatformType,

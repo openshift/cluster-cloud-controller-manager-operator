@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: azure-cloud-controller-manager
+  namespace: kube-system
+spec:
+  priorityClassName: system-node-critical
+  hostNetwork: true
+  containers:
+    - name: cloud-controller-manager
+      image: mcr.microsoft.com/oss/kubernetes/azure-cloud-controller-manager:v1.0.0
+      imagePullPolicy: IfNotPresent
+      command: ["cloud-controller-manager"]
+      args:
+        - --cloud-provider=azure
+        - --controllers=cloud-node # run cloud-node controller only for Node initialization
+        - --kubeconfig=/etc/kubernetes/secrets/kubeconfig
+        - --cloud-config=/etc/kubernetes/configs/cloud.conf
+        - --leader-elect=false
+        - --port=10267
+        - -v=2
+      livenessProbe:
+        httpGet:
+          path: /healthz
+          port: 10267
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+      volumeMounts:
+      - name: secrets
+        mountPath: /etc/kubernetes/secrets
+      - name: configs
+        mountPath: /etc/kubernetes/configs
+  volumes:
+  - name: secrets
+    hostPath:
+      path: /etc/kubernetes/bootstrap-secrets
+  - name: configs
+    hostPath:
+      path: /etc/kubernetes/bootstrap-configs
