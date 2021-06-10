@@ -312,7 +312,9 @@ var _ = Describe("Component sync controller", func() {
 		},
 		Entry("Should provision AWS resources", testCase{
 			status: &configv1.InfrastructureStatus{
-				Platform: configv1.AWSPlatformType,
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.AWSPlatformType,
 				PlatformStatus: &configv1.PlatformStatus{
 					Type: configv1.AWSPlatformType,
 				},
@@ -326,7 +328,9 @@ var _ = Describe("Component sync controller", func() {
 		}),
 		Entry("Should provision OpenStack resources", testCase{
 			status: &configv1.InfrastructureStatus{
-				Platform: configv1.OpenStackPlatformType,
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.OpenStackPlatformType,
 				PlatformStatus: &configv1.PlatformStatus{
 					Type: configv1.OpenStackPlatformType,
 				},
@@ -340,7 +344,9 @@ var _ = Describe("Component sync controller", func() {
 		}),
 		Entry("Should not provision resources for currently unsupported platform", testCase{
 			status: &configv1.InfrastructureStatus{
-				Platform: configv1.IBMCloudPlatformType,
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.IBMCloudPlatformType,
 				PlatformStatus: &configv1.PlatformStatus{
 					Type: configv1.IBMCloudPlatformType,
 				},
@@ -349,7 +355,9 @@ var _ = Describe("Component sync controller", func() {
 		}),
 		Entry("Should not provision resources for AWS if external FeatureGate is not present", testCase{
 			status: &configv1.InfrastructureStatus{
-				Platform: configv1.AWSPlatformType,
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.AWSPlatformType,
 				PlatformStatus: &configv1.PlatformStatus{
 					Type: configv1.AWSPlatformType,
 				},
@@ -357,7 +365,9 @@ var _ = Describe("Component sync controller", func() {
 		}),
 		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
 			status: &configv1.InfrastructureStatus{
-				Platform: configv1.OpenStackPlatformType,
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.OpenStackPlatformType,
 				PlatformStatus: &configv1.PlatformStatus{
 					Type: configv1.OpenStackPlatformType,
 				},
