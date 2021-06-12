@@ -11,6 +11,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,11 +30,27 @@ status:
   platformStatus:
     type: AWS
 `
+	infraWithCloudConfig = `apiVersion: config.openshift.io/v1
+kind: Infrastructure
+metadata:
+  name: cluster
+spec:
+  cloudConfig:
+    name: test
+    key: test
+status:
+  platform: Azure
+  platformStatus:
+    type: Azure
+`
 	infraMissingPlatform = `apiVersion: config.openshift.io/v1
 kind: Infrastructure
 metadata:
   name: cluster
-spec: {}
+spec:
+  cloudConfig:
+    name: test
+    key: cloud.conf
 status: {}
 `
 	imagesConfigMap = `apiVersion: v1
@@ -47,6 +64,14 @@ data:
       "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
       "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
     }
+`
+	cloudConfigMap = `apiVersion: v1
+data:
+  test: "{test:test}"
+kind: ConfigMap
+metadata:
+  name: kube-cloud-config
+  namespace: kube-system
 `
 )
 
@@ -92,6 +117,8 @@ func TestReadAssets(t *testing.T) {
 		infra           *configv1.Infrastructure
 		imagesContent   string
 		imagesConfigMap *corev1.ConfigMap
+		cloudConfig     string
+		cloudConfigMap  *corev1.ConfigMap
 		expectError     string
 	}{{
 		name:            "Unmarshal both infrastructure and images with no issue",
@@ -119,12 +146,14 @@ func TestReadAssets(t *testing.T) {
 
 	infraPath := "infra.yaml"
 	configPath := "imagesConfigMap.yaml"
+	cloudConfigPath := "cloudConfigMap.yaml"
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
 			r := Render{
 				imagesFile:         "not_found",
 				infrastructureFile: "not_found",
+				cloudConfigFile:    "not_found",
 			}
 			if tc.imagesContent != "" {
 				file, err := ioutil.TempFile(os.TempDir(), configPath)
@@ -148,7 +177,18 @@ func TestReadAssets(t *testing.T) {
 				r.infrastructureFile = path
 			}
 
-			infra, config, err := r.readAssets()
+			if tc.cloudConfig != "" {
+				file, err := ioutil.TempFile(os.TempDir(), cloudConfigPath)
+				path := file.Name()
+				assert.NoError(t, err)
+				defer file.Close()
+
+				_, err = file.WriteString(tc.cloudConfig)
+				assert.NoError(t, err)
+				r.cloudConfigFile = path
+			}
+
+			infra, config, cloudConfig, err := r.readAssets()
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {
@@ -156,43 +196,79 @@ func TestReadAssets(t *testing.T) {
 			}
 			assert.EqualValues(t, config, tc.imagesConfigMap)
 			assert.EqualValues(t, infra, tc.infra)
+			assert.EqualValues(t, cloudConfig, tc.cloudConfig)
 		})
 	}
 }
 
 func TestRenderRun(t *testing.T) {
 	tc := []struct {
-		name          string
-		infraContent  string
-		imagesContent string
-		expectObjects []client.Object
-		expectError   string
+		name               string
+		infraContent       string
+		imagesContent      string
+		cloudConfigContent string
+		expectObjects      []client.Object
+		expectCloudConfig  bool
+		badDestination     bool
+		expectError        string
 	}{{
 		name:          "Unmarshal both infrastructure and images with no issue",
 		infraContent:  infra,
 		imagesContent: imagesConfigMap,
 		expectObjects: aws.GetBootstrapResources(),
 	}, {
-		name:          "Infrastructure not populated",
-		infraContent:  infraMissingPlatform,
+		name:               "Unmarshal both infrastructure and images with no issue",
+		infraContent:       infraWithCloudConfig,
+		imagesContent:      imagesConfigMap,
+		cloudConfigContent: cloudConfigMap,
+		expectObjects:      azure.GetBootstrapResources(),
+		expectCloudConfig:  true,
+	}, {
+		name:               "Infrastructure not populated",
+		infraContent:       infraMissingPlatform,
+		imagesContent:      imagesConfigMap,
+		cloudConfigContent: cloudConfigMap,
+		expectError:        "platform status is not populated on infrastructure",
+	}, {
+		name:          "Cloud config missing",
+		infraContent:  infraWithCloudConfig,
 		imagesContent: imagesConfigMap,
-		expectError:   "platform status is not populated on infrastructure",
+		expectError:   "open not_found: no such file or directory",
 	}, {
 		name:          "ImagesConfigMap not located",
 		infraContent:  infra,
 		imagesContent: "BAD",
 		expectError:   "error unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go value of type v1.ConfigMap",
+	}, {
+		name:               "CloudConfigMap is not populated correctly",
+		infraContent:       infraWithCloudConfig,
+		imagesContent:      imagesConfigMap,
+		cloudConfigContent: "BAD",
+		expectError:        "error unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go value of type v1.ConfigMap",
+	}, {
+		name:           "Destination directory is broken",
+		infraContent:   infra,
+		imagesContent:  imagesConfigMap,
+		expectObjects:  aws.GetBootstrapResources(),
+		badDestination: true,
+		expectError:    "mkdir /dev/null: not a directory",
 	}}
 
 	infraPath := "infra.yaml"
 	configPath := "imagesConfigMap.yaml"
+	cloudConfigPath := "cloudConfigMap.yaml"
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
 			imagesFile := "not_found"
 			infrastructureFile := "not_found"
+			cloudConfigFile := "not_found"
 			destination, err := ioutil.TempDir("", "test")
 			assert.NoError(t, err)
+
+			if tc.badDestination {
+				destination = "/dev/null"
+			}
 
 			if tc.imagesContent != "" {
 				file, err := ioutil.TempFile(os.TempDir(), configPath)
@@ -203,6 +279,17 @@ func TestRenderRun(t *testing.T) {
 				_, err = file.WriteString(tc.imagesContent)
 				assert.NoError(t, err)
 				imagesFile = path
+			}
+
+			if tc.cloudConfigContent != "" {
+				file, err := ioutil.TempFile(os.TempDir(), cloudConfigPath)
+				path := file.Name()
+				assert.NoError(t, err)
+				defer file.Close()
+
+				_, err = file.WriteString(tc.cloudConfigContent)
+				assert.NoError(t, err)
+				cloudConfigFile = path
 			}
 
 			if tc.infraContent != "" {
@@ -216,7 +303,7 @@ func TestRenderRun(t *testing.T) {
 				infrastructureFile = path
 			}
 
-			r := New(infrastructureFile, imagesFile)
+			r := New(infrastructureFile, imagesFile, cloudConfigFile)
 			err = r.Run(destination)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
@@ -228,6 +315,15 @@ func TestRenderRun(t *testing.T) {
 			files, err := ioutil.ReadDir(path.Join(destination, bootstrapPrefix))
 			assert.NoError(t, err)
 			assert.Len(t, files, len(tc.expectObjects))
+
+			// Assert config dir is present
+			_, err = ioutil.ReadDir(path.Join(destination, configPrefix))
+			assert.NoError(t, err)
+
+			if tc.expectCloudConfig {
+				_, err := os.ReadFile(path.Join(destination, configPrefix, configDataKey))
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
@@ -301,6 +397,70 @@ func TestWriteAssets(t *testing.T) {
 				assert.NoError(t, err)
 
 				assert.Equal(t, collectedObject, res)
+			}
+		})
+	}
+}
+
+func TestWriteCloudConfig(t *testing.T) {
+	tc := []struct {
+		name          string
+		destination   string
+		preCreateMode fs.FileMode
+		cloudConfig   string
+		expectErr     string
+	}{{
+		name:        "Writing file finished with success",
+		destination: "test",
+		cloudConfig: "some_data",
+	}, {
+		name:        "No operation for emplty cloud config",
+		destination: "test",
+	}, {
+		name:        "Fail to write into /dev/null",
+		cloudConfig: "some_data",
+		expectErr:   "mkdir /dev/null: not a directory",
+	}, {
+		name:          "Fail to write into folder with bad permissions",
+		cloudConfig:   "some_data",
+		destination:   "bad_permissions",
+		preCreateMode: 0444,
+		expectErr:     "permission denied",
+	}}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			destination := "/dev/null"
+
+			if tc.destination != "" {
+				dirPath, err := ioutil.TempDir("", tc.destination)
+				assert.NoError(t, err)
+				destination = dirPath
+				if tc.preCreateMode != 0 {
+					os.MkdirAll(path.Join(destination, configPrefix), tc.preCreateMode)
+					assert.NoError(t, err)
+				}
+			}
+
+			err := writeCloudConfig(destination, tc.cloudConfig)
+			if tc.expectErr != "" {
+				assert.Contains(t, err.Error(), tc.expectErr)
+				return
+			}
+			assert.NoError(t, err)
+
+			// Assert all files were written to bootstrap dir
+			files, err := ioutil.ReadDir(path.Join(destination, configPrefix))
+			assert.NoError(t, err)
+
+			data, err := os.ReadFile(path.Join(destination, configPrefix, configDataKey))
+			if tc.cloudConfig != "" {
+				assert.NoError(t, err)
+				assert.Equal(t, string(data), tc.cloudConfig)
+				assert.Len(t, files, 1)
+			} else {
+				assert.Len(t, files, 0)
+				assert.Error(t, err)
 			}
 		})
 	}
