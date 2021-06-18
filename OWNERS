@@ -7,4 +7,5 @@ approvers:
   - elmiko
   - lobziik
 
-component: "cloud-controller-manager"
+component: "Cloud Compute"
+subcomponent: "Cloud Controller Manager"
