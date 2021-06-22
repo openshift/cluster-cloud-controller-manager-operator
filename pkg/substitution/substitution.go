@@ -21,7 +21,7 @@ func setDeploymentImages(config config.OperatorConfig, d *v1.Deployment) {
 			continue
 		}
 
-		klog.Infof("Substituting %q in %q with %s", container.Name, d.Kind, config.ControllerImage)
+		klog.Infof("Substituting %q in Deployment %q with %s", container.Name, d.Name, config.ControllerImage)
 		d.Spec.Template.Spec.Containers[i].Image = config.ControllerImage
 	}
 }
@@ -32,7 +32,7 @@ func setDaemonSetImage(config config.OperatorConfig, d *v1.DaemonSet) {
 			continue
 		}
 
-		klog.Infof("Substituting %q in %q with %s", container.Name, d.Kind, config.ControllerImage)
+		klog.Infof("Substituting %q in DaemonSet %q with %s", container.Name, d.Name, config.ControllerImage)
 		d.Spec.Template.Spec.Containers[i].Image = config.CloudNodeImage
 	}
 }
