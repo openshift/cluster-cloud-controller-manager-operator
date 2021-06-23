@@ -2,7 +2,8 @@ package substitution
 
 import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
-	v1 "k8s.io/api/apps/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -14,27 +15,27 @@ const (
 	cloudNodeManagerName       = "cloud-node-manager"
 )
 
-// setDeploymentImages substitutes controller containers in Deployment with correct image
-func setDeploymentImages(config config.OperatorConfig, d *v1.Deployment) {
-	for i, container := range d.Spec.Template.Spec.Containers {
-		if container.Name != cloudControllerManagerName {
+// setCloudControllerImage substitutes controller containers in provided pod specs with correct image
+func setCloudControllerImage(config config.OperatorConfig, p corev1.PodSpec) corev1.PodSpec {
+	updatedPod := *p.DeepCopy()
+	for i, container := range p.Containers {
+		substituteName := ""
+		switch container.Name {
+		case cloudControllerManagerName:
+			substituteName = config.ControllerImage
+		case cloudNodeManagerName:
+			substituteName = config.CloudNodeImage
+		default:
 			continue
 		}
 
-		klog.Infof("Substituting %q in Deployment %q with %s", container.Name, d.Name, config.ControllerImage)
-		d.Spec.Template.Spec.Containers[i].Image = config.ControllerImage
-	}
-}
-
-func setDaemonSetImage(config config.OperatorConfig, d *v1.DaemonSet) {
-	for i, container := range d.Spec.Template.Spec.Containers {
-		if container.Name != cloudNodeManagerName {
-			continue
+		if substituteName != "" {
+			klog.Infof("Substituting container image for container %q with %q", container.Name, substituteName)
+			updatedPod.Containers[i].Image = substituteName
 		}
-
-		klog.Infof("Substituting %q in DaemonSet %q with %s", container.Name, d.Name, config.ControllerImage)
-		d.Spec.Template.Spec.Containers[i].Image = config.CloudNodeImage
 	}
+
+	return updatedPod
 }
 
 func FillConfigValues(config config.OperatorConfig, templates []client.Object) []client.Object {
@@ -46,10 +47,12 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 		templateCopy.SetNamespace(config.ManagedNamespace)
 
 		switch obj := templateCopy.(type) {
-		case *v1.Deployment:
-			setDeploymentImages(config, obj)
-		case *v1.DaemonSet:
-			setDaemonSetImage(config, obj)
+		case *appsv1.Deployment:
+			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
+		case *appsv1.DaemonSet:
+			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
+		case *corev1.Pod:
+			obj.Spec = setCloudControllerImage(config, obj.Spec)
 		}
 		objects[i] = templateCopy
 	}

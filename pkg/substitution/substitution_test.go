@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func TestSetDeploymentImages(t *testing.T) {
+func TestSetCloudControllerImage(t *testing.T) {
 	tc := []struct {
 		name               string
 		containers         []corev1.Container
@@ -42,6 +42,19 @@ func TestSetDeploymentImages(t *testing.T) {
 		}},
 		config: config.OperatorConfig{
 			ControllerImage: "correct_image:tag",
+		},
+	}, {
+		name: "Substitute cloud-node-manager container image",
+		containers: []corev1.Container{{
+			Name:  cloudNodeManagerName,
+			Image: "expect_change",
+		}},
+		expectedContainers: []corev1.Container{{
+			Name:  cloudNodeManagerName,
+			Image: "correct_node_image:tag",
+		}},
+		config: config.OperatorConfig{
+			CloudNodeImage: "correct_node_image:tag",
 		},
 	}, {
 		name: "Combination of container image names",
@@ -76,69 +89,6 @@ func TestSetDeploymentImages(t *testing.T) {
 				},
 			}
 
-			setDeploymentImages(tc.config, deploy)
-
-			assert.EqualValues(t, deploy.Spec.Template.Spec.Containers, tc.expectedContainers)
-		})
-	}
-
-}
-
-func TestSetDaemonsetImages(t *testing.T) {
-	tc := []struct {
-		name               string
-		containers         []corev1.Container
-		config             config.OperatorConfig
-		expectedContainers []corev1.Container
-	}{{
-		name: "Unknown container name",
-		containers: []corev1.Container{{
-			Name:  "different_name",
-			Image: "no_change",
-		}},
-		expectedContainers: []corev1.Container{{
-			Name:  "different_name",
-			Image: "no_change",
-		}},
-		config: config.OperatorConfig{
-			CloudNodeImage: "correct_image:tag",
-		},
-	}, {
-		name: "Substitute cloud-node-manager container image",
-		containers: []corev1.Container{{
-			Name:  cloudNodeManagerName,
-			Image: "expect_change",
-		}},
-		expectedContainers: []corev1.Container{{
-			Name:  cloudNodeManagerName,
-			Image: "correct_image:tag",
-		}},
-		config: config.OperatorConfig{
-			CloudNodeImage: "correct_image:tag",
-		},
-	}, {
-		name: "Combination of container image names",
-		containers: []corev1.Container{{
-			Name:  cloudNodeManagerName,
-			Image: "expect_change",
-		}, {
-			Name:  "some-stuff-there",
-			Image: "no_change",
-		}},
-		expectedContainers: []corev1.Container{{
-			Name:  cloudNodeManagerName,
-			Image: "correct_image:tag",
-		}, {
-			Name:  "some-stuff-there",
-			Image: "no_change",
-		}},
-		config: config.OperatorConfig{
-			CloudNodeImage: "correct_image:tag",
-		},
-	}}
-
-	for _, tc := range tc {
-		t.Run(tc.name, func(t *testing.T) {
 			ds := &v1.DaemonSet{
 				Spec: v1.DaemonSetSpec{
 					Template: corev1.PodTemplateSpec{
@@ -149,11 +99,23 @@ func TestSetDaemonsetImages(t *testing.T) {
 				},
 			}
 
-			setDaemonSetImage(tc.config, ds)
+			pod := &corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: tc.containers,
+				},
+			}
 
-			assert.EqualValues(t, ds.Spec.Template.Spec.Containers, tc.expectedContainers)
+			spec := setCloudControllerImage(tc.config, deploy.Spec.Template.Spec)
+			assert.EqualValues(t, spec.Containers, tc.expectedContainers)
+
+			spec = setCloudControllerImage(tc.config, ds.Spec.Template.Spec)
+			assert.EqualValues(t, spec.Containers, tc.expectedContainers)
+
+			spec = setCloudControllerImage(tc.config, pod.Spec)
+			assert.EqualValues(t, spec.Containers, tc.expectedContainers)
 		})
 	}
+
 }
 
 func TestFillConfigValues(t *testing.T) {
@@ -247,7 +209,7 @@ func TestFillConfigValues(t *testing.T) {
 			ManagedNamespace: testManagementNamespace,
 		},
 	}, {
-		name: "Substitute image and namespace for more deployment and daemonset",
+		name: "Substitute image and namespace for deployment, daemonset and pod",
 		objects: []client.Object{&v1.DaemonSet{
 			Spec: v1.DaemonSetSpec{
 				Template: corev1.PodTemplateSpec{
@@ -258,6 +220,20 @@ func TestFillConfigValues(t *testing.T) {
 						}},
 					},
 				},
+			},
+		}, &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{
+					Name:  cloudControllerManagerName,
+					Image: "expect_change",
+				}},
+			},
+		}, &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{
+					Name:  cloudNodeManagerName,
+					Image: "expect_change",
+				}},
 			},
 		}, &v1.Deployment{
 			Spec: v1.DeploymentSpec{
@@ -285,6 +261,26 @@ func TestFillConfigValues(t *testing.T) {
 							}},
 						},
 					},
+				},
+			}, &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testManagementNamespace,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:  cloudControllerManagerName,
+						Image: "correct_image:tag",
+					}},
+				},
+			}, &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testManagementNamespace,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:  cloudNodeManagerName,
+						Image: "correct_cloud_node_image:tag",
+					}},
 				},
 			}, &v1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
