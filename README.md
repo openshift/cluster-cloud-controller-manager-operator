@@ -30,7 +30,7 @@ but **should not** be used for production.
 | Platform        | Included in Operator | Tested in CI |
 | --------------- | -------------------- | ------------ |
 | AWS             | Yes                  | Yes          |
-| Azure           | No                   |              |
+| Azure           | Yes                  | No           |
 | GCP             | No                   |              |
 | OpenStack       | Yes                  | No           |
 | vSphere         | No                   |              |
@@ -71,6 +71,10 @@ instructions.
 To build the operator binary, and run related linting tests, type `make` or
 `make build` from the root of the project.
 
+### Adding support for new cloud provider
+
+This step is extensively covered in [Integrating a new cloud provider in Cluster-cloud-controller-manager-operator (CCCMO)](/docs/dev/cloud-provider-integration.md)
+
 ### Vendoring Dependencies
 
 After adding or updating dependencies in the `go.mod` file, run `make vendor`
@@ -92,10 +96,6 @@ on pull requests.
 
 To invoke the unit tests, run `make unit`. If you wish to also run the
 code generation and verification steps, run `make test`.
-
-*Note When running the local unit tests you may see errors about a missing
-`etcd` binary. These tests expect a slightly different configuration and
-are known to fail on local hosts.*
 
 #### End to End Tests
 
