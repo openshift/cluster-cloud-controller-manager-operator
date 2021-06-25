@@ -45,6 +45,10 @@ func init() {
 	v1.AddToScheme(scheme.Scheme)
 }
 
+const (
+	testManagedNamespace = "openshift-cloud-controller-manager"
+)
+
 var cfg *rest.Config
 var cl client.Client
 var testEnv *envtest.Environment
@@ -82,10 +86,16 @@ var _ = BeforeSuite(func() {
 	Expect(cl).NotTo(BeNil())
 
 	managedNamespace := &corev1.Namespace{}
-	managedNamespace.SetName(testManagementNamespace)
+	managedNamespace.SetName(testManagedNamespace)
+	Expect(cl.Create(context.Background(), managedNamespace)).To(Succeed())
 
-	Expect(cl.Create(context.Background(), managedNamespace.DeepCopy())).To(Succeed())
+	ocpConfigNamespace := &corev1.Namespace{}
+	ocpConfigNamespace.SetName(openshiftConfigNamespace)
+	Expect(cl.Create(context.Background(), ocpConfigNamespace)).To(Succeed())
 
+	ocpManagedConfigNamespace := &corev1.Namespace{}
+	ocpManagedConfigNamespace.SetName(openshiftManagedConfigNamespace)
+	Expect(cl.Create(context.Background(), ocpManagedConfigNamespace)).To(Succeed())
 })
 
 var _ = AfterSuite(func() {
