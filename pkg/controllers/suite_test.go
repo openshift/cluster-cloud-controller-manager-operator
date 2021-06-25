@@ -41,8 +41,12 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 func init() {
-	configv1.Install(scheme.Scheme)
-	v1.AddToScheme(scheme.Scheme)
+	if err := configv1.Install(scheme.Scheme); err != nil {
+		panic(err)
+	}
+	if err := v1.AddToScheme(scheme.Scheme); err != nil {
+		panic(err)
+	}
 }
 
 const (
