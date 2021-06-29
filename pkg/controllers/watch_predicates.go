@@ -80,8 +80,8 @@ func openshiftCloudConfigMapPredicates() predicate.Funcs {
 			return false
 		}
 
-		isOpenshiftConfigNamespace := configMap.GetName() == openshiftConfigNamespace
-		isManagedCloudConfig := configMap.GetName() == managedCloudConfigMapName && configMap.GetNamespace() == openshiftConfigNamespace
+		isOpenshiftConfigNamespace := configMap.GetName() == OpenshiftConfigNamespace
+		isManagedCloudConfig := configMap.GetName() == managedCloudConfigMapName && configMap.GetNamespace() == OpenshiftManagedConfigNamespace
 
 		return isOpenshiftConfigNamespace || isManagedCloudConfig
 	}

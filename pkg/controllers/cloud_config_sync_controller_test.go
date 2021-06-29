@@ -42,14 +42,14 @@ func makeInfrastrucutreResource() *configv1.Infrastructure {
 func makeInfraCloudConifg() *corev1.ConfigMap {
 	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 		Name:      infraCloudConfName,
-		Namespace: openshiftConfigNamespace,
+		Namespace: OpenshiftConfigNamespace,
 	}, Data: map[string]string{infraCloudConfKey: "bar"}}
 }
 
 func makeManagedCloudConifg() *corev1.ConfigMap {
 	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 		Name:      managedCloudConfigMapName,
-		Namespace: openshiftManagedConfigNamespace,
+		Namespace: OpenshiftManagedConfigNamespace,
 	}, Data: map[string]string{"cloud.conf": "bar"}}
 }
 

@@ -90,11 +90,11 @@ var _ = BeforeSuite(func() {
 	Expect(cl.Create(context.Background(), managedNamespace)).To(Succeed())
 
 	ocpConfigNamespace := &corev1.Namespace{}
-	ocpConfigNamespace.SetName(openshiftConfigNamespace)
+	ocpConfigNamespace.SetName(OpenshiftConfigNamespace)
 	Expect(cl.Create(context.Background(), ocpConfigNamespace)).To(Succeed())
 
 	ocpManagedConfigNamespace := &corev1.Namespace{}
-	ocpManagedConfigNamespace.SetName(openshiftManagedConfigNamespace)
+	ocpManagedConfigNamespace.SetName(OpenshiftManagedConfigNamespace)
 	Expect(cl.Create(context.Background(), ocpManagedConfigNamespace)).To(Succeed())
 })
 
