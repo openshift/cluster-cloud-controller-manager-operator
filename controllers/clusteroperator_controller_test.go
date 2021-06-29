@@ -28,9 +28,8 @@ import (
 )
 
 const (
-	timeout                 = time.Second * 10
-	testManagementNamespace = "openshift-cloud-controller-manager"
-	testImagesFilePath      = "../hack/example-images.json"
+	timeout            = time.Second * 10
+	testImagesFilePath = "../hack/example-images.json"
 )
 
 var _ = Describe("Cluster Operator status controller", func() {
@@ -227,7 +226,7 @@ var _ = Describe("Component sync controller", func() {
 		Expect(err).To(Succeed())
 
 		infra = &configv1.Infrastructure{}
-		infra.SetName(infrastructureName)
+		infra.SetName(infrastructureResourceName)
 
 		fg = &configv1.FeatureGate{}
 		fg.SetName(externalFeatureGateName)
@@ -238,7 +237,7 @@ var _ = Describe("Component sync controller", func() {
 			Client:           cl,
 			Scheme:           scheme.Scheme,
 			watcher:          w,
-			ManagedNamespace: testManagementNamespace,
+			ManagedNamespace: testManagedNamespace,
 			ImagesFile:       testImagesFilePath,
 			Recorder:         record.NewFakeRecorder(32),
 		}
@@ -321,7 +320,7 @@ var _ = Describe("Component sync controller", func() {
 			},
 			featureGateSpec: externalFeatureGateSpec,
 			config: config.OperatorConfig{
-				ManagedNamespace: testManagementNamespace,
+				ManagedNamespace: testManagedNamespace,
 				ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			},
 			expected: cloud.GetResources(configv1.AWSPlatformType),
@@ -336,7 +335,7 @@ var _ = Describe("Component sync controller", func() {
 				},
 			},
 			config: config.OperatorConfig{
-				ManagedNamespace: testManagementNamespace,
+				ManagedNamespace: testManagedNamespace,
 				ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			},
 			featureGateSpec: externalFeatureGateSpec,

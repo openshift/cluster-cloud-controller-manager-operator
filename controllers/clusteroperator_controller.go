@@ -33,15 +33,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 const (
-	infrastructureName      = "cluster"
 	externalFeatureGateName = "cluster"
 )
 
@@ -82,7 +78,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	}
 
 	infra := &configv1.Infrastructure{}
-	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureName}, infra); errors.IsNotFound(err) {
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); errors.IsNotFound(err) {
 		klog.Infof("Infrastructure cluster does not exist. Skipping...")
 
 		if err := r.setStatusAvailable(ctx); err != nil {
@@ -243,52 +239,4 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&source.Channel{Source: watcher.EventStream()}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
 
 	return build.Complete(r)
-}
-
-func clusterOperatorPredicates() predicate.Funcs {
-	isClusterOperator := func(obj runtime.Object) bool {
-		clusterOperator, ok := obj.(*configv1.ClusterOperator)
-		return ok && clusterOperator.GetName() == clusterOperatorName
-	}
-
-	return predicate.Funcs{
-		CreateFunc:  func(e event.CreateEvent) bool { return isClusterOperator(e.Object) },
-		UpdateFunc:  func(e event.UpdateEvent) bool { return isClusterOperator(e.ObjectNew) },
-		GenericFunc: func(e event.GenericEvent) bool { return isClusterOperator(e.Object) },
-		DeleteFunc:  func(e event.DeleteEvent) bool { return isClusterOperator(e.Object) },
-	}
-}
-
-func toClusterOperator(client.Object) []reconcile.Request {
-	return []reconcile.Request{{
-		NamespacedName: client.ObjectKey{Name: clusterOperatorName},
-	}}
-}
-
-func infrastructurePredicates() predicate.Funcs {
-	isInfrastructureCluster := func(obj runtime.Object) bool {
-		infra, ok := obj.(*configv1.Infrastructure)
-		return ok && infra.GetName() == infrastructureName
-	}
-
-	return predicate.Funcs{
-		CreateFunc:  func(e event.CreateEvent) bool { return isInfrastructureCluster(e.Object) },
-		UpdateFunc:  func(e event.UpdateEvent) bool { return isInfrastructureCluster(e.ObjectNew) },
-		GenericFunc: func(e event.GenericEvent) bool { return isInfrastructureCluster(e.Object) },
-		DeleteFunc:  func(e event.DeleteEvent) bool { return isInfrastructureCluster(e.Object) },
-	}
-}
-
-func featureGatePredicates() predicate.Funcs {
-	isFeatureGateCluster := func(obj runtime.Object) bool {
-		featureGate, ok := obj.(*configv1.FeatureGate)
-		return ok && featureGate.GetName() == externalFeatureGateName
-	}
-
-	return predicate.Funcs{
-		CreateFunc:  func(e event.CreateEvent) bool { return isFeatureGateCluster(e.Object) },
-		UpdateFunc:  func(e event.UpdateEvent) bool { return isFeatureGateCluster(e.ObjectNew) },
-		GenericFunc: func(e event.GenericEvent) bool { return isFeatureGateCluster(e.Object) },
-		DeleteFunc:  func(e event.DeleteEvent) bool { return isFeatureGateCluster(e.Object) },
-	}
 }
