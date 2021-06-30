@@ -22,7 +22,7 @@ const (
 	infraCloudConfKey  = "foo"
 )
 
-func makeInfrastrucutreResource() *configv1.Infrastructure {
+func makeInfrastructureResource() *configv1.Infrastructure {
 	return &configv1.Infrastructure{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: infrastructureResourceName,
@@ -39,14 +39,14 @@ func makeInfrastrucutreResource() *configv1.Infrastructure {
 	}
 }
 
-func makeInfraCloudConifg() *corev1.ConfigMap {
+func makeInfraCloudConfig() *corev1.ConfigMap {
 	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 		Name:      infraCloudConfName,
 		Namespace: openshiftConfigNamespace,
 	}, Data: map[string]string{infraCloudConfKey: "bar"}}
 }
 
-func makeManagedCloudConifg() *corev1.ConfigMap {
+func makeManagedCloudConfig() *corev1.ConfigMap {
 	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 		Name:      managedCloudConfigMapName,
 		Namespace: openshiftManagedConfigNamespace,
@@ -57,25 +57,25 @@ var _ = Describe("isCloudConfigEqual reconciler method", func() {
 	reconciler := &CloudConfigReconciler{}
 
 	It("should return 'true' if ConfigMaps content are equal", func() {
-		Expect(reconciler.isCloudConfigEqual(makeManagedCloudConifg(), makeManagedCloudConifg())).Should(BeTrue())
+		Expect(reconciler.isCloudConfigEqual(makeManagedCloudConfig(), makeManagedCloudConfig())).Should(BeTrue())
 	})
 
 	It("should return 'false' if ConfigMaps content are not equal", func() {
-		changedManagedCloudConfig := makeManagedCloudConifg()
+		changedManagedCloudConfig := makeManagedCloudConfig()
 		changedManagedCloudConfig.Immutable = pointer.Bool(true)
-		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConifg())).Should(BeFalse())
+		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConfig())).Should(BeFalse())
 
-		changedManagedCloudConfig = makeManagedCloudConifg()
+		changedManagedCloudConfig = makeManagedCloudConfig()
 		changedManagedCloudConfig.Data = map[string]string{}
-		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConifg())).Should(BeFalse())
+		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConfig())).Should(BeFalse())
 	})
 })
 
 var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 	reconciler := &CloudConfigReconciler{}
-	infra := makeInfrastrucutreResource()
-	infraCloudConfig := makeInfraCloudConifg()
-	managedCloudConfig := makeManagedCloudConifg()
+	infra := makeInfrastructureResource()
+	infraCloudConfig := makeInfraCloudConfig()
+	managedCloudConfig := makeManagedCloudConfig()
 
 	It("not prepared config should be different with managed one", func() {
 		_, ok := infraCloudConfig.Data[infraCloudConfKey]
@@ -133,11 +133,11 @@ var _ = Describe("Cloud config sync controller", func() {
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
 		By("Creating Infra resource")
-		Expect(cl.Create(ctx, makeInfrastrucutreResource())).To(Succeed())
+		Expect(cl.Create(ctx, makeInfrastructureResource())).To(Succeed())
 
 		By("Creating needed ConfigMaps")
-		infraCloudConfig = makeInfraCloudConifg()
-		managedCloudConfig = makeManagedCloudConifg()
+		infraCloudConfig = makeInfraCloudConfig()
+		managedCloudConfig = makeManagedCloudConfig()
 		Expect(cl.Create(ctx, infraCloudConfig)).To(Succeed())
 		Expect(cl.Create(ctx, managedCloudConfig)).To(Succeed())
 
@@ -189,7 +189,7 @@ var _ = Describe("Cloud config sync controller", func() {
 		managedCloudConfig = nil
 		syncedCloudConfigMap = nil
 
-		infra := makeInfrastrucutreResource()
+		infra := makeInfrastructureResource()
 		Expect(cl.Delete(ctx, infra)).To(Succeed())
 		Eventually(
 			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)),

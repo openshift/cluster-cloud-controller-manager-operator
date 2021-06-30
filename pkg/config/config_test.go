@@ -207,19 +207,19 @@ func TestGetProviderControllerFromImages(t *testing.T) {
 		platformType  configv1.PlatformType
 		expectedImage string
 	}{{
-		name:          "AWS platorm",
+		name:          "AWS platform",
 		platformType:  configv1.AWSPlatformType,
 		expectedImage: "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 	}, {
-		name:          "Azure platorm",
+		name:          "Azure platform",
 		platformType:  configv1.AzurePlatformType,
 		expectedImage: "",
 	}, {
-		name:          "OpenStack platorm",
+		name:          "OpenStack platform",
 		platformType:  configv1.OpenStackPlatformType,
 		expectedImage: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 	}, {
-		name:          "Unknown platorm",
+		name:          "Unknown platform",
 		platformType:  "unknown",
 		expectedImage: "",
 	}}
@@ -245,19 +245,19 @@ func TestGetNodeControllerFromImages(t *testing.T) {
 		platformType  configv1.PlatformType
 		expectedImage string
 	}{{
-		name:          "AWS platorm",
+		name:          "AWS platform",
 		platformType:  configv1.AWSPlatformType,
 		expectedImage: "",
 	}, {
-		name:          "Azure platorm",
+		name:          "Azure platform",
 		platformType:  configv1.AzurePlatformType,
 		expectedImage: "registry.ci.openshift.org/openshift:azure-cloud-node-manager",
 	}, {
-		name:          "OpenStack platorm",
+		name:          "OpenStack platform",
 		platformType:  configv1.OpenStackPlatformType,
 		expectedImage: "",
 	}, {
-		name:          "Unknown platorm",
+		name:          "Unknown platform",
 		platformType:  "unknown",
 		expectedImage: "",
 	}}

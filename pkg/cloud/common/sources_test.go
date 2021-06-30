@@ -30,7 +30,7 @@ func TestReadResources(t *testing.T) {
 		expected      []resourcemeta
 		expectedError string
 	}{{
-		name: "Reading corect sources cause no error",
+		name: "Reading correct sources cause no error",
 		fs:   assetPath,
 		sources: []ObjectSource{
 			{Object: &appsv1.Deployment{}, Path: "_testdata/assets/deployment.yaml"},
@@ -53,14 +53,14 @@ func TestReadResources(t *testing.T) {
 		},
 		expectedError: "error unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go value of type v1.Deployment",
 	}, {
-		name: "Incorrect resource type should not be unmarshalled",
+		name: "Incorrect resource type should not be unmarshaled",
 		fs:   assetPath,
 		sources: []ObjectSource{
 			{Object: &appsv1.DaemonSet{}, Path: "_testdata/assets/deployment.yaml"},
 		},
 		expectedError: "error unmarshaling JSON: while decoding JSON: json: unknown field \"replicas\"",
 	}, {
-		name: "Incorrect resource type should not be unmarshalled",
+		name: "Incorrect resource type should not be unmarshaled",
 		fs:   assetPath,
 		sources: []ObjectSource{
 			{Object: &v1.PersistentVolume{}, Path: "_testdata/assets/deployment.yaml"},

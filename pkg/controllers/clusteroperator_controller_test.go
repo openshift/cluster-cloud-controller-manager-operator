@@ -305,7 +305,7 @@ var _ = Describe("Component sync controller", func() {
 				applied, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
 				Expect(err).To(Succeed())
 
-				// Enforsed fields should be equal
+				// Enforced fields should be equal
 				Expect(equality.Semantic.DeepDerivative(original, applied)).To(BeTrue())
 			}
 		},
@@ -441,7 +441,7 @@ var _ = Describe("Apply resources should", func() {
 		Expect(updated).To(BeFalse())
 	})
 
-	It("Expect error when object requsted is incorrect", func() {
+	It("Expect error when object requested is incorrect", func() {
 		objects := cloud.GetResources(configv1.AWSPlatformType)
 		objects[0].SetNamespace("non-existent")
 
