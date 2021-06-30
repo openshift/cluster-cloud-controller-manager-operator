@@ -40,6 +40,8 @@ func GetBootstrapResources(platform configv1.PlatformType) []client.Object {
 		return aws.GetBootstrapResources()
 	case configv1.AzurePlatformType:
 		return azure.GetBootstrapResources()
+	case configv1.OpenStackPlatformType:
+		return openstack.GetBootstrapResources()
 	default:
 		klog.Warning("No recognized cloud provider platform found in infrastructure")
 		return nil

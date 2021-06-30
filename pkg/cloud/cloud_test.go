@@ -83,8 +83,9 @@ func TestGetBootstrapResources(t *testing.T) {
 		platform: configv1.AWSPlatformType,
 		expected: aws.GetBootstrapResources(),
 	}, {
-		name:     "OpenStack resources are empty, as the platform is not yet supported",
+		name:     "OpenStack resources returned as expected",
 		platform: configv1.OpenStackPlatformType,
+		expected: openstack.GetBootstrapResources(),
 	}, {
 		name:     "GCP resources are empty, as the platform is not yet supported",
 		platform: configv1.GCPPlatformType,

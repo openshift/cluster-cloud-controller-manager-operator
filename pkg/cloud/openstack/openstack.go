@@ -11,18 +11,24 @@ import (
 )
 
 var (
-	//go:embed assets/*
+	//go:embed assets/* bootstrap/*
 	openStackFS      embed.FS
 	openStackSources = []common.ObjectSource{
 		{Object: &v1.ConfigMap{}, Path: "assets/config.yaml"},
 		{Object: &appsv1.Deployment{}, Path: "assets/deployment.yaml"},
 	}
-	openStackResources []client.Object
+	openstackBootstrapSources = []common.ObjectSource{
+		{Object: &v1.Pod{}, Path: "bootstrap/pod.yaml"},
+	}
+	openStackResources          []client.Object
+	openStackBootstrapResources []client.Object
 )
 
 func init() {
 	var err error
 	openStackResources, err = common.ReadResources(openStackFS, openStackSources)
+	utilruntime.Must(err)
+	openStackBootstrapResources, err = common.ReadResources(openStackFS, openstackBootstrapSources)
 	utilruntime.Must(err)
 }
 
@@ -31,6 +37,16 @@ func GetResources() []client.Object {
 	resources := make([]client.Object, len(openStackResources))
 	for i := range openStackResources {
 		resources[i] = openStackResources[i].DeepCopyObject().(client.Object)
+	}
+
+	return resources
+}
+
+// GetBootstrapResources returns a list static pods for provisioning CCM on bootstrap node for AWS
+func GetBootstrapResources() []client.Object {
+	resources := make([]client.Object, len(openStackBootstrapResources))
+	for i := range openStackBootstrapResources {
+		resources[i] = openStackBootstrapResources[i].DeepCopyObject().(client.Object)
 	}
 
 	return resources

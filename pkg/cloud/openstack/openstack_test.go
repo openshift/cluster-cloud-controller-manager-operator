@@ -21,5 +21,18 @@ func TestGetResources(t *testing.T) {
 
 	assert.Contains(t, kinds, "Deployment")
 	assert.Contains(t, kinds, "ConfigMap")
+}
 
+func TestGetBootstrapResources(t *testing.T) {
+	resources := GetBootstrapResources()
+	assert.Len(t, resources, 1)
+
+	var names, kinds []string
+	for _, r := range resources {
+		names = append(names, r.GetName())
+		kinds = append(kinds, r.GetObjectKind().GroupVersionKind().Kind)
+	}
+
+	assert.Contains(t, names, "openstack-cloud-controller-manager")
+	assert.Contains(t, kinds, "Pod")
 }

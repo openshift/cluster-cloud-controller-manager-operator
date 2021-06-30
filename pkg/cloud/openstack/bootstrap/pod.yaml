@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: openstack-cloud-controller-manager
+  namespace: kube-system
+spec:
+  priorityClassName: system-cluster-critical
+  containers:
+  - args:
+    - --cloud-provider=openstack
+    - --use-service-account-credentials=false
+    - --controllers=cloud-node # run only cloud-node controller required to bootstrap master nodes
+    - --kubeconfig=/etc/kubernetes/secrets/kubeconfig
+    - --leader-elect=false
+    - -v=2
+    image: quay.io/openshift/origin-openstack-cloud-controller-manager
+    imagePullPolicy: IfNotPresent
+    name: cloud-controller-manager
+    volumeMounts:
+    - mountPath: /etc/kubernetes/secrets
+      name: secrets
+      readOnly: true
+  hostNetwork: true
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes/bootstrap-secrets
+    name: secrets
