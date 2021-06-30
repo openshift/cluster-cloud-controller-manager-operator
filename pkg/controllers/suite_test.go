@@ -68,7 +68,7 @@ var _ = BeforeSuite(func() {
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
-			filepath.Join("..", "vendor", "github.com", "openshift", "api", "config", "v1"),
+			filepath.Join("../..", "vendor", "github.com", "openshift", "api", "config", "v1"),
 		},
 	}
 

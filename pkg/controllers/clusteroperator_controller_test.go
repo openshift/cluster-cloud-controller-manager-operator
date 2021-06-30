@@ -29,7 +29,7 @@ import (
 
 const (
 	timeout            = time.Second * 10
-	testImagesFilePath = "../hack/example-images.json"
+	testImagesFilePath = "../../hack/example-images.json"
 )
 
 var _ = Describe("Cluster Operator status controller", func() {
