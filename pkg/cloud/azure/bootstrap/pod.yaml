@@ -8,7 +8,7 @@ spec:
   hostNetwork: true
   containers:
     - name: cloud-controller-manager
-      image: mcr.microsoft.com/oss/kubernetes/azure-cloud-controller-manager:v1.0.0
+      image: quay.io/openshift/origin-azure-cloud-controller-manager
       imagePullPolicy: IfNotPresent
       command: ["cloud-controller-manager"]
       args:
