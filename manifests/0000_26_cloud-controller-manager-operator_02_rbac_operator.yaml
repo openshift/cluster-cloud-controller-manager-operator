@@ -123,7 +123,7 @@ roleRef:
   name: cluster-cloud-controller-manager
 subjects:
   - kind: ServiceAccount
-    name: openshift-cloud-controller-manager
+    name: cluster-cloud-controller-manager
     namespace: openshift-cloud-controller-manager-operator
 
 ---
@@ -160,7 +160,7 @@ roleRef:
   name: cluster-cloud-controller-manager
 subjects:
   - kind: ServiceAccount
-    name: openshift-cloud-controller-manager
+    name: cluster-cloud-controller-manager
     namespace: openshift-cloud-controller-manager-operator
 
 ---
