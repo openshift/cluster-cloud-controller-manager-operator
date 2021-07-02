@@ -44,6 +44,9 @@ spec:
         node-role.kubernetes.io/master: ""
       restartPolicy: Always
       tolerations:
+      - key: node.cloudprovider.kubernetes.io/uninitialized
+        effect: NoSchedule
+        value: "true"
       - key: "node-role.kubernetes.io/master"
         operator: "Exists"
         effect: "NoSchedule"
