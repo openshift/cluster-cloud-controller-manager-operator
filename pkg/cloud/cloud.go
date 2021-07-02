@@ -33,7 +33,7 @@ func GetResources(platform configv1.PlatformType) []client.Object {
 //
 // This pod is required for platforms that allow multiple Node initialization from
 // a single CCM instance which is not bound to link-local VM IP address and node name.
-// Allows to initalize master Nodes immediately after they are created by the installer.
+// Allows to initialize master Nodes immediately after they are created by the installer.
 func GetBootstrapResources(platform configv1.PlatformType) []client.Object {
 	switch platform {
 	case configv1.AWSPlatformType:

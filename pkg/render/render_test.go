@@ -414,7 +414,7 @@ func TestWriteCloudConfig(t *testing.T) {
 		destination: "test",
 		cloudConfig: "some_data",
 	}, {
-		name:        "No operation for emplty cloud config",
+		name:        "No operation for empty cloud config",
 		destination: "test",
 	}, {
 		name:        "Fail to write into /dev/null",

@@ -17,7 +17,7 @@ type ObjectSource struct {
 
 // ReadResources is responsible for reading resources from embed path in the binary.
 // This method is for internal use only, and a <provider> should use this method
-// only in init() and later provide a copy of aquired objects. See /pkg/cloud for
+// only in init() and later provide a copy of acquired objects. See /pkg/cloud for
 // examples
 func ReadResources(f embed.FS, sources []ObjectSource) ([]client.Object, error) {
 	ret := []client.Object{}
