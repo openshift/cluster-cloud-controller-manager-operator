@@ -110,10 +110,10 @@ github.com/onsi/gomega/matchers/support/goraph/edge
 github.com/onsi/gomega/matchers/support/goraph/node
 github.com/onsi/gomega/matchers/support/goraph/util
 github.com/onsi/gomega/types
-# github.com/openshift/api v0.0.0-20210521075222-e273a339932a
+# github.com/openshift/api v0.0.0-20210706092853-b63d499a70ce
 ## explicit
 github.com/openshift/api/config/v1
-# github.com/openshift/library-go v0.0.0-20210608075825-51ddcf37b1f8
+# github.com/openshift/library-go v0.0.0-20210708191609-4b9033d00d37
 ## explicit
 github.com/openshift/library-go/pkg/cloudprovider
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
