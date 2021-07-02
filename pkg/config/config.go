@@ -78,7 +78,13 @@ func getCloudNodeManagerFromImages(platform configv1.PlatformType, images images
 }
 
 // ComposeConfig creates a Config for operator
-func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace string, isSingleReplica bool) (OperatorConfig, error) {
+func ComposeConfig(infrastructure *configv1.Infrastructure, imagesFile, managedNamespace string) (OperatorConfig, error) {
+	platform, err := GetProviderFromInfrastructure(infrastructure)
+	if err != nil {
+		klog.Errorf("Unable to get platform from infrastructure: %s", err)
+		return OperatorConfig{}, err
+	}
+
 	images, err := getImagesFromJSONFile(imagesFile)
 	if err != nil {
 		klog.Errorf("Unable to decode images file from location %s", imagesFile, err)
@@ -90,7 +96,7 @@ func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace 
 		ManagedNamespace: managedNamespace,
 		ControllerImage:  getCloudControllerManagerFromImages(platform, images),
 		CloudNodeImage:   getCloudNodeManagerFromImages(platform, images),
-		IsSingleReplica:  isSingleReplica,
+		IsSingleReplica:  infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
 	}
 
 	return config, nil
