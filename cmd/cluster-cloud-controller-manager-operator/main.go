@@ -32,6 +32,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -114,6 +115,9 @@ func main() {
 	ctrl.SetLogger(klogr.New().WithName("CCMOperator"))
 
 	syncPeriod := 10 * time.Minute
+	cacheBuilder := cache.MultiNamespacedCacheBuilder([]string{
+		*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace,
+	})
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Namespace:               *managedNamespace,
 		Scheme:                  scheme,
@@ -127,6 +131,7 @@ func main() {
 		LeaderElectionID:        "cluster-cloud-controller-manager-leader",
 		RetryPeriod:             &retryPeriod,
 		RenewDeadline:           &renewDealine,
+		NewCache:                cacheBuilder,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -142,6 +147,16 @@ func main() {
 		ImagesFile:       *imagesFile,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterOperator")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.CloudConfigReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
+		TargetNamespace: *managedNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create cloud-config sync controller", "controller", "ClusterOperator")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

@@ -20,9 +20,7 @@ import (
 )
 
 const (
-	openshiftConfigNamespace        = "openshift-config"
-	openshiftManagedConfigNamespace = "openshift-config-managed"
-	managedCloudConfigMapName       = "kube-cloud-config"
+	managedCloudConfigMapName = "kube-cloud-config"
 
 	cloudConfigMapName = "cloud-conf"
 	defaultConfigKey   = "cloud.conf"
@@ -42,7 +40,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// If it is not exists try to use cloud-config reference from infra resource.
 	// https://github.com/openshift/library-go/blob/master/pkg/operator/configobserver/cloudprovider/observe_cloudprovider.go#L82
 	defaultSourceCMObjectKey := client.ObjectKey{
-		Name: managedCloudConfigMapName, Namespace: openshiftManagedConfigNamespace,
+		Name: managedCloudConfigMapName, Namespace: OpenshiftManagedConfigNamespace,
 	}
 	sourceCM := &corev1.ConfigMap{}
 	if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); errors.IsNotFound(err) {
@@ -53,7 +51,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
-		openshiftUnmanagedCMKey := client.ObjectKey{Name: infra.Spec.CloudConfig.Name, Namespace: openshiftConfigNamespace}
+		openshiftUnmanagedCMKey := client.ObjectKey{Name: infra.Spec.CloudConfig.Name, Namespace: OpenshiftConfigNamespace}
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); err != nil {
 			klog.Errorf("unable to get cloud-config for sync")
 			return ctrl.Result{}, err
