@@ -24,7 +24,7 @@ spec:
         - --use-service-account-credentials=true
         - --leader-elect-resource-namespace=openshift-cloud-controller-manager
         - -v=2
-        image: gcr.io/k8s-staging-provider-aws/cloud-controller-manager:v1.19.0-alpha.1
+        image: quay.io/openshift/origin-aws-cloud-controller-manager
         imagePullPolicy: IfNotPresent
         name: cloud-controller-manager
         resources:

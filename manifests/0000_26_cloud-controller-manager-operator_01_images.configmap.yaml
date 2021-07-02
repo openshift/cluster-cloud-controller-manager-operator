@@ -9,8 +9,8 @@ metadata:
 data:
   images.json: >
     {
-      "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-      "cloudControllerManagerAzure": "registry.ci.openshift.org/openshift:azure-cloud-controller-manager",
-      "cloudNodeManagerAzure": "registry.ci.openshift.org/openshift:azure-cloud-node-manager",
-      "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+      "cloudControllerManagerAWS": "quay.io/openshift/origin-aws-cloud-controller-manager",
+      "cloudControllerManagerAzure": "quay.io/openshift/origin-azure-cloud-controller-manager",
+      "cloudNodeManagerAzure": "quay.io/openshift/origin-azure-cloud-node-manager",
+      "cloudControllerManagerOpenStack": "quay.io/openshift/origin-openstack-cloud-controller-manager"
     }

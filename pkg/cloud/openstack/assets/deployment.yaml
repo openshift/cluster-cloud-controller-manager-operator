@@ -42,7 +42,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: cloud-controller-manager
-          image: docker.io/k8scloudprovider/openstack-cloud-controller-manager:latest
+          image: quay.io/openshift/origin-openstack-cloud-controller-manager
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CLOUD_CONFIG

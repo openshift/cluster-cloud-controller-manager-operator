@@ -188,7 +188,7 @@ You should add your cloud provider image reference tag to the list. The list is 
 - name: aws-cloud-controller-manager
   from:
    kind: DockerImage
-   name: registry.ci.openshift.org/openshift:aws-cloud-controller-manager
+   name: quay.io/openshift/origin-aws-cloud-controller-manager
 ```
 
 You will have to extend the config [images](https://github.com/openshift/cluster-cloud-controller-manager-operator/blob/master/manifests/0000_26_cloud-controller-manager-operator_01_images.configmap.yaml) list with image name:
@@ -202,7 +202,7 @@ metadata:
 data:
  images.json: >
    {
-     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+     "cloudControllerManagerAWS": "quay.io/openshift/origin-aws-cloud-controller-manager",
    … # Other images 
    }
 ```
