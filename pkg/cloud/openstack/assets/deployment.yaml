@@ -38,7 +38,10 @@ spec:
           operator: Exists
           effect: "NoSchedule"
         - key: node.cloudprovider.kubernetes.io/uninitialized
-          value: "true"
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
           effect: NoSchedule
       containers:
         - name: cloud-controller-manager
@@ -48,18 +51,32 @@ spec:
             - name: CLOUD_CONFIG
               value: /etc/kubernetes/config/cloud.conf
           args:
-            - /bin/openstack-cloud-controller-manager
             - --v=1
             - --cloud-config=$(CLOUD_CONFIG)
             - --cloud-provider=openstack
             - --use-service-account-credentials=true
             - --bind-address=127.0.0.1
             - --leader-elect-resource-namespace=openshift-cloud-controller-manager
+          command:
+          - /bin/bash
+          - -c
+          - |
+            #!/bin/bash
+            set -o allexport
+            if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
+              source /etc/kubernetes/apiserver-url.env
+            else
+              URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
+            fi
+            exec /bin/openstack-cloud-controller-manager
           resources:
             requests:
               cpu: 200m
               memory: 50Mi
           volumeMounts:
+            - mountPath: /etc/kubernetes
+              name: host-etc-kube
+              readOnly: true
             - name: secret-occm
               mountPath: /etc/kubernetes/secret
               readOnly: true
@@ -67,6 +84,10 @@ spec:
               mountPath: /etc/kubernetes/config
               readOnly: true
       volumes:
+        - name: host-etc-kube
+          hostPath:
+            path: /etc/kubernetes
+            type: Directory
         - name: secret-occm
           secret:
             secretName: openstack-cloud-credentials
