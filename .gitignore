@@ -18,3 +18,6 @@
 # Directories with variable content
 bin/*
 config/*
+
+# golangci-lint cache
+.cache/*
