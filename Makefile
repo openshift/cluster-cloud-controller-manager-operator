@@ -16,14 +16,10 @@ all: build
 verify: fmt vet lint
 
 # Run tests
-ENVTEST_ASSETS_DIR=/tmp/testbin
-test: generate verify manifests
-	mkdir -p ${ENVTEST_ASSETS_DIR}
-	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.7.0/hack/setup-envtest.sh
-	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
+test: generate verify manifests unit
 
 unit:
-	go test ./... -coverprofile cover.out
+	hack/unit-tests.sh
 
 # Build operator binary
 build: verify operator render
