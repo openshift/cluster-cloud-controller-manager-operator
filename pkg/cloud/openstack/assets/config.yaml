@@ -3,7 +3,7 @@ data:
   cloud.conf: |
     [Global]
     use-clouds = true
-    clouds-file = /etc/kubernetes/secret/clouds.yaml
+    clouds-file = /etc/openstack/secret/clouds.yaml
     cloud = openstack
 kind: ConfigMap
 metadata:

@@ -49,7 +49,7 @@ spec:
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CLOUD_CONFIG
-              value: /etc/kubernetes/config/cloud.conf
+              value: /etc/openstack/config/cloud.conf
           args:
             - --v=1
             - --cloud-config=$(CLOUD_CONFIG)
@@ -78,10 +78,10 @@ spec:
               name: host-etc-kube
               readOnly: true
             - name: secret-occm
-              mountPath: /etc/kubernetes/secret
+              mountPath: /etc/openstack/secret
               readOnly: true
             - name: config-occm
-              mountPath: /etc/kubernetes/config
+              mountPath: /etc/openstack/config
               readOnly: true
       volumes:
         - name: host-etc-kube
