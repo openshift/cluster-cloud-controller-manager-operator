@@ -26,7 +26,17 @@ spec:
       - name: cluster-cloud-controller-manager
         image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
         command:
-        - "/cluster-controller-manager-operator"
+        - /bin/bash
+        - -c
+        - |
+          #!/bin/bash
+          set -o allexport
+          if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
+            source /etc/kubernetes/apiserver-url.env
+          else
+            URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
+          fi
+          exec /cluster-controller-manager-operator
         args:
         - --leader-elect
         - "--images-json=/etc/cloud-controller-manager-config/images.json"
@@ -40,6 +50,10 @@ spec:
         volumeMounts:
         - name: images
           mountPath: /etc/cloud-controller-manager-config/
+        - mountPath: /etc/kubernetes
+          name: host-etc-kube
+          readOnly: true
+      hostNetwork: true
       nodeSelector:
         node-role.kubernetes.io/master: ""
       restartPolicy: Always
@@ -58,8 +72,20 @@ spec:
         operator: "Exists"
         effect: "NoExecute"
         tolerationSeconds: 120
+      - key: "node.cloudprovider.kubernetes.io/uninitialized"
+        operator: "Exists"
+        effect: "NoSchedule"
+        # CNI relies on CCM to fill in IP information on Node objects.
+        # Therefore we must schedule before the CNI can mark the Node as ready.
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoSchedule"
       volumes:
       - name: images
         configMap:
           defaultMode: 420
           name: cloud-controller-manager-images
+      - name: host-etc-kube
+        hostPath:
+          path: /etc/kubernetes
+          type: Directory

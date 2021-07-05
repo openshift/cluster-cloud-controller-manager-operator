@@ -10,12 +10,23 @@ spec:
     - name: cloud-controller-manager
       image: quay.io/openshift/origin-azure-cloud-controller-manager
       imagePullPolicy: IfNotPresent
-      command: ["cloud-controller-manager"]
+      command:
+      - /bin/bash
+      - -c
+      - |
+        #!/bin/bash
+        set -o allexport
+        if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
+          source /etc/kubernetes/apiserver-url.env
+        else
+          URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
+        fi
+        exec cloud-controller-manager
       args:
         - --cloud-provider=azure
         - --controllers=cloud-node # run cloud-node controller only for Node initialization
-        - --kubeconfig=/etc/kubernetes/secrets/kubeconfig
-        - --cloud-config=/etc/kubernetes/configs/cloud.conf
+        - --kubeconfig=/etc/kubernetes/bootstrap-secrets/kubeconfig
+        - --cloud-config=/etc/kubernetes/bootstrap-configs/cloud.conf
         - --leader-elect=false
         - --port=10267
         - -v=2
@@ -27,14 +38,18 @@ spec:
         periodSeconds: 10
         timeoutSeconds: 5
       volumeMounts:
-      - name: secrets
-        mountPath: /etc/kubernetes/secrets
-      - name: configs
-        mountPath: /etc/kubernetes/configs
+      - mountPath: /etc/kubernetes
+        name: host-etc-kube
+        readOnly: true
+  tolerations:
+  - effect: NoSchedule
+    key: node.cloudprovider.kubernetes.io/uninitialized
+    operator: Exists
+  - effect: NoSchedule
+    key: node.kubernetes.io/not-ready
+    operator: Exists
   volumes:
-  - name: secrets
+  - name: host-etc-kube
     hostPath:
-      path: /etc/kubernetes/bootstrap-secrets
-  - name: configs
-    hostPath:
-      path: /etc/kubernetes/bootstrap-configs
+      path: /etc/kubernetes
+      type: Directory
