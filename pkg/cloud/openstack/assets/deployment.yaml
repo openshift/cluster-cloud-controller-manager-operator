@@ -68,7 +68,7 @@ spec:
             else
               URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
             fi
-            exec /bin/openstack-cloud-controller-manager
+            exec /usr/bin/openstack-cloud-controller-manager
           resources:
             requests:
               cpu: 200m
