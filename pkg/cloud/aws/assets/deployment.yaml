@@ -19,12 +19,7 @@ spec:
     spec:
       priorityClassName: system-cluster-critical
       containers:
-      - args:
-        - --cloud-provider=aws
-        - --use-service-account-credentials=true
-        - --leader-elect-resource-namespace=openshift-cloud-controller-manager
-        - -v=2
-        command:
+      - command:
         - /bin/bash
         - -c
         - |
@@ -35,7 +30,11 @@ spec:
           else
             URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
           fi
-          exec /bin/aws-cloud-controller-manager
+          exec /bin/aws-cloud-controller-manager \
+          --cloud-provider=aws \
+          --use-service-account-credentials=true \
+          --leader-elect-resource-namespace=openshift-cloud-controller-manager \
+          -v=2
         image: quay.io/openshift/origin-aws-cloud-controller-manager
         imagePullPolicy: IfNotPresent
         name: cloud-controller-manager

@@ -6,14 +6,7 @@ metadata:
 spec:
   priorityClassName: system-cluster-critical
   containers:
-  - args:
-    - --cloud-provider=aws
-    - --use-service-account-credentials=false
-    - --controllers=cloud-node # run only cloud-node controller required to bootstrap master nodes
-    - --kubeconfig=/etc/kubernetes/bootstrap-secrets/kubeconfig
-    - --leader-elect=false
-    - -v=2
-    command:
+  - command:
     - /bin/bash
     - -c
     - |
@@ -24,7 +17,13 @@ spec:
       else
         URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
       fi
-      exec /bin/aws-cloud-controller-manager
+      exec /bin/aws-cloud-controller-manager \
+      --cloud-provider=aws \
+      --use-service-account-credentials=false \
+      --controllers=cloud-node \
+      --kubeconfig=/etc/kubernetes/bootstrap-secrets/kubeconfig \
+      --leader-elect=false \
+      -v=2
     image: quay.io/openshift/origin-aws-cloud-controller-manager
     imagePullPolicy: IfNotPresent
     name: cloud-controller-manager
