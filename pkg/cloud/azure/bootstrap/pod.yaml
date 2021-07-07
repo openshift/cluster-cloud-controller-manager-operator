@@ -21,15 +21,14 @@ spec:
         else
           URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
         fi
-        exec cloud-controller-manager
-      args:
-        - --cloud-provider=azure
-        - --controllers=cloud-node # run cloud-node controller only for Node initialization
-        - --kubeconfig=/etc/kubernetes/bootstrap-secrets/kubeconfig
-        - --cloud-config=/etc/kubernetes/bootstrap-configs/cloud.conf
-        - --leader-elect=false
-        - --port=10267
-        - -v=2
+        exec cloud-controller-manager \
+        --cloud-provider=azure \
+        --controllers=cloud-node \
+        --kubeconfig=/etc/kubernetes/bootstrap-secrets/kubeconfig \
+        --cloud-config=/etc/kubernetes/bootstrap-configs/cloud.conf \
+        --leader-elect=false \
+        --port=10267 \
+        -v=2
       livenessProbe:
         httpGet:
           path: /healthz

@@ -251,6 +251,8 @@ exec `
 	for _, container := range podSpec.Containers {
 		command := container.Command
 		assert.Len(t, command, 3, "Container Command should have 3 elements")
+		assert.Len(t, container.Args, 0, "Container Args should have no elements, inline the args into the Container Command")
+
 		assert.Equal(t, command[0], binBash, "Container Command first element should equal %q", binBash)
 		assert.Equal(t, command[1], dashC, "Container Command second element should equal %q", dashC)
 		assert.True(t, strings.HasPrefix(command[2], setAPIEnv), "Container Command third (%q) element should start with %q", command[2], setAPIEnv)

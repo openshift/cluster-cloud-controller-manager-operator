@@ -50,13 +50,6 @@ spec:
           env:
             - name: CLOUD_CONFIG
               value: /etc/openstack/config/cloud.conf
-          args:
-            - --v=1
-            - --cloud-config=$(CLOUD_CONFIG)
-            - --cloud-provider=openstack
-            - --use-service-account-credentials=true
-            - --bind-address=127.0.0.1
-            - --leader-elect-resource-namespace=openshift-cloud-controller-manager
           command:
           - /bin/bash
           - -c
@@ -68,7 +61,13 @@ spec:
             else
               URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
             fi
-            exec /usr/bin/openstack-cloud-controller-manager
+            exec /usr/bin/openstack-cloud-controller-manager \
+            --v=1 \
+            --cloud-config=$(CLOUD_CONFIG) \
+            --cloud-provider=openstack \
+            --use-service-account-credentials=true \
+            --bind-address=127.0.0.1 \
+            --leader-elect-resource-namespace=openshift-cloud-controller-manager
           resources:
             requests:
               cpu: 200m
