@@ -51,13 +51,11 @@ spec:
         node-role.kubernetes.io/master: ""
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              topologyKey: "kubernetes.io/hostname"
-              labelSelector:
-                matchLabels:
-                  k8s-app: aws-cloud-controller-manager
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                k8s-app: aws-cloud-controller-manager
       serviceAccountName: cloud-controller-manager
       tolerations:
       - effect: NoSchedule

@@ -24,13 +24,11 @@ spec:
         node-role.kubernetes.io/master: ""
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 1
-            podAffinityTerm:
-              topologyKey: "kubernetes.io/hostname"
-              labelSelector:
-                matchLabels:
-                  app: openstack-cloud-controller-manager
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                app: openstack-cloud-controller-manager
       tolerations:
         - key: CriticalAddonsOnly
           operator: Exists

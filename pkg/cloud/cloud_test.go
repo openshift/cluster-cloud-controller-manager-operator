@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -257,4 +258,52 @@ exec `
 		assert.Equal(t, command[1], dashC, "Container Command second element should equal %q", dashC)
 		assert.True(t, strings.HasPrefix(command[2], setAPIEnv), "Container Command third (%q) element should start with %q", command[2], setAPIEnv)
 	}
+}
+
+func TestDeploymentPodAntiAffinity(t *testing.T) {
+	platforms := []configv1.PlatformType{
+		configv1.AWSPlatformType,
+		configv1.OpenStackPlatformType,
+		configv1.GCPPlatformType,
+		configv1.AzurePlatformType,
+		configv1.VSpherePlatformType,
+		configv1.OvirtPlatformType,
+		configv1.IBMCloudPlatformType,
+		configv1.LibvirtPlatformType,
+		configv1.KubevirtPlatformType,
+		configv1.BareMetalPlatformType,
+		configv1.NonePlatformType,
+	}
+	for _, platform := range platforms {
+		t.Run(string(platform), func(t *testing.T) {
+			resources := GetResources(platform)
+			resources = append(resources, GetBootstrapResources(platform)...)
+
+			for _, resource := range resources {
+				switch obj := resource.(type) {
+				case *appsv1.Deployment:
+					checkPodAntiAffinity(t, obj.Spec.Template.Spec, obj.ObjectMeta)
+				default:
+					// Nothing to check for non
+				}
+			}
+		})
+	}
+}
+
+func checkPodAntiAffinity(t *testing.T, podSpec corev1.PodSpec, podMeta metav1.ObjectMeta) {
+	assert.NotNil(t, podSpec.Affinity)
+
+	podAntiAffinity := &corev1.PodAntiAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+			{
+				TopologyKey: "kubernetes.io/hostname",
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: podMeta.Labels,
+				},
+			},
+		},
+	}
+
+	assert.EqualValues(t, podAntiAffinity, podSpec.Affinity.PodAntiAffinity)
 }

@@ -137,13 +137,11 @@ spec:
      # different Nodes you need to set affinity settings
      affinity:
        podAntiAffinity:
-         preferredDuringSchedulingIgnoredDuringExecution:
-         - weight: 100
-           podAffinityTerm:
-             topologyKey: "kubernetes.io/hostname"
-             labelSelector:
-               matchLabels:
-                 k8s-app: aws-cloud-controller-manager
+         requiredDuringSchedulingIgnoredDuringExecution:
+         - topologyKey: "kubernetes.io/hostname"
+           labelSelector:
+             matchLabels:
+               k8s-app: aws-cloud-controller-manager
      # All CCMs are currently using cloud-controller-manager ServiceAccount
      # with permissions copying in-tree counterparts.
      serviceAccountName: cloud-controller-manager
