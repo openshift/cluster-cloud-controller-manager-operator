@@ -274,12 +274,13 @@ func TestComposeConfig(t *testing.T) {
 	defaultManagementNamespace := "test-namespace"
 
 	tc := []struct {
-		name          string
-		namespace     string
-		platform      configv1.PlatformType
-		imagesContent string
-		expectConfig  OperatorConfig
-		expectError   string
+		name            string
+		namespace       string
+		platform        configv1.PlatformType
+		imagesContent   string
+		expectConfig    OperatorConfig
+		expectError     string
+		isSingleReplica bool
 	}{{
 		name:      "Unmarshal images from file for AWS",
 		namespace: defaultManagementNamespace,
@@ -325,6 +326,21 @@ func TestComposeConfig(t *testing.T) {
     "cloudControllerManagerAWS": BAD,
 }`,
 		expectError: "invalid character 'B' looking for beginning of value",
+	}, {
+		name:            "Single Replica",
+		namespace:       defaultManagementNamespace,
+		platform:        configv1.OpenStackPlatformType,
+		isSingleReplica: true,
+		imagesContent: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+		expectConfig: OperatorConfig{
+			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+			ManagedNamespace: defaultManagementNamespace,
+			Platform:         configv1.OpenStackPlatformType,
+			IsSingleReplica:  true,
+		},
 	}}
 
 	for _, tc := range tc {
@@ -337,7 +353,7 @@ func TestComposeConfig(t *testing.T) {
 			_, err = file.WriteString(tc.imagesContent)
 			assert.NoError(t, err)
 
-			config, err := ComposeConfig(tc.platform, path, tc.namespace)
+			config, err := ComposeConfig(tc.platform, path, tc.namespace, tc.isSingleReplica)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {

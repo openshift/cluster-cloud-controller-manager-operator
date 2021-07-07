@@ -8,6 +8,7 @@ import (
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -301,6 +302,42 @@ func TestFillConfigValues(t *testing.T) {
 			ControllerImage:  "correct_image:tag",
 			CloudNodeImage:   "correct_cloud_node_image:tag",
 			ManagedNamespace: testManagementNamespace,
+		},
+	}, {
+		name: "Substitute Single Replica for deployment",
+		objects: []client.Object{&v1.Deployment{
+			Spec: v1.DeploymentSpec{
+				Replicas: pointer.Int32(2),
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{
+							Name:  cloudControllerManagerName,
+							Image: "expect_change",
+						}},
+					},
+				},
+			},
+		}},
+		expectedObjects: []client.Object{&v1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: testManagementNamespace,
+			},
+			Spec: v1.DeploymentSpec{
+				Replicas: pointer.Int32(1),
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{
+							Name:  cloudControllerManagerName,
+							Image: "correct_image:tag",
+						}},
+					},
+				},
+			},
+		}},
+		config: config.OperatorConfig{
+			ControllerImage:  "correct_image:tag",
+			ManagedNamespace: testManagementNamespace,
+			IsSingleReplica:  true,
 		},
 	}}
 

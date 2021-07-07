@@ -27,6 +27,7 @@ type OperatorConfig struct {
 	ManagedNamespace string
 	ControllerImage  string
 	CloudNodeImage   string
+	IsSingleReplica  bool
 	Platform         configv1.PlatformType
 }
 
@@ -102,7 +103,7 @@ func getCloudNodeManagerFromImages(platform configv1.PlatformType, images images
 }
 
 // ComposeConfig creates a Config for operator
-func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace string) (OperatorConfig, error) {
+func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace string, isSingleReplica bool) (OperatorConfig, error) {
 	images, err := getImagesFromJSONFile(imagesFile)
 	if err != nil {
 		klog.Errorf("Unable to decode images file from location %s", imagesFile, err)
@@ -114,6 +115,7 @@ func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace 
 		ManagedNamespace: managedNamespace,
 		ControllerImage:  getCloudControllerManagerFromImages(platform, images),
 		CloudNodeImage:   getCloudNodeManagerFromImages(platform, images),
+		IsSingleReplica:  isSingleReplica,
 	}
 
 	return config, nil

@@ -130,7 +130,9 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	config, err := config.ComposeConfig(platform, r.ImagesFile, r.ManagedNamespace)
+	isSingleReplica := infra.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode
+
+	config, err := config.ComposeConfig(platform, r.ImagesFile, r.ManagedNamespace, isSingleReplica)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {

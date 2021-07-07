@@ -5,6 +5,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -49,6 +50,9 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 		switch obj := templateCopy.(type) {
 		case *appsv1.Deployment:
 			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
+			if config.IsSingleReplica {
+				obj.Spec.Replicas = pointer.Int32(1)
+			}
 		case *appsv1.DaemonSet:
 			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
 		case *corev1.Pod:
