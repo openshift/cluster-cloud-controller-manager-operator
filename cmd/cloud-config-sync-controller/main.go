@@ -32,6 +32,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -49,12 +50,6 @@ var (
 	retryPeriod   = 90 * time.Second
 )
 
-const (
-	defaultImagesLocation         = "/etc/cloud-controller-manager-config/images.json"
-	releaseVersionEnvVariableName = "RELEASE_VERSION"
-	unknownVersionValue           = "unknown"
-)
-
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(configv1.AddToScheme(scheme))
@@ -63,7 +58,6 @@ func init() {
 }
 
 func main() {
-	flag.Set("logtostderr", "true")
 	klog.InitFlags(nil)
 
 	metricsAddr := flag.String(
@@ -99,48 +93,43 @@ func main() {
 	managedNamespace := flag.String(
 		"namespace",
 		controllers.DefaultManagedNamespace,
-		"The namespace for managed objects, where out-of-tree CCM binaries will run.",
-	)
-
-	imagesFile := flag.String(
-		"images-json",
-		defaultImagesLocation,
-		"The location of images file to use by operator for managed CCM binaries.",
+		"The namespace for managed objects, target cloud-conf in particular.",
 	)
 
 	flag.Parse()
 
-	ctrl.SetLogger(klogr.New().WithName("CCMOperator"))
+	ctrl.SetLogger(klogr.New().WithName("CCMOCloudConfigSyncController"))
 
 	syncPeriod := 10 * time.Minute
+	cacheBuilder := cache.MultiNamespacedCacheBuilder([]string{
+		*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace,
+	})
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Namespace:               *managedNamespace,
 		Scheme:                  scheme,
 		SyncPeriod:              &syncPeriod,
 		MetricsBindAddress:      *metricsAddr,
-		Port:                    9443,
 		HealthProbeBindAddress:  *healthAddr,
 		LeaderElectionNamespace: *leaderElectResourceNamespace,
 		LeaderElection:          *leaderElect,
 		LeaseDuration:           leaderElectLeaseDuration,
-		LeaderElectionID:        "cluster-cloud-controller-manager-leader",
+		LeaderElectionID:        "cloud-config-sync-controller-leader",
 		RetryPeriod:             &retryPeriod,
 		RenewDeadline:           &renewDealine,
+		NewCache:                cacheBuilder,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.CloudOperatorReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
-		ReleaseVersion:   getReleaseVersion(),
-		ManagedNamespace: *managedNamespace,
-		ImagesFile:       *imagesFile,
+	if err = (&controllers.CloudConfigReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("cloud-controller-manager-operator-config-sync-controller"),
+		TargetNamespace: *managedNamespace,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ClusterOperator")
+		setupLog.Error(err, "unable to create cloud-config sync controller", "controller", "ClusterOperator")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
@@ -159,13 +148,4 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-func getReleaseVersion() string {
-	releaseVersion := os.Getenv(releaseVersionEnvVariableName)
-	if len(releaseVersion) == 0 {
-		releaseVersion = unknownVersionValue
-		klog.Infof("%s environment variable is missing, defaulting to %q", releaseVersionEnvVariableName, unknownVersionValue)
-	}
-	return releaseVersion
 }

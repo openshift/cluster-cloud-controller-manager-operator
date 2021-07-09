@@ -21,11 +21,14 @@ test: generate verify manifests unit
 unit:
 	hack/unit-tests.sh
 
-# Build operator binary
-build: verify operator render
+# Build operator binaries
+build: operator render cloud-config-sync-controller
 
 operator:
 	go build -o bin/cluster-controller-manager-operator cmd/cluster-cloud-controller-manager-operator/main.go
+
+cloud-config-sync-controller:
+	go build -o bin/cloud-config-sync-controller cmd/cloud-config-sync-controller/main.go
 
 render:
 	go build -o bin/render cmd/render/main.go
