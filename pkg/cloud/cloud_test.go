@@ -174,12 +174,14 @@ func checkVolumes(t *testing.T, podSpec corev1.PodSpec) {
 func checkContainerCommand(t *testing.T, podSpec corev1.PodSpec) {
 	binBash := "/bin/bash"
 	dashC := "-c"
+	// This script should be present on every node.
+	// https://github.com/openshift/machine-config-operator/pull/2232
+	// The script sets the API server URL environment variables that
+	// the client SDK detects automatically.
 	setAPIEnv := `#!/bin/bash
 set -o allexport
 if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
   source /etc/kubernetes/apiserver-url.env
-else
-  URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
 fi
 exec `
 

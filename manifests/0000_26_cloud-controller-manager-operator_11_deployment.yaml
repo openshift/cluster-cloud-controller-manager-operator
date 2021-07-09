@@ -151,8 +151,6 @@ spec:
           set -o allexport
           if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
             source /etc/kubernetes/apiserver-url.env
-          else
-            URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
           fi
           exec /cluster-controller-manager-operator \
           --leader-elect \
@@ -180,8 +178,6 @@ spec:
             set -o allexport
             if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
               source /etc/kubernetes/apiserver-url.env
-            else
-              URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
             fi
             exec /cloud-config-sync-controller \
             --leader-elect \

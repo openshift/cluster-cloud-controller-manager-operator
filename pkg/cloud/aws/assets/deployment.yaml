@@ -27,8 +27,6 @@ spec:
           set -o allexport
           if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
             source /etc/kubernetes/apiserver-url.env
-          else
-            URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
           fi
           exec /bin/aws-cloud-controller-manager \
           --cloud-provider=aws \
