@@ -7,12 +7,8 @@ import (
 	"path/filepath"
 
 	configv1 "github.com/openshift/api/config/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-const configMapImagesKey = "images.json"
 
 // imagesReference allows build systems to inject imagesReference for CCCMO components
 type imagesReference struct {
@@ -41,27 +37,6 @@ func GetProviderFromInfrastructure(infra *configv1.Infrastructure) (configv1.Pla
 	}
 
 	return infra.Status.PlatformStatus.Type, nil
-}
-
-// getImagesFromImagesConfigMap collects the content of provided ConfigMap with images
-// via --images-file which is used for rendering bootstrap manifests.
-func getImagesFromImagesConfigMap(config *corev1.ConfigMap) (imagesReference, error) {
-	if config == nil || config.Data == nil {
-		return imagesReference{}, fmt.Errorf("unable to find Data field in provided ConfigMap")
-	}
-
-	data, ok := config.Data[configMapImagesKey]
-	if !ok {
-		return imagesReference{},
-			fmt.Errorf("unable to find images key %q in ConfigMap %s", configMapImagesKey, client.ObjectKeyFromObject(config))
-	}
-
-	i := imagesReference{}
-	if err := json.Unmarshal([]byte(data), &i); err != nil {
-		return imagesReference{},
-			fmt.Errorf("unable to decode images content from ConfigMap %s: %v", client.ObjectKeyFromObject(config), err)
-	}
-	return i, nil
 }
 
 // getImagesFromJSONFile is used in operator to read the content of mounted ConfigMap
@@ -116,30 +91,6 @@ func ComposeConfig(platform configv1.PlatformType, imagesFile, managedNamespace 
 		ControllerImage:  getCloudControllerManagerFromImages(platform, images),
 		CloudNodeImage:   getCloudNodeManagerFromImages(platform, images),
 		IsSingleReplica:  isSingleReplica,
-	}
-
-	return config, nil
-}
-
-// ComposeBootstrapConfig creates a Config for render
-func ComposeBootstrapConfig(infra *configv1.Infrastructure, imagesConfig *corev1.ConfigMap, managedNamespace string) (OperatorConfig, error) {
-	platform, err := GetProviderFromInfrastructure(infra)
-	if err != nil {
-		klog.Errorf("Unable to determine platform from cluster infrastructure file: %s", err)
-		return OperatorConfig{}, err
-	}
-
-	images, err := getImagesFromImagesConfigMap(imagesConfig)
-	if err != nil {
-		klog.Errorf("Unable to decode images file from location %s", images, err)
-		return OperatorConfig{}, err
-	}
-
-	config := OperatorConfig{
-		Platform:         platform,
-		ManagedNamespace: managedNamespace,
-		ControllerImage:  getCloudControllerManagerFromImages(platform, images),
-		CloudNodeImage:   getCloudNodeManagerFromImages(platform, images),
 	}
 
 	return config, nil
