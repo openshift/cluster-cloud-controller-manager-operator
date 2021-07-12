@@ -218,17 +218,22 @@ func TestComposeConfig(t *testing.T) {
 	defaultManagementNamespace := "test-namespace"
 
 	tc := []struct {
-		name            string
-		namespace       string
-		platform        configv1.PlatformType
-		imagesContent   string
-		expectConfig    OperatorConfig
-		expectError     string
-		isSingleReplica bool
+		name          string
+		namespace     string
+		infra         *configv1.Infrastructure
+		imagesContent string
+		expectConfig  OperatorConfig
+		expectError   string
 	}{{
 		name:      "Unmarshal images from file for AWS",
 		namespace: defaultManagementNamespace,
-		platform:  configv1.AWSPlatformType,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+		},
 		imagesContent: `{
     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
     "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
@@ -241,7 +246,13 @@ func TestComposeConfig(t *testing.T) {
 	}, {
 		name:      "Unmarshal images from file for OpenStack",
 		namespace: defaultManagementNamespace,
-		platform:  configv1.OpenStackPlatformType,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.OpenStackPlatformType,
+				},
+			},
+		},
 		imagesContent: `{
     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
     "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
@@ -254,7 +265,13 @@ func TestComposeConfig(t *testing.T) {
 	}, {
 		name:      "Unmarshal images from file for unknown platform returns nothing",
 		namespace: "otherNamespace",
-		platform:  configv1.NonePlatformType,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.NonePlatformType,
+				},
+			},
+		},
 		imagesContent: `{
     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
     "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
@@ -266,15 +283,29 @@ func TestComposeConfig(t *testing.T) {
 		},
 	}, {
 		name: "Broken JSON is rejected",
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				ControlPlaneTopology: configv1.SingleReplicaTopologyMode,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+		},
 		imagesContent: `{
     "cloudControllerManagerAWS": BAD,
 }`,
 		expectError: "invalid character 'B' looking for beginning of value",
 	}, {
-		name:            "Single Replica",
-		namespace:       defaultManagementNamespace,
-		platform:        configv1.OpenStackPlatformType,
-		isSingleReplica: true,
+		name:      "Single Replica",
+		namespace: defaultManagementNamespace,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				ControlPlaneTopology: configv1.SingleReplicaTopologyMode,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.OpenStackPlatformType,
+				},
+			},
+		},
 		imagesContent: `{
     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
     "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
@@ -285,6 +316,21 @@ func TestComposeConfig(t *testing.T) {
 			Platform:         configv1.OpenStackPlatformType,
 			IsSingleReplica:  true,
 		},
+	}, {
+		name:        "Empty infrastructure should return error",
+		expectError: "platform status is not populated on infrastructure",
+	}, {
+		name:        "Unpopulated infrastructure should return error",
+		infra:       &configv1.Infrastructure{},
+		expectError: "platform status is not populated on infrastructure",
+	}, {
+		name: "Unpopulated infrastructure status should return error",
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: nil,
+			},
+		},
+		expectError: "platform status is not populated on infrastructure",
 	}}
 
 	for _, tc := range tc {
@@ -297,7 +343,7 @@ func TestComposeConfig(t *testing.T) {
 			_, err = file.WriteString(tc.imagesContent)
 			assert.NoError(t, err)
 
-			config, err := ComposeConfig(tc.platform, path, tc.namespace, tc.isSingleReplica)
+			config, err := ComposeConfig(tc.infra, path, tc.namespace)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {

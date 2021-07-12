@@ -97,20 +97,8 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	platform, err := config.GetProviderFromInfrastructure(infra)
-	if err != nil {
-		klog.Errorf("Unable to determine platform from infrastructure: %s", err)
-		// Ignoring error here as infrastructure resource needs to be reconciled externally
-		// to provide correct platform
-		if err := r.setStatusAvailable(ctx); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-
 	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
-	external, err := cloudprovider.IsCloudProviderExternal(platform, featureGate)
+	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus, featureGate)
 	if err != nil {
 		klog.Errorf("Could not determine external cloud provider state: %v", err)
 
@@ -130,9 +118,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	isSingleReplica := infra.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode
-
-	config, err := config.ComposeConfig(platform, r.ImagesFile, r.ManagedNamespace, isSingleReplica)
+	config, err := config.ComposeConfig(infra, r.ImagesFile, r.ManagedNamespace)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {
