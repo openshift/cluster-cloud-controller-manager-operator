@@ -39,6 +39,15 @@ rules:
 - apiGroups:
   - config.openshift.io
   resources:
+  - proxies
+  verbs:
+  - list
+  - get
+  - watch
+
+- apiGroups:
+  - config.openshift.io
+  resources:
   - infrastructures
   - featuregates
   verbs:
