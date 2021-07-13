@@ -339,6 +339,63 @@ func TestFillConfigValues(t *testing.T) {
 			ManagedNamespace: testManagementNamespace,
 			IsSingleReplica:  true,
 		},
+	}, {
+		name: "Substitute cluster env variable name for deployment",
+		objects: []client.Object{&v1.Deployment{
+			Spec: v1.DeploymentSpec{
+				Replicas: pointer.Int32(2),
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Env: []corev1.EnvVar{
+									{Name: "CLOUD_CONFIG", Value: "foo"},
+									{Name: "OCP_INFRASTRUCTURE_NAME", Value: "kubernetes"},
+									{Name: "OTHER_VAR", Value: "kubernetes"},
+								},
+							},
+							{
+								Env: []corev1.EnvVar{
+									{Name: "SOME_RANDOM_VAR", Value: "foo"},
+									{Name: "OTHER_RANDOM_VAR", Value: "kubernetes"},
+								},
+							},
+						},
+					},
+				},
+			},
+		}},
+		config: config.OperatorConfig{
+			ManagedNamespace:   testManagementNamespace,
+			InfrastructureName: "my-cool-ocp-cluster",
+		},
+		expectedObjects: []client.Object{&v1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: testManagementNamespace,
+			},
+			Spec: v1.DeploymentSpec{
+				Replicas: pointer.Int32(2),
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Env: []corev1.EnvVar{
+									{Name: "CLOUD_CONFIG", Value: "foo"},
+									{Name: "OCP_INFRASTRUCTURE_NAME", Value: "my-cool-ocp-cluster"},
+									{Name: "OTHER_VAR", Value: "kubernetes"},
+								},
+							},
+							{
+								Env: []corev1.EnvVar{
+									{Name: "SOME_RANDOM_VAR", Value: "foo"},
+									{Name: "OTHER_RANDOM_VAR", Value: "kubernetes"},
+								},
+							},
+						},
+					},
+				},
+			},
+		}},
 	}}
 
 	for _, tc := range tc {

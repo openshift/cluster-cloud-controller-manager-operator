@@ -14,6 +14,8 @@ const (
 	// cloudControllerManagerName is a name for default CCM controller container any provider may have
 	cloudControllerManagerName = "cloud-controller-manager"
 	cloudNodeManagerName       = "cloud-node-manager"
+
+	infraNameEnvVar = "OCP_INFRASTRUCTURE_NAME"
 )
 
 // setCloudControllerImage substitutes controller containers in provided pod specs with correct image
@@ -39,6 +41,20 @@ func setCloudControllerImage(config config.OperatorConfig, p corev1.PodSpec) cor
 	return updatedPod
 }
 
+// setInfrastructureNameVariable tries to find env variable with name OCP_INFRASTRUCTURE_NAME, if found put infra name from infra resource there.
+func setInfrastructureNameVariable(infrastructureName string, p corev1.PodSpec) corev1.PodSpec {
+	updatedPod := *p.DeepCopy()
+	for _, container := range updatedPod.Containers {
+		for i, envVar := range container.Env {
+			if envVar.Name == infraNameEnvVar {
+				container.Env[i].Value = infrastructureName
+				break
+			}
+		}
+	}
+	return updatedPod
+}
+
 func FillConfigValues(config config.OperatorConfig, templates []client.Object) []client.Object {
 	objects := make([]client.Object, len(templates))
 	for i, objectTemplate := range templates {
@@ -50,6 +66,7 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 		switch obj := templateCopy.(type) {
 		case *appsv1.Deployment:
 			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
+			obj.Spec.Template.Spec = setInfrastructureNameVariable(config.InfrastructureName, obj.Spec.Template.Spec)
 			if config.IsSingleReplica {
 				obj.Spec.Replicas = pointer.Int32(1)
 			}
