@@ -1,0 +1,97 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: azure-cloud-controller-manager
+  namespace: openshift-cloud-controller-manager
+  labels:
+    app: azure-cloud-controller-manager
+spec:
+  selector:
+    matchLabels:
+      app: azure-cloud-controller-manager
+  template:
+    metadata:
+      labels:
+        app: azure-cloud-controller-manager
+    spec:
+      hostNetwork: true
+      serviceAccountName: cloud-controller-manager
+      priorityClassName: system-cluster-critical
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: azure-cloud-controller-manager
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+          operator: Exists
+        - effect: NoExecute
+          key: node.kubernetes.io/unreachable
+          operator: Exists
+          tolerationSeconds: 120
+        - effect: NoExecute
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+          tolerationSeconds: 120
+        - effect: NoSchedule
+          key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+        - effect: NoSchedule
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+      containers:
+        - name: azure-cloud-controller-manager
+          image: quay.io/openshift/origin-azure-cloud-controller-manager:4.8.0
+          imagePullPolicy: "IfNotPresent"
+          env:
+            - name: CLOUD_CONFIG
+              value: /etc/kubernetes-cloud-config/cloud.conf
+            - name: OCP_INFRASTRUCTURE_NAME
+              value: kubernetes # default cluster name in ccm
+          resources:
+            requests:
+              cpu: 200m
+              memory: 50Mi
+          command:
+            - /bin/bash
+            - -c
+            - |
+              #!/bin/bash
+              set -o allexport
+              if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
+                source /etc/kubernetes/apiserver-url.env
+              fi
+              exec /bin/azure-cloud-controller-manager \
+                --v=3 \
+                --cloud-config=$(CLOUD_CONFIG) \
+                --cloud-provider=azure \
+                --controllers=*,-cloud-node,-route \
+                --allocate-node-cidrs=false \
+                --configure-cloud-routes=false \
+                --use-service-account-credentials=true \
+                --bind-address=127.0.0.1 \
+                --cluster-name=$(OCP_INFRASTRUCTURE_NAME) \
+                --leader-elect-resource-namespace=openshift-cloud-controller-manager
+          volumeMounts:
+            - name: host-etc-kube
+              mountPath: /etc/kubernetes
+              readOnly: true
+            - name: config-accm
+              mountPath: /etc/kubernetes-cloud-config
+              readOnly: true
+      volumes:
+        - name: config-accm
+          configMap:
+            name: cloud-conf
+            items:
+              - key: cloud.conf
+                path: cloud.conf
+        - name: host-etc-kube
+          hostPath:
+            path: /etc/kubernetes
+            type: Directory

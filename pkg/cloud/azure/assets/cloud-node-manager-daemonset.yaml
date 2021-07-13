@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: azure-cloud-node-manager
+  namespace: openshift-cloud-controller-manager
+  labels:
+    component: azure-cloud-node-manager
+    kubernetes.io/cluster-service: "true"
+spec:
+  selector:
+    matchLabels:
+      app: azure-cloud-node-manager
+  template:
+    metadata:
+      labels:
+        app: azure-cloud-node-manager
+      annotations:
+        cluster-autoscaler.kubernetes.io/daemonset-pod: "true"
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: cloud-node-manager
+      hostNetwork: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+          operator: Exists
+        - effect: NoExecute
+          key: node.kubernetes.io/unreachable
+          operator: Exists
+          tolerationSeconds: 120
+        - effect: NoExecute
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+          tolerationSeconds: 120
+        - effect: NoSchedule
+          key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+        - effect: NoSchedule
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+      containers:
+        - name: azure-cloud-node-manager
+          image: quay.io/openshift/origin-azure-cloud-node-manager:4.8.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              #!/bin/bash
+              set -o allexport
+              if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
+                source /etc/kubernetes/apiserver-url.env
+              fi
+              exec /bin/azure-cloud-node-manager \
+                --node-name=$(NODE_NAME) \
+                --wait-routes=false
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: host-etc-kube
+              mountPath: /etc/kubernetes
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 50Mi
+      volumes:
+        - name: host-etc-kube
+          hostPath:
+            path: /etc/kubernetes
+            type: Directory

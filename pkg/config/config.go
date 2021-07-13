@@ -20,11 +20,12 @@ type imagesReference struct {
 
 // OperatorConfig contains configuration values for templating resources
 type OperatorConfig struct {
-	ManagedNamespace string
-	ControllerImage  string
-	CloudNodeImage   string
-	IsSingleReplica  bool
-	Platform         configv1.PlatformType
+	ManagedNamespace   string
+	ControllerImage    string
+	CloudNodeImage     string
+	IsSingleReplica    bool
+	InfrastructureName string
+	Platform           configv1.PlatformType
 }
 
 // GetProviderFromInfrastructure reads the Infrastructure resource and returns Platform value
@@ -92,11 +93,12 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, imagesFile, managedN
 	}
 
 	config := OperatorConfig{
-		Platform:         platform,
-		ManagedNamespace: managedNamespace,
-		ControllerImage:  getCloudControllerManagerFromImages(platform, images),
-		CloudNodeImage:   getCloudNodeManagerFromImages(platform, images),
-		IsSingleReplica:  infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
+		Platform:           platform,
+		ManagedNamespace:   managedNamespace,
+		ControllerImage:    getCloudControllerManagerFromImages(platform, images),
+		CloudNodeImage:     getCloudNodeManagerFromImages(platform, images),
+		InfrastructureName: infrastructure.Status.InfrastructureName,
+		IsSingleReplica:    infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
 	}
 
 	return config, nil
