@@ -4,9 +4,9 @@
 
 Some cloud providers, such as [Azure](https://kubernetes-sigs.github.io/cloud-provider-azure/install/configs/) or [vSphere](https://cloud-provider-vsphere.sigs.k8s.io/cloud_config.html), require a config file, which contains various platform-specific parameters (e.g. api endpoints, resource group name, and so on).
 
-In OpenShift this config is stored in a config map defined during the installation procedure and managed by the [cluster-config-operator](https://github.com/openshift/cluster-config-operator).
+In OpenShift this config is stored in a ConfigMap defined during the installation procedure and managed by the [cluster-config-operator](https://github.com/openshift/cluster-config-operator).
 
-There are two places where this config map is stored on a running cluster at the moment (OCP 4.9):
+There are two places where this ConfigMap is stored on a running cluster at the moment (OCP 4.9):
 1. `kube-cloud-config` ConfigMap in `openshift-config-managed` namespace.
 2. ConfigMap with an arbitrary name in `openshift-config` namespace. Such name might be taken from the `cluster` Infrastructure resource spec.
 
