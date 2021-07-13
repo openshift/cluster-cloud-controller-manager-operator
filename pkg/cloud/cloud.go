@@ -3,6 +3,7 @@ package cloud
 import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,6 +22,8 @@ func GetResources(platform configv1.PlatformType) []client.Object {
 		return aws.GetResources()
 	case configv1.OpenStackPlatformType:
 		return openstack.GetResources()
+	case configv1.AzurePlatformType:
+		return azure.GetResources()
 	default:
 		klog.Warningf("Unrecognized platform type %q found in infrastructure", platform)
 		return nil
