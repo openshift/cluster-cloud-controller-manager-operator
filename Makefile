@@ -60,10 +60,12 @@ vendor:
 	go mod tidy
 	go mod vendor
 	go mod verify
+	./hack/verify-diff.sh
 
 # Generate code
 generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	./hack/verify-diff.sh
 
 # Build the docker image
 .PHONY: image
