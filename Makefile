@@ -49,10 +49,9 @@ vet:
 	go vet ./...
 
 # Run golangci-lint against code
-# TODO: fix errors and enable errcheck
 .PHONY: lint
 lint: golangci-lint
-	( GOLANGCI_LINT_CACHE=$(PROJECT_DIR)/.cache $(GOLANGCI_LINT) run --timeout 10m --disable errcheck )
+	( GOLANGCI_LINT_CACHE=$(PROJECT_DIR)/.cache $(GOLANGCI_LINT) run --timeout 10m )
 
 # Run go mod
 .PHONY: vendor

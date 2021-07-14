@@ -63,7 +63,7 @@ func init() {
 }
 
 func main() {
-	flag.Set("logtostderr", "true")
+	flag.Set("logtostderr", "true") //nolint:errcheck
 	klog.InitFlags(nil)
 
 	metricsAddr := flag.String(
