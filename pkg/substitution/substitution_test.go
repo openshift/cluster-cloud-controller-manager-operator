@@ -81,39 +81,11 @@ func TestSetCloudControllerImage(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			deploy := &v1.Deployment{
-				Spec: v1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: tc.containers,
-						},
-					},
-				},
+			podSpec := corev1.PodSpec{
+				Containers: tc.containers,
 			}
 
-			ds := &v1.DaemonSet{
-				Spec: v1.DaemonSetSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: tc.containers,
-						},
-					},
-				},
-			}
-
-			pod := &corev1.Pod{
-				Spec: corev1.PodSpec{
-					Containers: tc.containers,
-				},
-			}
-
-			spec := setCloudControllerImage(tc.config, deploy.Spec.Template.Spec)
-			assert.EqualValues(t, spec.Containers, tc.expectedContainers)
-
-			spec = setCloudControllerImage(tc.config, ds.Spec.Template.Spec)
-			assert.EqualValues(t, spec.Containers, tc.expectedContainers)
-
-			spec = setCloudControllerImage(tc.config, pod.Spec)
+			spec := setCloudControllerImage(tc.config, podSpec)
 			assert.EqualValues(t, spec.Containers, tc.expectedContainers)
 		})
 	}
@@ -381,7 +353,7 @@ func TestFillConfigValues(t *testing.T) {
 			ManagedNamespace: testManagementNamespace,
 		},
 	}, {
-		name: "Substitute image and namespace for deployment, daemonset and pod",
+		name: "Substitute image and namespace for deployment and daemonset",
 		objects: []client.Object{&v1.DaemonSet{
 			Spec: v1.DaemonSetSpec{
 				Template: corev1.PodTemplateSpec{
@@ -392,20 +364,6 @@ func TestFillConfigValues(t *testing.T) {
 						}},
 					},
 				},
-			},
-		}, &corev1.Pod{
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{
-					Name:  cloudControllerManagerName,
-					Image: "expect_change",
-				}},
-			},
-		}, &corev1.Pod{
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{
-					Name:  cloudNodeManagerName,
-					Image: "expect_change",
-				}},
 			},
 		}, &v1.Deployment{
 			Spec: v1.DeploymentSpec{
@@ -433,26 +391,6 @@ func TestFillConfigValues(t *testing.T) {
 							}},
 						},
 					},
-				},
-			}, &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testManagementNamespace,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{
-						Name:  cloudControllerManagerName,
-						Image: "correct_image:tag",
-					}},
-				},
-			}, &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testManagementNamespace,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{
-						Name:  cloudNodeManagerName,
-						Image: "correct_cloud_node_image:tag",
-					}},
 				},
 			}, &v1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
