@@ -38,10 +38,10 @@ run: verify manifests
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-# Run go fmt against code
+# Check formatting of the code
 .PHONY: fmt
 fmt:
-	go fmt ./...
+	./hack/verify-gofmt.sh
 
 # Run go vet against code
 .PHONY: vet
@@ -73,6 +73,11 @@ image:
 .PHONY: push
 push:
 	docker push ${IMG}
+
+# Run go fmt against code
+.PHONY: update-fmt
+update-fmt:
+	go fmt ./...
 
 # Download controller-gen locally if necessary
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
