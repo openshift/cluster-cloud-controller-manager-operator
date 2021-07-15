@@ -221,6 +221,7 @@ func TestComposeConfig(t *testing.T) {
 		name          string
 		namespace     string
 		infra         *configv1.Infrastructure
+		clusterProxy  *configv1.Proxy
 		imagesContent string
 		expectConfig  OperatorConfig
 		expectError   string
@@ -331,6 +332,35 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		expectError: "platform status is not populated on infrastructure",
+	}, {
+		name:      "Unmarshal images from file for AWS",
+		namespace: defaultManagementNamespace,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+		},
+		clusterProxy: &configv1.Proxy{
+			Status: configv1.ProxyStatus{
+				HTTPProxy: "http://squid.corp.acme.com:3128",
+			},
+		},
+		imagesContent: `{
+    "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+}`,
+		expectConfig: OperatorConfig{
+			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			ManagedNamespace: defaultManagementNamespace,
+			Platform:         configv1.AWSPlatformType,
+			ClusterProxy: &configv1.Proxy{
+				Status: configv1.ProxyStatus{
+					HTTPProxy: "http://squid.corp.acme.com:3128",
+				},
+			},
+		},
 	}}
 
 	for _, tc := range tc {
@@ -343,7 +373,7 @@ func TestComposeConfig(t *testing.T) {
 			_, err = file.WriteString(tc.imagesContent)
 			assert.NoError(t, err)
 
-			config, err := ComposeConfig(tc.infra, path, tc.namespace)
+			config, err := ComposeConfig(tc.infra, tc.clusterProxy, path, tc.namespace)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {

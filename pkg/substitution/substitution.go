@@ -1,6 +1,7 @@
 package substitution
 
 import (
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -55,6 +56,51 @@ func setInfrastructureNameVariable(infrastructureName string, p corev1.PodSpec) 
 	return updatedPod
 }
 
+// setProxySettings substitutes controller containers in provided pod specs with cluster wide proxy settings
+func setProxySettings(config config.OperatorConfig, p corev1.PodSpec) corev1.PodSpec {
+	clusterProxyEnvVars := getProxyArgs(config.ClusterProxy)
+	if len(clusterProxyEnvVars) == 0 {
+		return p
+	}
+
+	updatedPod := *p.DeepCopy()
+	for i, container := range p.Containers {
+		klog.Infof("Substituting proxy settings for container %q", container.Name)
+		updatedPod.Containers[i].Env = append(updatedPod.Containers[i].Env, clusterProxyEnvVars...)
+	}
+
+	return updatedPod
+}
+
+// getProxyArg converts a cluster wide proxy configuration into a list of
+// env variable objects for pods.
+func getProxyArgs(proxy *configv1.Proxy) []corev1.EnvVar {
+	var envVars []corev1.EnvVar
+
+	if proxy == nil {
+		return envVars
+	}
+	if proxy.Status.HTTPProxy != "" {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "HTTP_PROXY",
+			Value: proxy.Status.HTTPProxy,
+		})
+	}
+	if proxy.Status.HTTPSProxy != "" {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "HTTPS_PROXY",
+			Value: proxy.Status.HTTPSProxy,
+		})
+	}
+	if proxy.Status.NoProxy != "" {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "NO_PROXY",
+			Value: proxy.Status.NoProxy,
+		})
+	}
+	return envVars
+}
+
 func FillConfigValues(config config.OperatorConfig, templates []client.Object) []client.Object {
 	objects := make([]client.Object, len(templates))
 	for i, objectTemplate := range templates {
@@ -67,11 +113,13 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 		case *appsv1.Deployment:
 			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
 			obj.Spec.Template.Spec = setInfrastructureNameVariable(config.InfrastructureName, obj.Spec.Template.Spec)
+			obj.Spec.Template.Spec = setProxySettings(config, obj.Spec.Template.Spec)
 			if config.IsSingleReplica {
 				obj.Spec.Replicas = pointer.Int32(1)
 			}
 		case *appsv1.DaemonSet:
 			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
+			obj.Spec.Template.Spec = setProxySettings(config, obj.Spec.Template.Spec)
 		case *corev1.Pod:
 			obj.Spec = setCloudControllerImage(config, obj.Spec)
 		}

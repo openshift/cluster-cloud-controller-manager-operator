@@ -39,6 +39,7 @@ import (
 
 const (
 	externalFeatureGateName = "cluster"
+	proxyResourceName       = "cluster"
 )
 
 // CloudOperatorReconciler reconciles a ClusterOperator object
@@ -97,6 +98,17 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	clusterProxy := &configv1.Proxy{}
+	if err := r.Get(ctx, client.ObjectKey{Name: proxyResourceName}, clusterProxy); err != nil && !errors.IsNotFound(err) {
+		klog.Errorf("Unable to retrive Proxy object: %v", err)
+
+		if err := r.setStatusDegraded(ctx, err); err != nil {
+			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+		}
+		return ctrl.Result{}, err
+	}
+
 	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
 	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus, featureGate)
 	if err != nil {
@@ -118,7 +130,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	config, err := config.ComposeConfig(infra, r.ImagesFile, r.ManagedNamespace)
+	config, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {

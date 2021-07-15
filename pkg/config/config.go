@@ -26,6 +26,7 @@ type OperatorConfig struct {
 	IsSingleReplica    bool
 	InfrastructureName string
 	Platform           configv1.PlatformType
+	ClusterProxy       *configv1.Proxy
 }
 
 // GetProviderFromInfrastructure reads the Infrastructure resource and returns Platform value
@@ -79,7 +80,7 @@ func getCloudNodeManagerFromImages(platform configv1.PlatformType, images images
 }
 
 // ComposeConfig creates a Config for operator
-func ComposeConfig(infrastructure *configv1.Infrastructure, imagesFile, managedNamespace string) (OperatorConfig, error) {
+func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string) (OperatorConfig, error) {
 	platform, err := GetProviderFromInfrastructure(infrastructure)
 	if err != nil {
 		klog.Errorf("Unable to get platform from infrastructure: %s", err)
@@ -94,6 +95,7 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, imagesFile, managedN
 
 	config := OperatorConfig{
 		Platform:           platform,
+		ClusterProxy:       clusterProxy,
 		ManagedNamespace:   managedNamespace,
 		ControllerImage:    getCloudControllerManagerFromImages(platform, images),
 		CloudNodeImage:     getCloudNodeManagerFromImages(platform, images),
