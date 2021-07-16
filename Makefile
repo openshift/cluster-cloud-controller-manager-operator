@@ -42,6 +42,7 @@ manifests: controller-gen
 .PHONY: fmt
 fmt:
 	go fmt ./...
+	./hack/verify-diff.sh
 
 # Run go vet against code
 .PHONY: vet
