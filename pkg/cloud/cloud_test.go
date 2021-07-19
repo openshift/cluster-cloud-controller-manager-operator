@@ -7,6 +7,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azurestack"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,11 +16,31 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+func getDummyPlatformStatus(platformType configv1.PlatformType, isAzureStack bool) *configv1.PlatformStatus {
+	platformStatus := configv1.PlatformStatus{
+		Type: platformType,
+	}
+	if isAzureStack {
+		platformStatus.Azure = &configv1.AzurePlatformStatus{
+			CloudName: configv1.AzureStackCloud,
+		}
+	}
+	return &platformStatus
+}
+
+type testPlatform struct {
+	platfromType   configv1.PlatformType
+	platformStatus *configv1.PlatformStatus
+}
+
 func TestGetResources(t *testing.T) {
+
 	tc := []struct {
-		name     string
-		platform configv1.PlatformType
-		expected []client.Object
+		name           string
+		platform       configv1.PlatformType
+		platformStatus configv1.PlatformStatus
+		isAzureStack   bool
+		expected       []client.Object
 	}{{
 		name:     "AWS resources returned as expected",
 		platform: configv1.AWSPlatformType,
@@ -35,6 +56,11 @@ func TestGetResources(t *testing.T) {
 		name:     "Azure resources returned as expected",
 		platform: configv1.AzurePlatformType,
 		expected: azure.GetResources(),
+	}, {
+		name:         "Azure Stack resources returned as expected",
+		platform:     configv1.AzurePlatformType,
+		isAzureStack: true,
+		expected:     azurestack.GetResources(),
 	}, {
 		name:     "VSphere resources are empty, as the platform is not yet supported",
 		platform: configv1.VSpherePlatformType,
@@ -60,7 +86,7 @@ func TestGetResources(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			resources := GetResources(tc.platform)
+			resources := GetResources(tc.platform, getDummyPlatformStatus(tc.platform, tc.isAzureStack))
 
 			assert.Equal(t, len(tc.expected), len(resources))
 			assert.EqualValues(t, tc.expected, resources)
@@ -68,7 +94,7 @@ func TestGetResources(t *testing.T) {
 			// Edit and repeat procedure to ensure modification in place is not present
 			if len(resources) > 0 {
 				resources[0].SetName("different")
-				newResources := GetResources(tc.platform)
+				newResources := GetResources(tc.platform, getDummyPlatformStatus(tc.platform, tc.isAzureStack))
 
 				assert.Equal(t, len(tc.expected), len(newResources))
 				assert.EqualValues(t, tc.expected, newResources)
@@ -88,22 +114,23 @@ func TestResourcesRunBeforeCNI(t *testing.T) {
 		networking and use the internal API Load Balancer instead of the API Service.
 	*/
 
-	platforms := []configv1.PlatformType{
-		configv1.AWSPlatformType,
-		configv1.OpenStackPlatformType,
-		configv1.GCPPlatformType,
-		configv1.AzurePlatformType,
-		configv1.VSpherePlatformType,
-		configv1.OvirtPlatformType,
-		configv1.IBMCloudPlatformType,
-		configv1.LibvirtPlatformType,
-		configv1.KubevirtPlatformType,
-		configv1.BareMetalPlatformType,
-		configv1.NonePlatformType,
+	platforms := []testPlatform{
+		{configv1.AWSPlatformType, getDummyPlatformStatus(configv1.AWSPlatformType, false)},
+		{configv1.OpenStackPlatformType, getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
+		{configv1.GCPPlatformType, getDummyPlatformStatus(configv1.GCPPlatformType, false)},
+		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, false)},
+		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, true)}, // stackhub
+		{configv1.VSpherePlatformType, getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
+		{configv1.OvirtPlatformType, getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
+		{configv1.IBMCloudPlatformType, getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
+		{configv1.LibvirtPlatformType, getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
+		{configv1.KubevirtPlatformType, getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
+		{configv1.BareMetalPlatformType, getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
+		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
 	}
 	for _, platform := range platforms {
-		t.Run(string(platform), func(t *testing.T) {
-			resources := GetResources(platform)
+		t.Run(string(platform.platfromType), func(t *testing.T) {
+			resources := GetResources(platform.platfromType, platform.platformStatus)
 
 			for _, resource := range resources {
 				switch obj := resource.(type) {
@@ -199,22 +226,23 @@ exec `
 }
 
 func TestDeploymentPodAntiAffinity(t *testing.T) {
-	platforms := []configv1.PlatformType{
-		configv1.AWSPlatformType,
-		configv1.OpenStackPlatformType,
-		configv1.GCPPlatformType,
-		configv1.AzurePlatformType,
-		configv1.VSpherePlatformType,
-		configv1.OvirtPlatformType,
-		configv1.IBMCloudPlatformType,
-		configv1.LibvirtPlatformType,
-		configv1.KubevirtPlatformType,
-		configv1.BareMetalPlatformType,
-		configv1.NonePlatformType,
+	platforms := []testPlatform{
+		{configv1.AWSPlatformType, getDummyPlatformStatus(configv1.AWSPlatformType, false)},
+		{configv1.OpenStackPlatformType, getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
+		{configv1.GCPPlatformType, getDummyPlatformStatus(configv1.GCPPlatformType, false)},
+		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, false)},
+		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, true)}, // stackhub
+		{configv1.VSpherePlatformType, getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
+		{configv1.OvirtPlatformType, getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
+		{configv1.IBMCloudPlatformType, getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
+		{configv1.LibvirtPlatformType, getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
+		{configv1.KubevirtPlatformType, getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
+		{configv1.BareMetalPlatformType, getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
+		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
 	}
 	for _, platform := range platforms {
-		t.Run(string(platform), func(t *testing.T) {
-			resources := GetResources(platform)
+		t.Run(string(platform.platfromType), func(t *testing.T) {
+			resources := GetResources(platform.platfromType, platform.platformStatus)
 
 			for _, resource := range resources {
 				switch obj := resource.(type) {

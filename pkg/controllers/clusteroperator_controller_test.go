@@ -323,7 +323,7 @@ var _ = Describe("Component sync controller", func() {
 				ManagedNamespace: testManagedNamespace,
 				ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			},
-			expected: cloud.GetResources(configv1.AWSPlatformType),
+			expected: cloud.GetResources(configv1.AWSPlatformType, &configv1.PlatformStatus{}),
 		}),
 		Entry("Should provision OpenStack resources", testCase{
 			status: &configv1.InfrastructureStatus{
@@ -339,7 +339,7 @@ var _ = Describe("Component sync controller", func() {
 				ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			},
 			featureGateSpec: externalFeatureGateSpec,
-			expected:        cloud.GetResources(configv1.OpenStackPlatformType),
+			expected:        cloud.GetResources(configv1.OpenStackPlatformType, &configv1.PlatformStatus{}),
 		}),
 		Entry("Should not provision resources for currently unsupported platform", testCase{
 			status: &configv1.InfrastructureStatus{
@@ -405,7 +405,7 @@ var _ = Describe("Apply resources should", func() {
 	})
 
 	It("Expect update when resources are not found", func() {
-		resources = append(resources, cloud.GetResources(configv1.AWSPlatformType)...)
+		resources = append(resources, cloud.GetResources(configv1.AWSPlatformType, &configv1.PlatformStatus{})...)
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -415,7 +415,7 @@ var _ = Describe("Apply resources should", func() {
 
 	It("Expect update when deployment generation have changed", func() {
 		var dep *appsv1.Deployment
-		for _, res := range cloud.GetResources(configv1.AWSPlatformType) {
+		for _, res := range cloud.GetResources(configv1.AWSPlatformType, &configv1.PlatformStatus{}) {
 			if deployment, ok := res.(*appsv1.Deployment); ok {
 				dep = deployment
 				break
@@ -442,7 +442,7 @@ var _ = Describe("Apply resources should", func() {
 	})
 
 	It("Expect error when object requested is incorrect", func() {
-		objects := cloud.GetResources(configv1.AWSPlatformType)
+		objects := cloud.GetResources(configv1.AWSPlatformType, &configv1.PlatformStatus{})
 		objects[0].SetNamespace("non-existent")
 
 		updated, err := reconciler.applyResources(context.TODO(), objects)
@@ -452,7 +452,7 @@ var _ = Describe("Apply resources should", func() {
 	})
 
 	It("Expect no update when resources are applied twice", func() {
-		resources = append(resources, cloud.GetResources(configv1.OpenStackPlatformType)...)
+		resources = append(resources, cloud.GetResources(configv1.OpenStackPlatformType, &configv1.PlatformStatus{})...)
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())

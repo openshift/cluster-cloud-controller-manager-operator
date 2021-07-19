@@ -140,7 +140,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if err := r.sync(ctx, config); err != nil {
+	if err := r.sync(ctx, config, infra.Status.PlatformStatus); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
@@ -157,9 +157,9 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig) error {
+func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig, platformStatus *configv1.PlatformStatus) error {
 	// Deploy resources for platform
-	templates := cloud.GetResources(config.Platform)
+	templates := cloud.GetResources(config.Platform, platformStatus)
 	resources := substitution.FillConfigValues(config, templates)
 
 	updated, err := r.applyResources(ctx, resources)
