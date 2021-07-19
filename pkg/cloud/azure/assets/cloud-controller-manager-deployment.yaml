@@ -45,7 +45,7 @@ spec:
           key: node.kubernetes.io/not-ready
           operator: Exists
       containers:
-        - name: azure-cloud-controller-manager
+        - name: cloud-controller-manager
           image: quay.io/openshift/origin-azure-cloud-controller-manager:4.8.0
           imagePullPolicy: "IfNotPresent"
           env:
