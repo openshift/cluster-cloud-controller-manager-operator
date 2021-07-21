@@ -120,8 +120,6 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 		case *appsv1.DaemonSet:
 			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
 			obj.Spec.Template.Spec = setProxySettings(config, obj.Spec.Template.Spec)
-		case *corev1.Pod:
-			obj.Spec = setCloudControllerImage(config, obj.Spec)
 		}
 		objects[i] = templateCopy
 	}
