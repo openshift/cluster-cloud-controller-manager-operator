@@ -242,7 +242,7 @@ func TestComposeConfig(t *testing.T) {
 		expectConfig: OperatorConfig{
 			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
-			Platform:         configv1.AWSPlatformType,
+			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
 		},
 	}, {
 		name:      "Unmarshal images from file for OpenStack",
@@ -261,7 +261,7 @@ func TestComposeConfig(t *testing.T) {
 		expectConfig: OperatorConfig{
 			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
-			Platform:         configv1.OpenStackPlatformType,
+			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
 		},
 	}, {
 		name:      "Unmarshal images from file for unknown platform returns nothing",
@@ -280,7 +280,7 @@ func TestComposeConfig(t *testing.T) {
 		expectConfig: OperatorConfig{
 			ControllerImage:  "",
 			ManagedNamespace: "otherNamespace",
-			Platform:         configv1.NonePlatformType,
+			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.NonePlatformType},
 		},
 	}, {
 		name: "Broken JSON is rejected",
@@ -314,7 +314,7 @@ func TestComposeConfig(t *testing.T) {
 		expectConfig: OperatorConfig{
 			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
-			Platform:         configv1.OpenStackPlatformType,
+			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
 			IsSingleReplica:  true,
 		},
 	}, {
@@ -354,13 +354,38 @@ func TestComposeConfig(t *testing.T) {
 		expectConfig: OperatorConfig{
 			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
-			Platform:         configv1.AWSPlatformType,
+			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
 			ClusterProxy: &configv1.Proxy{
 				Status: configv1.ProxyStatus{
 					HTTPProxy: "http://squid.corp.acme.com:3128",
 				},
 			},
 		},
+	}, {
+		name:        "Empty infra",
+		namespace:   defaultManagementNamespace,
+		infra:       nil,
+		expectError: "platform status is not populated on infrastructure",
+	}, {
+		name:      "Empty Infra Status",
+		namespace: defaultManagementNamespace,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: nil,
+			},
+		},
+		expectError: "platform status is not populated on infrastructure",
+	}, {
+		name:      "Empty Platform Type",
+		namespace: defaultManagementNamespace,
+		infra: &configv1.Infrastructure{
+			Status: configv1.InfrastructureStatus{
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: "",
+				},
+			},
+		},
+		expectError: "no platform provider found on infrastructure",
 	}}
 
 	for _, tc := range tc {

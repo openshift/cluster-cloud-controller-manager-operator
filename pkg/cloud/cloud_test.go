@@ -86,7 +86,7 @@ func TestGetResources(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			resources := GetResources(tc.platform, getDummyPlatformStatus(tc.platform, tc.isAzureStack))
+			resources := GetResources(getDummyPlatformStatus(tc.platform, tc.isAzureStack))
 
 			assert.Equal(t, len(tc.expected), len(resources))
 			assert.EqualValues(t, tc.expected, resources)
@@ -94,7 +94,7 @@ func TestGetResources(t *testing.T) {
 			// Edit and repeat procedure to ensure modification in place is not present
 			if len(resources) > 0 {
 				resources[0].SetName("different")
-				newResources := GetResources(tc.platform, getDummyPlatformStatus(tc.platform, tc.isAzureStack))
+				newResources := GetResources(getDummyPlatformStatus(tc.platform, tc.isAzureStack))
 
 				assert.Equal(t, len(tc.expected), len(newResources))
 				assert.EqualValues(t, tc.expected, newResources)
@@ -130,7 +130,7 @@ func TestResourcesRunBeforeCNI(t *testing.T) {
 	}
 	for _, platform := range platforms {
 		t.Run(string(platform.platfromType), func(t *testing.T) {
-			resources := GetResources(platform.platfromType, platform.platformStatus)
+			resources := GetResources(platform.platformStatus)
 
 			for _, resource := range resources {
 				switch obj := resource.(type) {
@@ -242,7 +242,7 @@ func TestDeploymentPodAntiAffinity(t *testing.T) {
 	}
 	for _, platform := range platforms {
 		t.Run(string(platform.platfromType), func(t *testing.T) {
-			resources := GetResources(platform.platfromType, platform.platformStatus)
+			resources := GetResources(platform.platformStatus)
 
 			for _, resource := range resources {
 				switch obj := resource.(type) {

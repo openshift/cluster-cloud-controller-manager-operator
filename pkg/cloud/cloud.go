@@ -17,8 +17,8 @@ import (
 // changes in their spec. However you can extend any resource spec with
 // values not specified in the provided source resource. These changes
 // would be preserved.
-func GetResources(platform configv1.PlatformType, platformStatus *configv1.PlatformStatus) []client.Object {
-	switch platform {
+func GetResources(platformStatus *configv1.PlatformStatus) []client.Object {
+	switch platformStatus.Type {
 	case configv1.AWSPlatformType:
 		return aws.GetResources()
 	case configv1.OpenStackPlatformType:
@@ -29,7 +29,7 @@ func GetResources(platform configv1.PlatformType, platformStatus *configv1.Platf
 		}
 		return azure.GetResources()
 	default:
-		klog.Warningf("Unrecognized platform type %q found in infrastructure", platform)
+		klog.Warningf("Unrecognized platform type %q found in infrastructure", platformStatus.Type)
 		return nil
 	}
 }
