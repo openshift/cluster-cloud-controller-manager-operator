@@ -27,7 +27,7 @@ func init() {
 	utilruntime.Must(err)
 }
 
-// GetResources returns a list of AWS resources for provisioning CCM in running cluster
+// GetResources returns a list of Azrue Stack Hub resources for provisioning CCM in running cluster
 func GetResources() []client.Object {
 	resources := make([]client.Object, len(azureResources))
 	for i := range azureResources {
