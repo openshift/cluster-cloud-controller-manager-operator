@@ -16,6 +16,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	cloudControllerManagerDefaultPort = 10258
+	cloudNodeManagerDefaultPort       = 10263
+)
+
 func getDummyPlatformStatus(platformType configv1.PlatformType, isAzureStack bool) *configv1.PlatformStatus {
 	platformStatus := configv1.PlatformStatus{
 		Type: platformType,
@@ -151,6 +156,7 @@ func TestResourcesRunBeforeCNI(t *testing.T) {
 func checkResourceRunsBeforeCNI(t *testing.T, podSpec corev1.PodSpec) {
 	checkResourceTolerations(t, podSpec)
 	checkHostNetwork(t, podSpec)
+	checkPorts(t, podSpec)
 	checkVolumes(t, podSpec)
 	checkContainerCommand(t, podSpec)
 }
@@ -174,6 +180,26 @@ func checkResourceTolerations(t *testing.T, podSpec corev1.PodSpec) {
 
 func checkHostNetwork(t *testing.T, podSpec corev1.PodSpec) {
 	assert.Equal(t, podSpec.HostNetwork, true, "PodSpec should set HostNetwork true")
+}
+
+// This test is to ensure that the guidelines set out in https://github.com/openshift/enhancements/blob/master/dev-guide/host-port-registry.md
+// are correctly adhered to.
+func checkPorts(t *testing.T, podSpec corev1.PodSpec) {
+	var foundValidPort bool
+	for _, container := range podSpec.Containers {
+		for _, port := range container.Ports {
+			switch port.ContainerPort {
+			case cloudControllerManagerDefaultPort, cloudNodeManagerDefaultPort:
+				foundValidPort = true
+			default:
+				t.Errorf("Unknown Container Port %d: All ports on Host Network processes must be registered before use", port.ContainerPort)
+			}
+
+		}
+	}
+	if !foundValidPort {
+		t.Errorf("Container Ports must specify any used ports. CloudControllerManager should use port %d, CloudNodeManager should use port %d.", cloudControllerManagerDefaultPort, cloudNodeManagerDefaultPort)
+	}
 }
 
 func checkVolumes(t *testing.T, podSpec corev1.PodSpec) {

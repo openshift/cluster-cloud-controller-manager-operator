@@ -36,6 +36,10 @@ spec:
         image: quay.io/openshift/origin-aws-cloud-controller-manager
         imagePullPolicy: IfNotPresent
         name: cloud-controller-manager
+        ports:
+        - containerPort: 10258
+          name: https
+          protocol: TCP
         resources:
           requests:
             cpu: 200m
