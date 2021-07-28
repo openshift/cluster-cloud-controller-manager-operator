@@ -22,7 +22,7 @@ const (
 	infraCloudConfKey  = "foo"
 )
 
-func makeInfrastructureResource() *configv1.Infrastructure {
+func makeInfrastructureResource(platform configv1.PlatformType) *configv1.Infrastructure {
 	return &configv1.Infrastructure{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: infrastructureResourceName,
@@ -33,8 +33,15 @@ func makeInfrastructureResource() *configv1.Infrastructure {
 				Key:  infraCloudConfKey,
 			},
 			PlatformSpec: configv1.PlatformSpec{
-				Type: configv1.AzurePlatformType,
+				Type: platform,
 			},
+		},
+		Status: configv1.InfrastructureStatus{
+			PlatformStatus: &configv1.PlatformStatus{
+				Type: platform,
+			},
+			InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+			ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
 		},
 	}
 }
@@ -73,7 +80,7 @@ var _ = Describe("isCloudConfigEqual reconciler method", func() {
 
 var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 	reconciler := &CloudConfigReconciler{}
-	infra := makeInfrastructureResource()
+	infra := makeInfrastructureResource(configv1.AWSPlatformType)
 	infraCloudConfig := makeInfraCloudConfig()
 	managedCloudConfig := makeManagedCloudConfig()
 
@@ -99,6 +106,33 @@ var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 		_, err := reconciler.prepareSourceConfigMap(brokenInfraConfig, infra)
 		Expect(err).Should(Not(Succeed()))
 		Expect(err.Error()).Should(BeEquivalentTo("key foo specified in infra resource does not found in source configmap openshift-config/test-config"))
+	})
+
+	It("config preparation should fail for azure if cloud-config is not a valid json", func() {
+		azureInfra := makeInfrastructureResource(configv1.AzurePlatformType)
+		brokenConfig := managedCloudConfig.DeepCopy()
+		brokenConfig.Data = map[string]string{defaultConfigKey: "0/ hola"}
+		_, err := reconciler.prepareSourceConfigMap(brokenConfig, azureInfra)
+		Expect(err).Should(Not(Succeed()))
+		Expect(err.Error()).Should(BeEquivalentTo("cloudConfigContent is not a valid json"))
+	})
+
+	It("config preparation should add excludeMasterFromStandardLB param for azure platform", func() {
+		azureInfra := makeInfrastructureResource(configv1.AzurePlatformType)
+		cloudConfig := managedCloudConfig.DeepCopy()
+		cloudConfig.Data = map[string]string{defaultConfigKey: "{\"foo\": \"bar\"}"}
+		changedConfig, err := reconciler.prepareSourceConfigMap(cloudConfig, azureInfra)
+		Expect(err).Should(Succeed())
+		Expect(changedConfig.Data[defaultConfigKey]).Should(BeEquivalentTo("{\"excludeMasterFromStandardLB\":false,\"foo\":\"bar\"}"))
+	})
+
+	It("config preparation should not touch excludeMasterFromStandardLB param for azure platform if it is already set", func() {
+		azureInfra := makeInfrastructureResource(configv1.AzurePlatformType)
+		cloudConfig := managedCloudConfig.DeepCopy()
+		cloudConfig.Data = map[string]string{defaultConfigKey: "{\"excludeMasterFromStandardLB\": true}"}
+		changedConfig, err := reconciler.prepareSourceConfigMap(cloudConfig, azureInfra)
+		Expect(err).Should(Succeed())
+		Expect(changedConfig.Data[defaultConfigKey]).Should(BeEquivalentTo("{\"excludeMasterFromStandardLB\":true}"))
 	})
 })
 
@@ -133,7 +167,9 @@ var _ = Describe("Cloud config sync controller", func() {
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
 		By("Creating Infra resource")
-		Expect(cl.Create(ctx, makeInfrastructureResource())).To(Succeed())
+		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+		Expect(cl.Status().Update(ctx, infraResource)).To(Succeed())
 
 		By("Creating needed ConfigMaps")
 		infraCloudConfig = makeInfraCloudConfig()
@@ -189,7 +225,7 @@ var _ = Describe("Cloud config sync controller", func() {
 		managedCloudConfig = nil
 		syncedCloudConfigMap = nil
 
-		infra := makeInfrastructureResource()
+		infra := makeInfrastructureResource(configv1.AWSPlatformType)
 		Expect(cl.Delete(ctx, infra)).To(Succeed())
 		Eventually(
 			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)),

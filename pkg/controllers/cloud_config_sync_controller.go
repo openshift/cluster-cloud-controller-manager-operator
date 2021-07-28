@@ -2,8 +2,11 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 
 	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -43,25 +46,27 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		Name: managedCloudConfigMapName, Namespace: OpenshiftManagedConfigNamespace,
 	}
 	sourceCM := &corev1.ConfigMap{}
+
+	infra := &configv1.Infrastructure{}
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
+		klog.Errorf("infrastructure resource not found")
+		return ctrl.Result{}, err
+	}
+
 	if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); errors.IsNotFound(err) {
 		klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
-		infra := &configv1.Infrastructure{}
-		if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
-			klog.Errorf("infrastructure resource not found")
-			return ctrl.Result{}, err
-		}
-
 		openshiftUnmanagedCMKey := client.ObjectKey{Name: infra.Spec.CloudConfig.Name, Namespace: OpenshiftConfigNamespace}
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); err != nil {
 			klog.Errorf("unable to get cloud-config for sync")
 			return ctrl.Result{}, err
 		}
-		sourceCM, err = r.prepareSourceConfigMap(sourceCM, infra)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
 	} else if err != nil {
 		klog.Errorf("unable to get managed cloud-config for sync")
+		return ctrl.Result{}, err
+	}
+
+	sourceCM, err := r.prepareSourceConfigMap(sourceCM, infra)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -94,20 +99,60 @@ func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap,
 	// Keys might be different between openshift-config/cloud-config and openshift-config-managed/kube-cloud-config
 	// Always use "cloud.conf" which is default one across openshift
 	cloudConfCm := source.DeepCopy()
-	if _, ok := cloudConfCm.Data[defaultConfigKey]; ok {
-		return cloudConfCm, nil
+
+	if _, ok := cloudConfCm.Data[defaultConfigKey]; !ok {
+		infraConfigKey := infra.Spec.CloudConfig.Key
+		if val, ok := cloudConfCm.Data[infraConfigKey]; ok {
+			cloudConfCm.Data[defaultConfigKey] = val
+			delete(cloudConfCm.Data, infraConfigKey)
+		} else {
+			return nil, fmt.Errorf(
+				"key %s specified in infra resource does not found in source configmap %s",
+				infraConfigKey, client.ObjectKeyFromObject(source),
+			)
+		}
 	}
 
-	infraConfigKey := infra.Spec.CloudConfig.Key
-	if val, ok := cloudConfCm.Data[infraConfigKey]; ok {
-		cloudConfCm.Data[defaultConfigKey] = val
-		delete(cloudConfCm.Data, infraConfigKey)
-		return cloudConfCm, nil
+	provider, err := config.GetProviderFromInfrastructure(infra)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf(
-		"key %s specified in infra resource does not found in source configmap %s",
-		infraConfigKey, client.ObjectKeyFromObject(source),
-	)
+	if provider == configv1.AzurePlatformType {
+		changedCloudConfigData, err := r.prepareAzureCloudConfigData(cloudConfCm.Data[defaultConfigKey])
+		if err != nil {
+			return nil, err
+		}
+		cloudConfCm.Data[defaultConfigKey] = changedCloudConfigData
+	}
+
+	return cloudConfCm, nil
+}
+
+func (r *CloudConfigReconciler) prepareAzureCloudConfigData(cloudConfigContent string) (string, error) {
+	// Hack for add excludeMasterFromStandardLB parameter if it is not presented in cloud config for azure platform
+	const excludeMasterFromStandartLBParamKey = "excludeMasterFromStandardLB"
+
+	bytesContent := []byte(cloudConfigContent)
+	if !json.Valid(bytesContent) {
+		return "", fmt.Errorf("cloudConfigContent is not a valid json")
+	}
+
+	var cfg map[string]interface{}
+
+	err := json.Unmarshal(bytesContent, &cfg)
+	if err != nil {
+		return "", err
+	}
+
+	if _, ok := cfg[excludeMasterFromStandartLBParamKey]; !ok {
+		cfg[excludeMasterFromStandartLBParamKey] = false
+	}
+
+	marshalledConfig, err := json.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+	return string(marshalledConfig), nil
 }
 
 func (r *CloudConfigReconciler) isCloudConfigEqual(source *corev1.ConfigMap, target *corev1.ConfigMap) bool {
