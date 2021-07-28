@@ -134,6 +134,15 @@ var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 		Expect(err).Should(Succeed())
 		Expect(changedConfig.Data[defaultConfigKey]).Should(BeEquivalentTo("{\"excludeMasterFromStandardLB\":true}"))
 	})
+
+	It("config preparation should set excludeMasterFromStandardLB param to false for azure platform if this param is null", func() {
+		azureInfra := makeInfrastructureResource(configv1.AzurePlatformType)
+		cloudConfig := managedCloudConfig.DeepCopy()
+		cloudConfig.Data = map[string]string{defaultConfigKey: "{\"excludeMasterFromStandardLB\": null}"}
+		changedConfig, err := reconciler.prepareSourceConfigMap(cloudConfig, azureInfra)
+		Expect(err).Should(Succeed())
+		Expect(changedConfig.Data[defaultConfigKey]).Should(BeEquivalentTo("{\"excludeMasterFromStandardLB\":false}"))
+	})
 })
 
 var _ = Describe("Cloud config sync controller", func() {

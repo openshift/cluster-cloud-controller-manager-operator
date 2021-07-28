@@ -144,7 +144,7 @@ func (r *CloudConfigReconciler) prepareAzureCloudConfigData(cloudConfigContent s
 		return "", err
 	}
 
-	if _, ok := cfg[excludeMasterFromStandartLBParamKey]; !ok {
+	if val, ok := cfg[excludeMasterFromStandartLBParamKey]; !ok || val == nil {
 		cfg[excludeMasterFromStandartLBParamKey] = false
 	}
 
