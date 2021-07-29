@@ -25,7 +25,7 @@ type OperatorConfig struct {
 	CloudNodeImage     string
 	IsSingleReplica    bool
 	InfrastructureName string
-	Platform           configv1.PlatformType
+	PlatformStatus     *configv1.PlatformStatus
 	ClusterProxy       *configv1.Proxy
 }
 
@@ -94,7 +94,7 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 	}
 
 	config := OperatorConfig{
-		Platform:           platform,
+		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
 		ClusterProxy:       clusterProxy,
 		ManagedNamespace:   managedNamespace,
 		ControllerImage:    getCloudControllerManagerFromImages(platform, images),
