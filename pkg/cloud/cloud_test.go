@@ -134,7 +134,14 @@ func TestResourcesRunBeforeCNI(t *testing.T) {
 		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
 	}
 	for _, platform := range platforms {
-		t.Run(string(platform.platfromType), func(t *testing.T) {
+		platformName := string(platform.platfromType)
+		if platform.platformStatus != nil &&
+			platform.platformStatus.Azure != nil &&
+			platform.platformStatus.Azure.CloudName == configv1.AzureStackCloud {
+			platformName += "StackHub"
+		}
+
+		t.Run(platformName, func(t *testing.T) {
 			resources := GetResources(platform.platformStatus)
 
 			for _, resource := range resources {
@@ -267,7 +274,14 @@ func TestDeploymentPodAntiAffinity(t *testing.T) {
 		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
 	}
 	for _, platform := range platforms {
-		t.Run(string(platform.platfromType), func(t *testing.T) {
+		platformName := string(platform.platfromType)
+		if platform.platformStatus != nil &&
+			platform.platformStatus.Azure != nil &&
+			platform.platformStatus.Azure.CloudName == configv1.AzureStackCloud {
+			platformName += "StackHub"
+		}
+
+		t.Run(platformName, func(t *testing.T) {
 			resources := GetResources(platform.platformStatus)
 
 			for _, resource := range resources {
