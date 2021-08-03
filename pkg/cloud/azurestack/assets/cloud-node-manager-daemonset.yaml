@@ -59,6 +59,10 @@ spec:
                 --use-instance-metadata=false \
                 --cloud-config=$(CLOUD_CONFIG) \
                 --v=6
+          ports:
+          - containerPort: 10263
+            name: https
+            protocol: TCP
           env:
             - name: NODE_NAME
               valueFrom:

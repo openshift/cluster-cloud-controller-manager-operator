@@ -16,6 +16,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	cloudControllerManagerDefaultPort = 10258
+	cloudNodeManagerDefaultPort       = 10263
+)
+
 func getDummyPlatformStatus(platformType configv1.PlatformType, isAzureStack bool) *configv1.PlatformStatus {
 	platformStatus := configv1.PlatformStatus{
 		Type: platformType,
@@ -129,7 +134,14 @@ func TestResourcesRunBeforeCNI(t *testing.T) {
 		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
 	}
 	for _, platform := range platforms {
-		t.Run(string(platform.platfromType), func(t *testing.T) {
+		platformName := string(platform.platfromType)
+		if platform.platformStatus != nil &&
+			platform.platformStatus.Azure != nil &&
+			platform.platformStatus.Azure.CloudName == configv1.AzureStackCloud {
+			platformName += "StackHub"
+		}
+
+		t.Run(platformName, func(t *testing.T) {
 			resources := GetResources(platform.platformStatus)
 
 			for _, resource := range resources {
@@ -151,6 +163,7 @@ func TestResourcesRunBeforeCNI(t *testing.T) {
 func checkResourceRunsBeforeCNI(t *testing.T, podSpec corev1.PodSpec) {
 	checkResourceTolerations(t, podSpec)
 	checkHostNetwork(t, podSpec)
+	checkPorts(t, podSpec)
 	checkVolumes(t, podSpec)
 	checkContainerCommand(t, podSpec)
 }
@@ -174,6 +187,26 @@ func checkResourceTolerations(t *testing.T, podSpec corev1.PodSpec) {
 
 func checkHostNetwork(t *testing.T, podSpec corev1.PodSpec) {
 	assert.Equal(t, podSpec.HostNetwork, true, "PodSpec should set HostNetwork true")
+}
+
+// This test is to ensure that the guidelines set out in https://github.com/openshift/enhancements/blob/master/dev-guide/host-port-registry.md
+// are correctly adhered to.
+func checkPorts(t *testing.T, podSpec corev1.PodSpec) {
+	var foundValidPort bool
+	for _, container := range podSpec.Containers {
+		for _, port := range container.Ports {
+			switch port.ContainerPort {
+			case cloudControllerManagerDefaultPort, cloudNodeManagerDefaultPort:
+				foundValidPort = true
+			default:
+				t.Errorf("Unknown Container Port %d: All ports on Host Network processes must be registered before use", port.ContainerPort)
+			}
+
+		}
+	}
+	if !foundValidPort {
+		t.Errorf("Container Ports must specify any used ports. CloudControllerManager should use port %d, CloudNodeManager should use port %d.", cloudControllerManagerDefaultPort, cloudNodeManagerDefaultPort)
+	}
 }
 
 func checkVolumes(t *testing.T, podSpec corev1.PodSpec) {
@@ -241,7 +274,14 @@ func TestDeploymentPodAntiAffinity(t *testing.T) {
 		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
 	}
 	for _, platform := range platforms {
-		t.Run(string(platform.platfromType), func(t *testing.T) {
+		platformName := string(platform.platfromType)
+		if platform.platformStatus != nil &&
+			platform.platformStatus.Azure != nil &&
+			platform.platformStatus.Azure.CloudName == configv1.AzureStackCloud {
+			platformName += "StackHub"
+		}
+
+		t.Run(platformName, func(t *testing.T) {
 			resources := GetResources(platform.platformStatus)
 
 			for _, resource := range resources {

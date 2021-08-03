@@ -67,8 +67,15 @@ spec:
             fi
             exec /cloud-config-sync-controller \
             --leader-elect \
-            --metrics-bind-address=:8081 \
-            --health-addr=:9441
+            --metrics-bind-address=:9258 \
+            --health-addr=127.0.0.1:9259
+        ports:
+        - containerPort: 9258
+          name: metrics
+          protocol: TCP
+        - containerPort: 9259
+          name: healthz
+          protocol: TCP
         resources:
           requests:
             cpu: 10m

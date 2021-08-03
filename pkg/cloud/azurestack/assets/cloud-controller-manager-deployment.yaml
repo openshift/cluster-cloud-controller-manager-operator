@@ -59,6 +59,10 @@ spec:
             requests:
               cpu: 200m
               memory: 50Mi
+          ports:
+          - containerPort: 10258
+            name: https
+            protocol: TCP
           command:
             - /bin/bash
             - -c

@@ -64,6 +64,10 @@ spec:
             --use-service-account-credentials=true \
             --bind-address=127.0.0.1 \
             --leader-elect-resource-namespace=openshift-cloud-controller-manager
+          ports:
+          - containerPort: 10258
+            name: https
+            protocol: TCP
           resources:
             requests:
               cpu: 200m
