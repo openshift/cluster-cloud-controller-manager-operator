@@ -9,6 +9,7 @@ require (
 	github.com/onsi/gomega v1.13.0
 	github.com/openshift/api v0.0.0-20210720160326-96bb0f993a66
 	github.com/openshift/library-go v0.0.0-20210708191609-4b9033d00d37
+	github.com/spf13/cobra v1.1.1
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20210716203947-853a461950ff // indirect
 	k8s.io/api v0.21.3
