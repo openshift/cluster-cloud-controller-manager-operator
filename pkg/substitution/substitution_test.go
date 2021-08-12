@@ -362,6 +362,16 @@ func TestFillConfigValues(t *testing.T) {
 							Name:  cloudNodeManagerName,
 							Image: "expect_change",
 						}},
+						InitContainers: []corev1.Container{
+							{
+								Name:  "foo",
+								Image: "bar",
+							},
+							{
+								Name:  azureCredentialsInjectorContainerName,
+								Image: "expect_change",
+							},
+						},
 					},
 				},
 			},
@@ -389,6 +399,16 @@ func TestFillConfigValues(t *testing.T) {
 								Name:  cloudNodeManagerName,
 								Image: "correct_cloud_node_image:tag",
 							}},
+							InitContainers: []corev1.Container{
+								{
+									Name:  "foo",
+									Image: "bar",
+								},
+								{
+									Name:  azureCredentialsInjectorContainerName,
+									Image: "operator_image:tag",
+								},
+							},
 						},
 					},
 				},
@@ -408,6 +428,7 @@ func TestFillConfigValues(t *testing.T) {
 				},
 			}},
 		config: config.OperatorConfig{
+			OperatorImage:    "operator_image:tag",
 			ControllerImage:  "correct_image:tag",
 			CloudNodeImage:   "correct_cloud_node_image:tag",
 			ManagedNamespace: testManagementNamespace,
@@ -499,6 +520,54 @@ func TestFillConfigValues(t *testing.T) {
 									{Name: "SOME_RANDOM_VAR", Value: "foo"},
 									{Name: "OTHER_RANDOM_VAR", Value: "kubernetes"},
 								},
+							},
+						},
+					},
+				},
+			},
+		}},
+	}, {
+		name: "Substitute azure creds injector with operator image",
+		objects: []client.Object{&v1.Deployment{
+			Spec: v1.DeploymentSpec{
+				Replicas: pointer.Int32(2),
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						InitContainers: []corev1.Container{
+							{
+								Name:  "foo",
+								Image: "bar",
+							},
+							{
+								Name:  azureCredentialsInjectorContainerName,
+								Image: "bar",
+							},
+						},
+					},
+				},
+			},
+		}},
+		config: config.OperatorConfig{
+			ManagedNamespace:   testManagementNamespace,
+			InfrastructureName: "my-cool-ocp-cluster",
+			OperatorImage:      "our-cool-operator-image",
+		},
+		expectedObjects: []client.Object{&v1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: testManagementNamespace,
+			},
+			Spec: v1.DeploymentSpec{
+				Replicas: pointer.Int32(2),
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						InitContainers: []corev1.Container{
+							{
+								Name:  "foo",
+								Image: "bar",
+							},
+							{
+								Name:  azureCredentialsInjectorContainerName,
+								Image: "our-cool-operator-image",
 							},
 						},
 					},
