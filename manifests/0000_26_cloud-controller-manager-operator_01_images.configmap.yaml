@@ -9,6 +9,7 @@ metadata:
 data:
   images.json: >
     {
+      "cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
       "cloudControllerManagerAWS": "quay.io/openshift/origin-aws-cloud-controller-manager",
       "cloudControllerManagerAzure": "quay.io/openshift/origin-azure-cloud-controller-manager",
       "cloudNodeManagerAzure": "quay.io/openshift/origin-azure-cloud-node-manager",
