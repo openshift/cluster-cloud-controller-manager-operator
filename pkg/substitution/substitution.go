@@ -16,6 +16,8 @@ const (
 	cloudControllerManagerName = "cloud-controller-manager"
 	cloudNodeManagerName       = "cloud-node-manager"
 
+	azureCredentialsInjectorContainerName = "azure-inject-credentials"
+
 	infraNameEnvVar = "OCP_INFRASTRUCTURE_NAME"
 )
 
@@ -51,6 +53,17 @@ func setInfrastructureNameVariable(infrastructureName string, p corev1.PodSpec) 
 				container.Env[i].Value = infrastructureName
 				break
 			}
+		}
+	}
+	return updatedPod
+}
+
+// setInitContainersImages set init containers images
+func setInitContainersImages(config config.OperatorConfig, p corev1.PodSpec) corev1.PodSpec {
+	updatedPod := *p.DeepCopy()
+	for i, container := range updatedPod.InitContainers {
+		if container.Name == azureCredentialsInjectorContainerName {
+			updatedPod.InitContainers[i].Image = config.OperatorImage
 		}
 	}
 	return updatedPod
@@ -112,6 +125,7 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 		switch obj := templateCopy.(type) {
 		case *appsv1.Deployment:
 			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
+			obj.Spec.Template.Spec = setInitContainersImages(config, obj.Spec.Template.Spec)
 			obj.Spec.Template.Spec = setInfrastructureNameVariable(config.InfrastructureName, obj.Spec.Template.Spec)
 			obj.Spec.Template.Spec = setProxySettings(config, obj.Spec.Template.Spec)
 			if config.IsSingleReplica {
@@ -119,6 +133,7 @@ func FillConfigValues(config config.OperatorConfig, templates []client.Object) [
 			}
 		case *appsv1.DaemonSet:
 			obj.Spec.Template.Spec = setCloudControllerImage(config, obj.Spec.Template.Spec)
+			obj.Spec.Template.Spec = setInitContainersImages(config, obj.Spec.Template.Spec)
 			obj.Spec.Template.Spec = setProxySettings(config, obj.Spec.Template.Spec)
 		}
 		objects[i] = templateCopy

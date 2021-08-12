@@ -40,6 +40,30 @@ spec:
         - effect: NoSchedule
           key: node.kubernetes.io/not-ready
           operator: Exists
+      initContainers:
+        - name: azure-inject-credentials
+          image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
+          command:
+            - /azure-config-credentials-injector
+            - /tmp/cloud-config/cloud.conf
+            - /tmp/merged-cloud-config/cloud.conf
+          env:
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: azure-cloud-credentials
+                  key: azure_client_id
+            - name: AZURE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: azure-cloud-credentials
+                  key: azure_client_secret
+          volumeMounts:
+            - name: config-accm
+              mountPath: /tmp/cloud-config
+              readOnly: true
+            - name: cloud-config
+              mountPath: /tmp/merged-cloud-config
       containers:
         - name: cloud-node-manager
           image: quay.io/openshift/origin-azure-cloud-node-manager:4.8.0
@@ -69,15 +93,18 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: AZURE_ENVIRONMENT_FILEPATH
-              value: /etc/kubernetes-cloud-config/endpoints.conf
+              value: /etc/cloud-config-original/endpoints.conf
             - name: CLOUD_CONFIG
-              value: /etc/kubernetes-cloud-config/cloud.conf
+              value: /etc/cloud-config/cloud.conf
           volumeMounts:
             - name: host-etc-kube
               mountPath: /etc/kubernetes
               readOnly: true
             - name: config-accm
-              mountPath: /etc/kubernetes-cloud-config
+              mountPath: /etc/cloud-config-original
+              readOnly: true
+            - name: cloud-config
+              mountPath: /etc/cloud-config
               readOnly: true
           resources:
             requests:
@@ -96,3 +123,5 @@ spec:
                 path: cloud.conf
               - key: endpoints
                 path: endpoints.conf
+        - name: cloud-config
+          emptyDir: {}
