@@ -10,6 +10,10 @@ spec:
   selector:
     matchLabels:
       app: azure-cloud-node-manager
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
   template:
     metadata:
       labels:
