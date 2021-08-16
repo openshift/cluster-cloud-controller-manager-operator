@@ -158,6 +158,7 @@ func TestGetProviderFromInfrastructure(t *testing.T) {
 func TestGetProviderControllerFromImages(t *testing.T) {
 	images := imagesReference{
 		CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+		CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
 		CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 	}
 
@@ -173,6 +174,10 @@ func TestGetProviderControllerFromImages(t *testing.T) {
 		name:          "Azure platform",
 		platformType:  configv1.AzurePlatformType,
 		expectedImage: "",
+	}, {
+		name:          "IBM Cloud platform",
+		platformType:  configv1.IBMCloudPlatformType,
+		expectedImage: "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
 	}, {
 		name:          "OpenStack platform",
 		platformType:  configv1.OpenStackPlatformType,
@@ -196,6 +201,7 @@ func TestGetNodeControllerFromImages(t *testing.T) {
 		CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 		CloudControllerManagerAzure:     "registry.ci.openshift.org/openshift:azure-cloud-controller-manager",
 		CloudNodeManagerAzure:           "registry.ci.openshift.org/openshift:azure-cloud-node-manager",
+		CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
 		CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 	}
 
@@ -211,6 +217,10 @@ func TestGetNodeControllerFromImages(t *testing.T) {
 		name:          "Azure platform",
 		platformType:  configv1.AzurePlatformType,
 		expectedImage: "registry.ci.openshift.org/openshift:azure-cloud-node-manager",
+	}, {
+		name:          "IBM Cloud platform",
+		platformType:  configv1.IBMCloudPlatformType,
+		expectedImage: "",
 	}, {
 		name:          "OpenStack platform",
 		platformType:  configv1.OpenStackPlatformType,
