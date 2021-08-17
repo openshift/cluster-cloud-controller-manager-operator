@@ -49,8 +49,9 @@ spec:
           image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
           command:
             - /azure-config-credentials-injector
-            - /tmp/cloud-config/cloud.conf
-            - /tmp/merged-cloud-config/cloud.conf
+          args:
+            - --cloud-config-file-path=/tmp/cloud-config/cloud.conf
+            - --output-file-path=/tmp/merged-cloud-config/cloud.conf
           env:
             - name: AZURE_CLIENT_ID
               valueFrom:

@@ -1,45 +1,55 @@
 package main
 
 import (
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/assert"
+	"bytes"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func Test_mergeCloudConfig(t *testing.T) {
+func executeCommand(root *cobra.Command, args ...string) (output string, err error) {
+	_, output, err = executeCommandC(root, args...)
+	return output, err
+}
 
+func executeCommandC(root *cobra.Command, args ...string) (c *cobra.Command, output string, err error) {
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs(args)
+
+	c, err = root.ExecuteC()
+
+	return c, buf.String(), err
+}
+
+func Test_mergeCloudConfig(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", "cccmo-azure-creds-injector")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(tmpDir)
 
 	inputFile, err := ioutil.TempFile(tmpDir, "dummy-config")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(inputFile.Name())
 
 	outputFile, err := ioutil.TempFile(tmpDir, "dummy-config-merged")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(outputFile.Name())
 
 	cleanupEnv := func(envVars map[string]string) {
 		for envVarName := range envVars {
-			if err := os.Unsetenv(envVarName); err != nil {
-				t.Fatalf("Can not cleanup environment variabeles: %v", err)
-			}
+			err := os.Unsetenv(envVarName)
+			require.NoError(t, err, "Cannot cleanup environment variables")
 		}
 	}
 
 	cleanupInputFile := func(path string) {
-		if err := ioutil.WriteFile(inputFile.Name(), []byte(""), 0644); err != nil {
-			t.Fatalf("Can not cleanup input file: %v", err)
-		}
+		err := ioutil.WriteFile(inputFile.Name(), []byte(""), 0644)
+		require.NoError(t, err, "Cannot cleanup input file")
 	}
 
 	testCases := []struct {
@@ -52,61 +62,61 @@ func Test_mergeCloudConfig(t *testing.T) {
 	}{
 		{
 			name:           "input file does not exists",
-			args:           []string{"foo"},
+			args:           []string{"--cloud-config-file-path", "foo"},
 			expectedErrMsg: "stat foo: no such file or directory",
 		},
 		{
 			name:           "AZURE_CLIENT_ID not set",
-			args:           []string{inputFile.Name(), outputFile.Name()},
+			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
 			expectedErrMsg: "AZURE_CLIENT_ID env variable should be set up",
 		},
 		{
 			name:           "AZURE_CLIENT_SECRET not set",
-			args:           []string{inputFile.Name(), outputFile.Name()},
+			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
 			envVars:        map[string]string{"AZURE_CLIENT_ID": "foo"},
 			expectedErrMsg: "AZURE_CLIENT_SECRET env variable should be set up",
 		},
 		{
 			name:           "input file content is not a valid json",
-			args:           []string{inputFile.Name(), outputFile.Name()},
+			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
 			envVars:        map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
 			fileContent:    "{*&(&#@!}",
-			expectedErrMsg: "invalid character '*' looking for beginning of object key string",
+			expectedErrMsg: "couldn't read cloud config from file: invalid character '*' looking for beginning of object key string",
 		},
 		{
 			name:           "input file content is valid json, but format is unexpected",
-			args:           []string{inputFile.Name(), outputFile.Name()},
+			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
 			envVars:        map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
 			fileContent:    "[1]",
-			expectedErrMsg: "json: cannot unmarshal array into Go value of type map[string]interface {}",
+			expectedErrMsg: "couldn't read cloud config from file: json: cannot unmarshal array into Go value of type map[string]interface {}",
 		},
 		{
 			name:            "all ok, file is empty json object",
-			args:            []string{inputFile.Name(), outputFile.Name()},
+			args:            []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
 			envVars:         map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
 			fileContent:     "{}",
 			expectedContent: "{\"aadClientId\":\"foo\",\"aadClientSecret\":\"bar\"}",
 		},
 		{
 			name:            "all ok, some content in json",
-			args:            []string{inputFile.Name(), outputFile.Name()},
+			args:            []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
 			envVars:         map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
 			fileContent:     "{\"bar\": \"baz\"}",
 			expectedContent: "{\"aadClientId\":\"foo\",\"aadClientSecret\":\"bar\",\"bar\":\"baz\"}",
 		},
 		{
 			name:            "all ok, client_id and client_secret overrides",
-			args:            []string{inputFile.Name(), outputFile.Name()},
+			args:            []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
 			envVars:         map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
 			fileContent:     "{\"aadClientSecret\":\"fizz\",\"aadClientId\":\"baz\"}",
 			expectedContent: "{\"aadClientId\":\"foo\",\"aadClientSecret\":\"bar\"}",
 		},
 		{
 			name:           "output file write error",
-			args:           []string{inputFile.Name(), "/tmp"},
+			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", "/tmp"},
 			envVars:        map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
 			fileContent:    "{}",
-			expectedErrMsg: "open /tmp: is a directory",
+			expectedErrMsg: "couldn't write prepared cloud config to file: open /tmp: is a directory",
 		},
 	}
 
@@ -114,34 +124,27 @@ func Test_mergeCloudConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 
 			for envVarName, envVarValue := range tc.envVars {
-				if err := os.Setenv(envVarName, envVarValue); err != nil {
-					t.Fatalf("Can not setup environment variable %s: %v", envVarName, err)
-				}
+				err := os.Setenv(envVarName, envVarValue)
+				require.NoError(t, err, "Can not setup environment variable %s: %v", envVarName, err)
 			}
 			defer cleanupEnv(tc.envVars)
 
 			if tc.fileContent != "" {
-				if err := ioutil.WriteFile(inputFile.Name(), []byte(tc.fileContent), 0644); err != nil {
-					t.Fatal(err)
-				}
+				err = ioutil.WriteFile(inputFile.Name(), []byte(tc.fileContent), 0644)
+				require.NoError(t, err)
 				defer cleanupInputFile(inputFile.Name())
 			}
 
-			mergeCloudConfError := mergeCloudConfig(&cobra.Command{}, tc.args)
+			_, mergeCloudConfError := executeCommand(injectorCmd, tc.args...)
 
 			if tc.expectedErrMsg != "" {
-
-				if mergeCloudConfError == nil {
-					t.Fatal("Error was expected but not returned by `mergeCloudConfig` function")
-				}
-				assert.Equal(t, mergeCloudConfError.Error(), tc.expectedErrMsg)
+				require.NotNil(t, mergeCloudConfError, "Error was expected but not returned by `mergeCloudConfig` function")
+				assert.Equal(t, tc.expectedErrMsg, mergeCloudConfError.Error())
 			}
 
 			if tc.expectedContent != "" {
 				fileContent, err := ioutil.ReadFile(outputFile.Name())
-				if err != nil {
-					t.Fatal("Can not read output file")
-				}
+				require.NoError(t, err, "Cannot read output file")
 				stringFileContent := string(fileContent)
 				assert.Equal(t, tc.expectedContent, stringFileContent)
 			}

@@ -20,12 +20,12 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 		name: "Unmarshal images from file",
 		path: "images_file",
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
 		expectedImages: imagesReference{
-			CloudControllerManagerOperator:  "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			CloudControllerManagerOperator:  "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 		},
@@ -36,43 +36,43 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 		name: "Partial content is accepted",
 		path: "images_file",
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager"
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager"
 		}`,
 		expectedImages: imagesReference{
-			CloudControllerManagerOperator: "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			CloudControllerManagerOperator: "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			CloudControllerManagerAWS:      "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 		},
 	}, {
 		name: "No operator image cause error",
 		path: "images_file",
 		imagesContent: `{
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager"
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager"
 		}`,
 		expectError: "operator image was not found in images ConfigMap",
 	}, {
 		name: "Duplicate content takes precedence and is accepted",
 		path: "images_file",
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:different"
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:different"
 		}`,
 		expectedImages: imagesReference{
-			CloudControllerManagerOperator: "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			CloudControllerManagerOperator: "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			CloudControllerManagerAWS:      "registry.ci.openshift.org/openshift:different",
 		},
 	}, {
 		name: "Unknown image name is ignored",
 		path: "images_file",
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerUnknown": "registry.ci.openshift.org/openshift:unknown-cloud-controller-manager",
-    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			"cloudControllerManagerUnknown": "registry.ci.openshift.org/openshift:unknown-cloud-controller-manager",
+			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
 		expectedImages: imagesReference{
-			CloudControllerManagerOperator:  "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			CloudControllerManagerOperator:  "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 		},
@@ -81,7 +81,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 			name: "Broken JSON is rejected",
 			path: "images_file",
 			imagesContent: `{
-    			"cloudControllerManagerAWS": BAD,
+				"cloudControllerManagerAWS": BAD,
 			}`,
 			expectError: "invalid character 'B' looking for beginning of value",
 		},
@@ -251,12 +251,12 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
 		expectConfig: OperatorConfig{
-			OperatorImage:    "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
@@ -272,12 +272,12 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
 		expectConfig: OperatorConfig{
-			OperatorImage:    "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
@@ -293,12 +293,12 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+ 			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
 		expectConfig: OperatorConfig{
-			OperatorImage:    "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			ControllerImage:  "",
 			ManagedNamespace: "otherNamespace",
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.NonePlatformType},
@@ -314,7 +314,7 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		imagesContent: `{
-    		"cloudControllerManagerAWS": BAD,
+			"cloudControllerManagerAWS": BAD,
 		}`,
 		expectError: "invalid character 'B' looking for beginning of value",
 	}, {
@@ -329,12 +329,12 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
 		expectConfig: OperatorConfig{
-			OperatorImage:    "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
@@ -371,12 +371,12 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
 		expectConfig: OperatorConfig{
-			OperatorImage:    "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
@@ -397,12 +397,12 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		imagesContent: `{
-			"cloudControllerManagerOperator": "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
-    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-        }`,
+			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+		}`,
 		expectConfig: OperatorConfig{
-			OperatorImage:    "quay.io/openshift/origin-cluster-cloud-controller-manager-operator",
+			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},

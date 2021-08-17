@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -18,22 +19,33 @@ const (
 	clientSecretCloudConfigKey = "aadClientSecret"
 )
 
-func main() {
-	rootCmd := &cobra.Command{
-		Use:   "azure-config-credentials-injector [cloud-config-file-path] [output-file-path]",
+var (
+	injectorCmd = &cobra.Command{
+		Use:   "azure-config-credentials-injector [OPTIONS]",
 		Short: "Cloud config credentials injection tool for azure cloud platform",
-		Args:  cobra.ExactArgs(2),
 		RunE:  mergeCloudConfig,
 	}
 
-	if err := rootCmd.Execute(); err != nil {
+	injectorOpts struct {
+		cloudConfigFilePath string
+		outputFilePath      string
+	}
+)
+
+func init() {
+	injectorCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
+	injectorCmd.PersistentFlags().StringVar(&injectorOpts.cloudConfigFilePath, "cloud-config-file-path", "/tmp/cloud-config/cloud.conf", "Location of the original cloud config file.")
+	injectorCmd.PersistentFlags().StringVar(&injectorOpts.outputFilePath, "output-file-path", "/tmp/merged-cloud-config/cloud.conf", "Location of the generated cloud config file with injected credentials.")
+}
+
+func main() {
+	if err := injectorCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func mergeCloudConfig(_ *cobra.Command, args []string) error {
-	cloudConfigPath := args[0]
-	if _, err := os.Stat(cloudConfigPath); os.IsNotExist(err) {
+	if _, err := os.Stat(injectorOpts.cloudConfigFilePath); os.IsNotExist(err) {
 		return err
 	}
 
@@ -47,19 +59,18 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("%s env variable should be set up", clientSecretEnvKey)
 	}
 
-	cloudConfig, err := readCloudConfig(cloudConfigPath)
+	cloudConfig, err := readCloudConfig(injectorOpts.cloudConfigFilePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't read cloud config from file: %w", err)
 	}
 
 	preparedCloudConfig, err := prepareCloudConfig(cloudConfig, azureClientId, azureClientSecret)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't prepare cloud config: %w", err)
 	}
 
-	outputPath := args[1]
-	if err := writeCloudConfig(outputPath, preparedCloudConfig); err != nil {
-		return err
+	if err := writeCloudConfig(injectorOpts.outputFilePath, preparedCloudConfig); err != nil {
+		return fmt.Errorf("couldn't write prepared cloud config to file: %w", err)
 	}
 
 	return nil
