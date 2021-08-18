@@ -3,25 +3,24 @@ module github.com/openshift/cluster-cloud-controller-manager-operator
 go 1.16
 
 require (
+	github.com/go-logr/logr v1.0.0 // indirect
 	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/onsi/ginkgo v1.16.4
-	github.com/onsi/gomega v1.13.0
-	github.com/openshift/api v0.0.0-20210720160326-96bb0f993a66
-	github.com/openshift/library-go v0.0.0-20210708191609-4b9033d00d37
-	github.com/spf13/cobra v1.1.1
+	github.com/onsi/gomega v1.14.0
+	github.com/openshift/api v0.0.0-20210817132244-67c28690af52
+	github.com/openshift/library-go v0.0.0-20210817120645-b59564e63303
+	github.com/spf13/cobra v1.1.3
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20210716203947-853a461950ff // indirect
-	k8s.io/api v0.21.3
-	k8s.io/apiextensions-apiserver v0.21.1
-	k8s.io/apimachinery v0.21.3
-	k8s.io/client-go v0.21.1
+	k8s.io/api v0.22.0
+	k8s.io/apiextensions-apiserver v0.22.0
+	k8s.io/apimachinery v0.22.0
+	k8s.io/client-go v0.22.0
 	k8s.io/klog/v2 v2.10.0
-	k8s.io/utils v0.0.0-20210527160623-6fdb442a123b
-	sigs.k8s.io/controller-runtime v0.9.0
+	k8s.io/utils v0.0.0-20210802155522-efc7438f0176
+	sigs.k8s.io/controller-runtime v0.9.6
 	sigs.k8s.io/yaml v1.2.0
 )
 
-// Workaround to deal with https://github.com/kubernetes/klog/issues/253
-// Should be deleted when https://github.com/kubernetes/klog/pull/242 is merged
-exclude github.com/go-logr/logr v1.0.0
+replace github.com/go-logr/logr => github.com/go-logr/logr v0.4.0
