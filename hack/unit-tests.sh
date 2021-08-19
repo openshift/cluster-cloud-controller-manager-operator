@@ -18,6 +18,12 @@ function setupEnvtest() {
     source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh
     fetch_envtest_tools ${ENVTEST_ASSETS_DIR}
     setup_envtest_env ${ENVTEST_ASSETS_DIR}
+
+    # Ensure that some home var is set and that it's not the root
+    export HOME=${HOME:=/tmp/kubebuilder/testing}
+    if [ $HOME == "/" ]; then
+      export HOME=/tmp/kubebuilder/testing
+    fi
 }
 
 
