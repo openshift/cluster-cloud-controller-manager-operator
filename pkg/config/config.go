@@ -12,6 +12,7 @@ import (
 
 // imagesReference allows build systems to inject imagesReference for CCCMO components
 type imagesReference struct {
+	CloudControllerManagerOperator  string `json:"cloudControllerManagerOperator"`
 	CloudControllerManagerAWS       string `json:"cloudControllerManagerAWS"`
 	CloudControllerManagerAzure     string `json:"cloudControllerManagerAzure"`
 	CloudNodeManagerAzure           string `json:"cloudNodeManagerAzure"`
@@ -21,6 +22,7 @@ type imagesReference struct {
 // OperatorConfig contains configuration values for templating resources
 type OperatorConfig struct {
 	ManagedNamespace   string
+	OperatorImage      string
 	ControllerImage    string
 	CloudNodeImage     string
 	IsSingleReplica    bool
@@ -52,6 +54,9 @@ func getImagesFromJSONFile(filePath string) (imagesReference, error) {
 	i := imagesReference{}
 	if err := json.Unmarshal(data, &i); err != nil {
 		return imagesReference{}, err
+	}
+	if i.CloudControllerManagerOperator == "" {
+		return imagesReference{}, fmt.Errorf("operator image was not found in images ConfigMap")
 	}
 	return i, nil
 }
@@ -97,6 +102,7 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
 		ClusterProxy:       clusterProxy,
 		ManagedNamespace:   managedNamespace,
+		OperatorImage:      images.CloudControllerManagerOperator,
 		ControllerImage:    getCloudControllerManagerFromImages(platform, images),
 		CloudNodeImage:     getCloudNodeManagerFromImages(platform, images),
 		InfrastructureName: infrastructure.Status.InfrastructureName,
