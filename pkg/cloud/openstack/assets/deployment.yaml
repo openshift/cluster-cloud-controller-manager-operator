@@ -10,6 +10,8 @@ spec:
   selector:
     matchLabels:
       app: openstack-cloud-controller-manager
+  strategy:
+    type: Recreate
   template:
     metadata:
       annotations:

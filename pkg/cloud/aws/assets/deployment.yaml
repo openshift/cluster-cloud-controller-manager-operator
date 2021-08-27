@@ -10,6 +10,8 @@ spec:
   selector:
     matchLabels:
       k8s-app: aws-cloud-controller-manager
+  strategy:
+    type: Recreate
   template:
     metadata:
       annotations:

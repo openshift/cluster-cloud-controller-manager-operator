@@ -9,6 +9,8 @@ spec:
   selector:
     matchLabels:
       app: azure-cloud-controller-manager
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
