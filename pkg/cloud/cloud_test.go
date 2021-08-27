@@ -312,3 +312,54 @@ func checkPodAntiAffinity(t *testing.T, podSpec corev1.PodSpec, podMeta metav1.O
 
 	assert.EqualValues(t, podAntiAffinity, podSpec.Affinity.PodAntiAffinity)
 }
+
+func TestDeploymentStrategy(t *testing.T) {
+	/*
+		This test is designed to check that when a Pod is created by the CCCMO,
+		we can update the pod when running on an SNO cluster.
+		Because host ports are used by the pods we create, we must release the
+		port before creating the new pod
+	*/
+
+	platforms := []testPlatform{
+		{configv1.AWSPlatformType, getDummyPlatformStatus(configv1.AWSPlatformType, false)},
+		{configv1.OpenStackPlatformType, getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
+		{configv1.GCPPlatformType, getDummyPlatformStatus(configv1.GCPPlatformType, false)},
+		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, false)},
+		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, true)}, // stackhub
+		{configv1.VSpherePlatformType, getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
+		{configv1.OvirtPlatformType, getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
+		{configv1.IBMCloudPlatformType, getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
+		{configv1.LibvirtPlatformType, getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
+		{configv1.KubevirtPlatformType, getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
+		{configv1.BareMetalPlatformType, getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
+		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
+	}
+	for _, platform := range platforms {
+		platformName := string(platform.platfromType)
+		if platform.platformStatus != nil &&
+			platform.platformStatus.Azure != nil &&
+			platform.platformStatus.Azure.CloudName == configv1.AzureStackCloud {
+			platformName += "StackHub"
+		}
+
+		t.Run(platformName, func(t *testing.T) {
+			resources := GetResources(platform.platformStatus)
+
+			for _, resource := range resources {
+				switch obj := resource.(type) {
+				case *appsv1.Deployment:
+					checkDeploymentStrategy(t, obj.Spec.Strategy)
+				default:
+					// Nothing to check for non
+				}
+			}
+		})
+	}
+}
+
+func checkDeploymentStrategy(t *testing.T, strategy appsv1.DeploymentStrategy) {
+	if strategy.Type != appsv1.RecreateDeploymentStrategyType {
+		t.Errorf("Deployment should set strategy type to \"Recreate\"")
+	}
+}
