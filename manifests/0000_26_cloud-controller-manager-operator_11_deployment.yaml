@@ -15,6 +15,7 @@ spec:
   replicas: 1
   stategy:
     type: Recreate
+    rollingUpdate: {}
   template:
     metadata:
       annotations:
