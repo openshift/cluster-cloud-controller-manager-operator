@@ -33,6 +33,10 @@ spec:
           exec /bin/aws-cloud-controller-manager \
           --cloud-provider=aws \
           --use-service-account-credentials=true \
+          --leader-elect=true \
+          --leader-elect-lease-duration=137s \
+          --leader-elect-renew-deadline=107s \
+          --leader-elect-retry-period=26s \
           --leader-elect-resource-namespace=openshift-cloud-controller-manager \
           -v=2
         image: quay.io/openshift/origin-aws-cloud-controller-manager

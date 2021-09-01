@@ -109,14 +109,10 @@ func TestGetResources(t *testing.T) {
 	}
 }
 
-func TestResourcesRunBeforeCNI(t *testing.T) {
+func TestPodSpec(t *testing.T) {
 	/*
-		As CNI relies on CMM to initialist the Node IP addresses. We must ensure
-		that CCM pods can run before the CNO has been deployed and before the CNI
-		initialises the Node.
-
-		To achieve this, we must tolerate the not-ready taint, use host
-		networking and use the internal API Load Balancer instead of the API Service.
+		This test runs a number of different checks against the podSpecs produced by
+		the different platform resources.
 	*/
 
 	platforms := []testPlatform{
@@ -145,22 +141,36 @@ func TestResourcesRunBeforeCNI(t *testing.T) {
 			resources := GetResources(platform.platformStatus)
 
 			for _, resource := range resources {
+				var podSpec corev1.PodSpec
 				switch obj := resource.(type) {
 				case *corev1.Pod:
-					checkResourceRunsBeforeCNI(t, obj.Spec)
+					podSpec = obj.Spec
 				case *appsv1.Deployment:
-					checkResourceRunsBeforeCNI(t, obj.Spec.Template.Spec)
+					podSpec = obj.Spec.Template.Spec
 				case *appsv1.DaemonSet:
-					checkResourceRunsBeforeCNI(t, obj.Spec.Template.Spec)
+					podSpec = obj.Spec.Template.Spec
 				default:
-					// Nothing to check for non
+					// Nothing to check for non pod producing types
+					continue
 				}
+
+				checkResourceRunsBeforeCNI(t, podSpec)
+				checkLeaderElection(t, podSpec)
 			}
 		})
 	}
 }
 
 func checkResourceRunsBeforeCNI(t *testing.T, podSpec corev1.PodSpec) {
+	/*
+		As CNI relies on CMM to initialist the Node IP addresses. We must ensure
+		that CCM pods can run before the CNO has been deployed and before the CNI
+		initialises the Node.
+
+		To achieve this, we must tolerate the not-ready taint, use host
+		networking and use the internal API Load Balancer instead of the API Service.
+	*/
+
 	checkResourceTolerations(t, podSpec)
 	checkHostNetwork(t, podSpec)
 	checkPorts(t, podSpec)
@@ -255,6 +265,29 @@ exec `
 		assert.Equal(t, command[0], binBash, "Container Command first element should equal %q", binBash)
 		assert.Equal(t, command[1], dashC, "Container Command second element should equal %q", dashC)
 		assert.True(t, strings.HasPrefix(command[2], setAPIEnv), "Container Command third (%q) element should start with %q", command[2], setAPIEnv)
+	}
+}
+
+func checkLeaderElection(t *testing.T, podSpec corev1.PodSpec) {
+	const (
+		leaderElect                  = "--leader-elect=true"
+		leaderElectLeaseDuration     = "--leader-elect-lease-duration=137s"
+		leaderElectRenewDeadline     = "--leader-elect-renew-deadline=107s"
+		leaderElectRetryPeriod       = "--leader-elect-retry-period=26s"
+		leaderElectResourceNamesapce = "--leader-elect-resource-namespace=openshift-cloud-controller-manager"
+	)
+
+	for _, container := range podSpec.Containers {
+		if container.Name != "cloud-controller-manager" {
+			// Only the cloud-controller-manager container needs leader election
+			continue
+		}
+
+		for _, flag := range []string{leaderElect, leaderElectLeaseDuration, leaderElectRenewDeadline, leaderElectRetryPeriod, leaderElectResourceNamesapce} {
+			command := container.Command
+			assert.Len(t, command, 3, "Container Command should have 3 elements")
+			assert.Contains(t, command[2], flag, "Container Command third (%q) element should contain flag %q", command[2], flag)
+		}
 	}
 }
 
