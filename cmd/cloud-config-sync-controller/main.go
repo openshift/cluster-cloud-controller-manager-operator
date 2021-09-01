@@ -37,17 +37,13 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 	// +kubebuilder:scaffold:imports
 )
 
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
-
-	// The default durations for the leader electrion operations.
-	leaseDuration = 120 * time.Second
-	renewDealine  = 110 * time.Second
-	retryPeriod   = 90 * time.Second
 )
 
 func init() {
@@ -86,7 +82,7 @@ func main() {
 
 	leaderElectLeaseDuration := flag.Duration(
 		"leader-elect-lease-duration",
-		leaseDuration,
+		util.LeaseDuration,
 		"The duration that non-leader candidates will wait after observing a leadership renewal until attempting to acquire leadership of a led but unrenewed leader slot. This is effectively the maximum duration that a leader can be stopped before it is replaced by another candidate. This is only applicable if leader election is enabled.",
 	)
 
@@ -114,8 +110,8 @@ func main() {
 		LeaderElection:          *leaderElect,
 		LeaseDuration:           leaderElectLeaseDuration,
 		LeaderElectionID:        "cloud-config-sync-controller-leader",
-		RetryPeriod:             &retryPeriod,
-		RenewDeadline:           &renewDealine,
+		RetryPeriod:             util.TimeDuration(util.RetryPeriod),
+		RenewDeadline:           util.TimeDuration(util.RenewDeadline),
 		NewCache:                cacheBuilder,
 	})
 	if err != nil {
