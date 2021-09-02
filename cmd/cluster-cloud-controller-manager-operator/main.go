@@ -21,21 +21,25 @@ import (
 	"os"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
-
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/component-base/config"
+	"k8s.io/component-base/config/options"
+	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -43,10 +47,13 @@ var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 
-	// The default durations for the leader electrion operations.
-	leaseDuration = 120 * time.Second
-	renewDealine  = 110 * time.Second
-	retryPeriod   = 90 * time.Second
+	leaderElectionConfig = config.LeaderElectionConfiguration{
+		LeaderElect:   true,
+		LeaseDuration: util.LeaseDuration,
+		RenewDeadline: util.RenewDeadline,
+		RetryPeriod:   util.RetryPeriod,
+		ResourceName:  "cluster-cloud-controller-manager-leader",
+	}
 )
 
 const (
@@ -77,25 +84,6 @@ func main() {
 		":9440",
 		"The address for health checking.",
 	)
-
-	leaderElectResourceNamespace := flag.String(
-		"leader-elect-resource-namespace",
-		"",
-		"The namespace of resource object that is used for locking during leader election. If unspecified and running in cluster, defaults to the service account namespace for the controller. Required for leader-election outside of a cluster.",
-	)
-
-	leaderElect := flag.Bool(
-		"leader-elect",
-		false,
-		"Start a leader election client and gain leadership before executing the main loop. Enable this when running replicated components for high availability.",
-	)
-
-	leaderElectLeaseDuration := flag.Duration(
-		"leader-elect-lease-duration",
-		leaseDuration,
-		"The duration that non-leader candidates will wait after observing a leadership renewal until attempting to acquire leadership of a led but unrenewed leader slot. This is effectively the maximum duration that a leader can be stopped before it is replaced by another candidate. This is only applicable if leader election is enabled.",
-	)
-
 	managedNamespace := flag.String(
 		"namespace",
 		controllers.DefaultManagedNamespace,
@@ -108,7 +96,11 @@ func main() {
 		"The location of images file to use by operator for managed CCM binaries.",
 	)
 
-	flag.Parse()
+	// Once all the flags are regitered, switch to pflag
+	// to allow leader lection flags to be bound
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	options.BindLeaderElectionFlags(&leaderElectionConfig, pflag.CommandLine)
+	pflag.Parse()
 
 	ctrl.SetLogger(klogr.New().WithName("CCMOperator"))
 
@@ -120,12 +112,12 @@ func main() {
 		MetricsBindAddress:      *metricsAddr,
 		Port:                    9443,
 		HealthProbeBindAddress:  *healthAddr,
-		LeaderElectionNamespace: *leaderElectResourceNamespace,
-		LeaderElection:          *leaderElect,
-		LeaseDuration:           leaderElectLeaseDuration,
-		LeaderElectionID:        "cluster-cloud-controller-manager-leader",
-		RetryPeriod:             &retryPeriod,
-		RenewDeadline:           &renewDealine,
+		LeaderElectionNamespace: leaderElectionConfig.ResourceNamespace,
+		LeaderElection:          leaderElectionConfig.LeaderElect,
+		LeaseDuration:           &leaderElectionConfig.LeaseDuration.Duration,
+		LeaderElectionID:        leaderElectionConfig.ResourceName,
+		RetryPeriod:             &leaderElectionConfig.RetryPeriod.Duration,
+		RenewDeadline:           &leaderElectionConfig.RenewDeadline.Duration,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

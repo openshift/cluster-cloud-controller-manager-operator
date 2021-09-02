@@ -11,12 +11,14 @@ require (
 	github.com/openshift/api v0.0.0-20210817132244-67c28690af52
 	github.com/openshift/library-go v0.0.0-20210817120645-b59564e63303
 	github.com/spf13/cobra v1.1.3
+	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20210716203947-853a461950ff // indirect
 	k8s.io/api v0.22.0
 	k8s.io/apiextensions-apiserver v0.22.0
 	k8s.io/apimachinery v0.22.0
 	k8s.io/client-go v0.22.0
+	k8s.io/component-base v0.22.0
 	k8s.io/klog/v2 v2.10.0
 	k8s.io/utils v0.0.0-20210802155522-efc7438f0176
 	sigs.k8s.io/controller-runtime v0.9.6
