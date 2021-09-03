@@ -13,9 +13,8 @@ spec:
     matchLabels:
       k8s-app: cloud-manager-operator
   replicas: 1
-  stategy:
+  strategy:
     type: Recreate
-    rollingUpdate: {}
   template:
     metadata:
       annotations:
