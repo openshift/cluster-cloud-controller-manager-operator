@@ -8,6 +8,7 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azurestack"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/ibm"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
@@ -73,8 +74,9 @@ func TestGetResources(t *testing.T) {
 		name:     "OVirt resources are empty, as the platform is not yet supported",
 		platform: configv1.OvirtPlatformType,
 	}, {
-		name:     "IBMCloud resources are empty, as the platform is not yet supported",
+		name:     "IBMCloud resources returned as expected",
 		platform: configv1.IBMCloudPlatformType,
+		expected: ibm.GetResources(),
 	}, {
 		name:     "Libvirt resources are empty",
 		platform: configv1.LibvirtPlatformType,

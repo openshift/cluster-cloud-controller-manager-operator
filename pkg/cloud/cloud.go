@@ -5,6 +5,7 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azurestack"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/ibm"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,6 +29,8 @@ func GetResources(platformStatus *configv1.PlatformStatus) []client.Object {
 			return azurestack.GetResources()
 		}
 		return azure.GetResources()
+	case configv1.IBMCloudPlatformType:
+		return ibm.GetResources()
 	default:
 		klog.Warningf("Unrecognized platform type %q found in infrastructure", platformStatus.Type)
 		return nil
