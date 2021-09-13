@@ -64,6 +64,7 @@ spec:
             --cloud-config=$(CLOUD_CONFIG) \
             --cloud-provider=openstack \
             --use-service-account-credentials=true \
+            --configure-cloud-routes=false \
             --bind-address=127.0.0.1 \
             --leader-elect=true \
             --leader-elect-lease-duration=137s \
