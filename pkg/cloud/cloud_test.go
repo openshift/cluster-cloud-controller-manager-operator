@@ -158,6 +158,7 @@ func TestPodSpec(t *testing.T) {
 
 				checkResourceRunsBeforeCNI(t, podSpec)
 				checkLeaderElection(t, podSpec)
+				checkCloudControllerManagerFlags(t, podSpec)
 			}
 		})
 	}
@@ -285,9 +286,34 @@ func checkLeaderElection(t *testing.T, podSpec corev1.PodSpec) {
 			continue
 		}
 
+		command := container.Command
+		assert.Len(t, command, 3, "Container Command should have 3 elements")
+
 		for _, flag := range []string{leaderElect, leaderElectLeaseDuration, leaderElectRenewDeadline, leaderElectRetryPeriod, leaderElectResourceNamesapce} {
-			command := container.Command
-			assert.Len(t, command, 3, "Container Command should have 3 elements")
+			assert.Contains(t, command[2], flag, "Container Command third (%q) element should contain flag %q", command[2], flag)
+		}
+	}
+}
+
+func checkCloudControllerManagerFlags(t *testing.T, podSpec corev1.PodSpec) {
+	const (
+		// This flag will disable the cloud route controller.
+		// The route controller is responsible for setting up inter pod networking
+		// using cloud networks, but this isn't required when you have an overlay
+		// network as is used within OpenShift.
+		configureCloudRoutes = "--configure-cloud-routes=false"
+	)
+
+	for _, container := range podSpec.Containers {
+		if container.Name != "cloud-controller-manager" {
+			// Only the cloud-controller-manager container needs these flags checking
+			continue
+		}
+
+		command := container.Command
+		assert.Len(t, command, 3, "Container Command should have 3 elements")
+
+		for _, flag := range []string{configureCloudRoutes} {
 			assert.Contains(t, command[2], flag, "Container Command third (%q) element should contain flag %q", command[2], flag)
 		}
 	}

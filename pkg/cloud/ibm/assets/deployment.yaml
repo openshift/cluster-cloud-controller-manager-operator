@@ -75,6 +75,7 @@ spec:
             --port=0 \
             --bind-address=$(POD_IP_ADDRESS) \
             --use-service-account-credentials=true \
+            --configure-cloud-routes=false \
             --cloud-provider=ibm \
             --cloud-config=/etc/ibm/cloud.conf \
             --feature-gates=IPv6DualStack=false \
@@ -98,7 +99,7 @@ spec:
             name: https
             protocol: TCP
         resources:
-          # Container is required to set pod requests, but not limits to satisfy CI 
+          # Container is required to set pod requests, but not limits to satisfy CI
           # requirements for OpenShift on every scheduled workload in the cluster
           requests:
             cpu: 75m
