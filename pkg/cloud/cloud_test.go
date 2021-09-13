@@ -111,13 +111,10 @@ func TestGetResources(t *testing.T) {
 	}
 }
 
-func TestPodSpec(t *testing.T) {
-	/*
-		This test runs a number of different checks against the podSpecs produced by
-		the different platform resources.
-	*/
-
-	platforms := []testPlatform{
+// getTestPlatforms returns the list of platforms to be tested using our static
+// resource analysis tests
+func getTestPlatforms() []testPlatform {
+	return []testPlatform{
 		{configv1.AWSPlatformType, getDummyPlatformStatus(configv1.AWSPlatformType, false)},
 		{configv1.OpenStackPlatformType, getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
 		{configv1.GCPPlatformType, getDummyPlatformStatus(configv1.GCPPlatformType, false)},
@@ -131,7 +128,15 @@ func TestPodSpec(t *testing.T) {
 		{configv1.BareMetalPlatformType, getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
 		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
 	}
-	for _, platform := range platforms {
+}
+
+func TestPodSpec(t *testing.T) {
+	/*
+		This test runs a number of different checks against the podSpecs produced by
+		the different platform resources.
+	*/
+
+	for _, platform := range getTestPlatforms() {
 		platformName := string(platform.platfromType)
 		if platform.platformStatus != nil &&
 			platform.platformStatus.Azure != nil &&
@@ -294,21 +299,7 @@ func checkLeaderElection(t *testing.T, podSpec corev1.PodSpec) {
 }
 
 func TestDeploymentPodAntiAffinity(t *testing.T) {
-	platforms := []testPlatform{
-		{configv1.AWSPlatformType, getDummyPlatformStatus(configv1.AWSPlatformType, false)},
-		{configv1.OpenStackPlatformType, getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
-		{configv1.GCPPlatformType, getDummyPlatformStatus(configv1.GCPPlatformType, false)},
-		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, false)},
-		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, true)}, // stackhub
-		{configv1.VSpherePlatformType, getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
-		{configv1.OvirtPlatformType, getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
-		{configv1.IBMCloudPlatformType, getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
-		{configv1.LibvirtPlatformType, getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
-		{configv1.KubevirtPlatformType, getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
-		{configv1.BareMetalPlatformType, getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
-		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
-	}
-	for _, platform := range platforms {
+	for _, platform := range getTestPlatforms() {
 		platformName := string(platform.platfromType)
 		if platform.platformStatus != nil &&
 			platform.platformStatus.Azure != nil &&
@@ -356,21 +347,7 @@ func TestDeploymentStrategy(t *testing.T) {
 		port before creating the new pod
 	*/
 
-	platforms := []testPlatform{
-		{configv1.AWSPlatformType, getDummyPlatformStatus(configv1.AWSPlatformType, false)},
-		{configv1.OpenStackPlatformType, getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
-		{configv1.GCPPlatformType, getDummyPlatformStatus(configv1.GCPPlatformType, false)},
-		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, false)},
-		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, true)}, // stackhub
-		{configv1.VSpherePlatformType, getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
-		{configv1.OvirtPlatformType, getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
-		{configv1.IBMCloudPlatformType, getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
-		{configv1.LibvirtPlatformType, getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
-		{configv1.KubevirtPlatformType, getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
-		{configv1.BareMetalPlatformType, getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
-		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
-	}
-	for _, platform := range platforms {
+	for _, platform := range getTestPlatforms() {
 		platformName := string(platform.platfromType)
 		if platform.platformStatus != nil &&
 			platform.platformStatus.Azure != nil &&
