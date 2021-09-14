@@ -33,6 +33,7 @@ spec:
           exec /bin/aws-cloud-controller-manager \
           --cloud-provider=aws \
           --use-service-account-credentials=true \
+          --configure-cloud-routes=false \
           --leader-elect=true \
           --leader-elect-lease-duration=137s \
           --leader-elect-renew-deadline=107s \
