@@ -1,11 +1,9 @@
 approvers:
   - JoelSpeed
-  - Danil-Grigorev
   - Fedosin
-  - mandre
-  - mdbooth
   - elmiko
   - lobziik
+  - alexander-demichev
 
 component: "Cloud Compute"
 subcomponent: "Cloud Controller Manager"
