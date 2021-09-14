@@ -27,13 +27,15 @@ but **should not** be used for production.
 
 ### Supported Platforms
 
-| Platform        | Included in Operator | Tested in CI |
-| --------------- | -------------------- | ------------ |
-| AWS             | Yes                  | Yes          |
-| Azure           | Yes                  | No           |
-| GCP             | No                   |              |
-| OpenStack       | Yes                  | No           |
-| vSphere         | No                   |              |
+| Platform                                                             | Included in Operator | Tested in CI  |
+| -------------------------------------------------------------------- | -------------------- | ------------  |
+| [AWS](https://github.com/openshift/cloud-provider-aws)               | Yes                  | Yes           |
+| [Azure](https://github.com/openshift/cloud-provider-azure)           | Yes                  | Yes           |
+| [GCP](https://github.com/openshift/cloud-provider-gcp)               | No                   |               |
+| [OpenStack](https://github.com/openshift/cloud-provider-openstack)   | Yes                  | Yes           |
+| [vSphere](https://github.com/openshift/cloud-provider-vsphere)       | No                   |               |
+| [IBM](https://github.com/openshift/cloud-provider-ibm)               | No                   |               |
+| [Alibaba](https://github.com/openshift/cloud-provider-alibaba-cloud) | No                   |               |
 
 ## Deploying and Running CCCMO
 
@@ -43,7 +45,7 @@ cluster bootstrapping and initial payload deployment. In general, it is best
 to allow the OpenShift installer to manage its operation.
 
 To better understand how this operator is deployed, please see the
-[`manifest`](/manifest) directory. It contains a series of Kubernetes
+[`manifests`](/manifests) directory. It contains a series of Kubernetes
 YAML manifests which are deployed by the CVO during installation.
 Additionally,
 [this OpenShift enhancement(currently in review)](https://github.com/openshift/enhancements/pull/463/)
