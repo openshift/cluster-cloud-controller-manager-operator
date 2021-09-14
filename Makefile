@@ -11,6 +11,10 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+verify-%:
+	make $*
+	./hack/verify-diff.sh
+
 all: build
 
 verify: fmt vet lint
