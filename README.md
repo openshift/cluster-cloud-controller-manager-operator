@@ -34,7 +34,7 @@ but **should not** be used for production.
 | [GCP](https://github.com/openshift/cloud-provider-gcp)               | No                   |               |
 | [OpenStack](https://github.com/openshift/cloud-provider-openstack)   | Yes                  | Yes           |
 | [vSphere](https://github.com/openshift/cloud-provider-vsphere)       | No                   |               |
-| [IBM](https://github.com/openshift/cloud-provider-ibm)               | No                   |               |
+| [IBM](https://github.com/openshift/cloud-provider-ibm)               | Yes                  |               |
 | [Alibaba](https://github.com/openshift/cloud-provider-alibaba-cloud) | No                   |               |
 
 ## Deploying and Running CCCMO
