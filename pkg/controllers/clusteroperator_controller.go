@@ -59,25 +59,6 @@ type CloudOperatorReconciler struct {
 
 // Reconcile will process the cloud-controller-manager clusterOperator
 func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
-	featureGate := &configv1.FeatureGate{}
-	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
-		klog.Infof("FeatureGate cluster does not exist. Skipping...")
-
-		if err := r.setStatusAvailable(ctx); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	} else if err != nil {
-		klog.Errorf("Unable to retrive FeatureGate object: %v", err)
-
-		if err := r.setStatusDegraded(ctx, err); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
-		return ctrl.Result{}, err
-	}
-
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); errors.IsNotFound(err) {
 		klog.Infof("Infrastructure cluster does not exist. Skipping...")
@@ -98,6 +79,14 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	allowedToProvision, err := r.provisioningAllowed(ctx, infra)
+	if err != nil {
+		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
+		return ctrl.Result{}, err
+	} else if !allowedToProvision {
+		return ctrl.Result{}, nil
+	}
+
 	clusterProxy := &configv1.Proxy{}
 	if err := r.Get(ctx, client.ObjectKey{Name: proxyResourceName}, clusterProxy); err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("Unable to retrive Proxy object: %v", err)
@@ -107,27 +96,6 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
 		return ctrl.Result{}, err
-	}
-
-	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
-	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus, featureGate)
-	if err != nil {
-		klog.Errorf("Could not determine external cloud provider state: %v", err)
-
-		if err := r.setStatusDegraded(ctx, err); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
-		return ctrl.Result{}, err
-	} else if !external {
-		klog.Infof("FeatureGate cluster is not specifying external cloud provider requirement. Skipping...")
-
-		if err := r.setStatusAvailable(ctx); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{}, nil
 	}
 
 	config, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace)
@@ -239,4 +207,50 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&source.Channel{Source: watcher.EventStream()}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
 
 	return build.Complete(r)
+}
+
+func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra *configv1.Infrastructure) (bool, error) {
+	featureGate := &configv1.FeatureGate{}
+	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
+		klog.Infof("FeatureGate cluster does not exist. Skipping...")
+
+		if err := r.setStatusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return false, err
+		}
+		return false, nil
+	} else if err != nil {
+		klog.Errorf("Unable to retrive FeatureGate object: %v", err)
+
+		if err := r.setStatusDegraded(ctx, err); err != nil {
+			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+		}
+		return false, err
+	}
+
+	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
+	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus, featureGate)
+	if err != nil {
+		klog.Errorf("Could not determine external cloud provider state: %v", err)
+
+		if err := r.setStatusDegraded(ctx, err); err != nil {
+			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+		}
+		return false, err
+	} else if !external {
+		klog.Infof("FeatureGate cluster is not specifying external cloud provider requirement. Skipping...")
+
+		if err := r.setStatusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return false, err
+		}
+
+		return false, nil
+	}
+
+	// TODO: Add part confirming migration is finished for KCM before allowing provisioning
+
+	return true, nil
 }
