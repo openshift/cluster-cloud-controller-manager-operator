@@ -52,7 +52,7 @@ function runTests() {
     if [ "$OPENSHIFT_CI" == "true" ]; then
         runTestCI
     else
-        go_test
+        go_test -test.short
     fi
 }
 

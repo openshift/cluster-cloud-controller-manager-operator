@@ -2,15 +2,18 @@ package cloud
 
 import (
 	"fmt"
+	"strings"
+	"testing"
+	"time"
+
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strings"
-	"testing"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util/testingutils"
 )
 
 const (
@@ -71,6 +74,10 @@ func getPlatforms() testPlatformsMap {
 
 func TestGetResources(t *testing.T) {
 	platformsMap := getPlatforms()
+	getResourcesThresholdMs := 5 * time.Millisecond
+
+	testingutils.TurnOffKlog()
+	defer testingutils.TurnOnKlog()
 
 	tc := []struct {
 		name                      string
@@ -154,6 +161,22 @@ func TestGetResources(t *testing.T) {
 				assert.NotEqualValues(t, resources, newResources)
 			}
 		})
+
+		if !testing.Short() {
+			t.Run(fmt.Sprintf("Benchmark: %s", tc.name), func(t *testing.T) {
+				benchResulst := testing.Benchmark(func(b *testing.B) {
+					for i := 0; i < b.N; i++ {
+						GetResources(tc.testPlatform.getOperatorConfig())
+					}
+				})
+				assert.True(
+					t,
+					getResourcesThresholdMs.Nanoseconds() > benchResulst.NsPerOp(),
+					"Resources rendering took too long, worth to check.",
+				)
+				fmt.Println(benchResulst)
+			})
+		}
 	}
 }
 
