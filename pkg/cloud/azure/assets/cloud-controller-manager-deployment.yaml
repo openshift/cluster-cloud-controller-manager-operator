@@ -48,13 +48,13 @@ spec:
           operator: Exists
       containers:
         - name: cloud-controller-manager
-          image: quay.io/openshift/origin-azure-cloud-controller-manager:4.8.0
+          image: {{ .images.CloudControllerManager }}
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CLOUD_CONFIG
               value: /etc/kubernetes-cloud-config/cloud.conf
             - name: OCP_INFRASTRUCTURE_NAME
-              value: kubernetes # default cluster name in ccm
+              value: {{ .infrastructureName }}
           resources:
             requests:
               cpu: 200m

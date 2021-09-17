@@ -3,22 +3,73 @@ package azure
 import (
 	"testing"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
-func TestGetResources(t *testing.T) {
-	resources := GetResources()
-	assert.Len(t, resources, 2)
+func TestResourcesRenderingSmoke(t *testing.T) {
 
-	var names, kinds []string
-	for _, r := range resources {
-		names = append(names, r.GetName())
-		kinds = append(kinds, r.GetObjectKind().GroupVersionKind().Kind)
+	tc := []struct {
+		name       string
+		config     config.OperatorConfig
+		initErrMsg string
+	}{
+		{
+			name:       "Empty config",
+			config:     config.OperatorConfig{},
+			initErrMsg: "azure: missed images in config: CloudControllerManager: non zero value required;CloudNodeManager: non zero value required",
+		}, {
+			name: "No infra config",
+			config: config.OperatorConfig{
+				ManagedNamespace: "my-cool-namespace",
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerAzure: "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
+				},
+			},
+			initErrMsg: "can not construct template values for azure assets: infrastructureName: non zero value required",
+		}, {
+			name: "No proxy config",
+			config: config.OperatorConfig{
+				ManagedNamespace: "my-cool-namespace",
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerAzure: "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
+				},
+				InfrastructureName: "infra",
+			},
+		}, {
+			name: "Config with proxy",
+			config: config.OperatorConfig{
+				ManagedNamespace: "my-cool-namespace",
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerAzure: "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
+				},
+				InfrastructureName: "infra",
+				ClusterProxy: &configv1.Proxy{
+					Status: configv1.ProxyStatus{
+						HTTPSProxy: "https://squid.corp.acme.com:3128",
+					},
+				},
+			},
+		},
 	}
 
-	assert.Contains(t, names, "azure-cloud-controller-manager")
-	assert.Contains(t, kinds, "Deployment")
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			assets, err := NewProviderAssets(tc.config)
+			if tc.initErrMsg != "" {
+				assert.EqualError(t, err, tc.initErrMsg)
+				return
+			} else {
+				assert.NoError(t, err)
+			}
 
-	assert.Contains(t, names, "azure-cloud-node-manager")
-	assert.Contains(t, kinds, "DaemonSet")
+			resources := assets.GetRenderedResources()
+			assert.Len(t, resources, 2)
+		})
+	}
 }

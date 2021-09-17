@@ -21,9 +21,6 @@ import (
 	"fmt"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/substitution"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -35,6 +32,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
 const (
@@ -130,7 +130,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	config, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace)
+	operatorConfig, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {
@@ -140,7 +140,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if err := r.sync(ctx, config); err != nil {
+	if err := r.sync(ctx, operatorConfig); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
@@ -159,9 +159,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 
 func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig) error {
 	// Deploy resources for platform
-	templates := cloud.GetResources(config.PlatformStatus)
-	resources := substitution.FillConfigValues(config, templates)
-
+	resources := cloud.GetResources(config)
 	updated, err := r.applyResources(ctx, resources)
 	if err != nil {
 		return err

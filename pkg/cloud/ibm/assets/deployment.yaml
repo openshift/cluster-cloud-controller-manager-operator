@@ -49,11 +49,8 @@ spec:
       serviceAccountName: cloud-controller-manager
       terminationGracePeriodSeconds: 90
       containers:
-      # Container is required to specify name in order for image substitution
-      # to take place. Cloud-controller-manager is substituted with
-      # real CCM image from the cluster
       - name: cloud-controller-manager
-        image: quay.io/openshift/origin-ibm-cloud-controller-manager
+        image: {{ .images.CloudControllerManager }}
         imagePullPolicy: IfNotPresent
         env:
           - name: POD_IP_ADDRESS

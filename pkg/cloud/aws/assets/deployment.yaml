@@ -40,7 +40,7 @@ spec:
           --leader-elect-retry-period=26s \
           --leader-elect-resource-namespace=openshift-cloud-controller-manager \
           -v=2
-        image: quay.io/openshift/origin-aws-cloud-controller-manager
+        image: {{ .images.CloudControllerManager }}
         imagePullPolicy: IfNotPresent
         name: cloud-controller-manager
         ports:

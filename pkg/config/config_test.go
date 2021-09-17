@@ -14,7 +14,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 		name           string
 		path           string
 		imagesContent  string
-		expectedImages imagesReference
+		expectedImages ImagesReference
 		expectError    string
 	}{{
 		name: "Unmarshal images from file",
@@ -24,7 +24,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
-		expectedImages: imagesReference{
+		expectedImages: ImagesReference{
 			CloudControllerManagerOperator:  "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
@@ -39,17 +39,10 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager"
 		}`,
-		expectedImages: imagesReference{
+		expectedImages: ImagesReference{
 			CloudControllerManagerOperator: "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			CloudControllerManagerAWS:      "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 		},
-	}, {
-		name: "No operator image cause error",
-		path: "images_file",
-		imagesContent: `{
-			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager"
-		}`,
-		expectError: "operator image was not found in images ConfigMap",
 	}, {
 		name: "Duplicate content takes precedence and is accepted",
 		path: "images_file",
@@ -58,7 +51,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:different"
 		}`,
-		expectedImages: imagesReference{
+		expectedImages: ImagesReference{
 			CloudControllerManagerOperator: "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			CloudControllerManagerAWS:      "registry.ci.openshift.org/openshift:different",
 		},
@@ -71,7 +64,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 			"cloudControllerManagerUnknown": "registry.ci.openshift.org/openshift:unknown-cloud-controller-manager",
 			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
 		}`,
-		expectedImages: imagesReference{
+		expectedImages: ImagesReference{
 			CloudControllerManagerOperator:  "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
 			CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
@@ -112,12 +105,11 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 	}
 }
 
-func TestGetProviderFromInfrastructure(t *testing.T) {
+func TestCheckInfrastructure(t *testing.T) {
 	tc := []struct {
-		name           string
-		infra          *configv1.Infrastructure
-		expectPlatform configv1.PlatformType
-		expectErr      string
+		name      string
+		infra     *configv1.Infrastructure
+		expectErr string
 	}{{
 		name:      "Passing empty infra causes error",
 		infra:     nil,
@@ -139,108 +131,40 @@ func TestGetProviderFromInfrastructure(t *testing.T) {
 				},
 			},
 		},
-		expectPlatform: "some_platform",
 	}}
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			platform, err := GetProviderFromInfrastructure(tc.infra)
+			err := checkInfrastructureResource(tc.infra)
 			if tc.expectErr != "" {
 				assert.EqualError(t, err, tc.expectErr)
 			} else {
 				assert.NoError(t, err)
 			}
-			assert.Equal(t, platform, tc.expectPlatform)
-		})
-	}
-}
-
-func TestGetProviderControllerFromImages(t *testing.T) {
-	images := imagesReference{
-		CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-		CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
-		CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
-	}
-
-	tc := []struct {
-		name          string
-		platformType  configv1.PlatformType
-		expectedImage string
-	}{{
-		name:          "AWS platform",
-		platformType:  configv1.AWSPlatformType,
-		expectedImage: "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-	}, {
-		name:          "Azure platform",
-		platformType:  configv1.AzurePlatformType,
-		expectedImage: "",
-	}, {
-		name:          "IBM Cloud platform",
-		platformType:  configv1.IBMCloudPlatformType,
-		expectedImage: "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
-	}, {
-		name:          "OpenStack platform",
-		platformType:  configv1.OpenStackPlatformType,
-		expectedImage: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
-	}, {
-		name:          "Unknown platform",
-		platformType:  "unknown",
-		expectedImage: "",
-	}}
-
-	for _, tc := range tc {
-		t.Run(tc.name, func(t *testing.T) {
-			image := getCloudControllerManagerFromImages(tc.platformType, images)
-			assert.Equal(t, tc.expectedImage, image)
-		})
-	}
-}
-
-func TestGetNodeControllerFromImages(t *testing.T) {
-	images := imagesReference{
-		CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-		CloudControllerManagerAzure:     "registry.ci.openshift.org/openshift:azure-cloud-controller-manager",
-		CloudNodeManagerAzure:           "registry.ci.openshift.org/openshift:azure-cloud-node-manager",
-		CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
-		CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
-	}
-
-	tc := []struct {
-		name          string
-		platformType  configv1.PlatformType
-		expectedImage string
-	}{{
-		name:          "AWS platform",
-		platformType:  configv1.AWSPlatformType,
-		expectedImage: "",
-	}, {
-		name:          "Azure platform",
-		platformType:  configv1.AzurePlatformType,
-		expectedImage: "registry.ci.openshift.org/openshift:azure-cloud-node-manager",
-	}, {
-		name:          "IBM Cloud platform",
-		platformType:  configv1.IBMCloudPlatformType,
-		expectedImage: "",
-	}, {
-		name:          "OpenStack platform",
-		platformType:  configv1.OpenStackPlatformType,
-		expectedImage: "",
-	}, {
-		name:          "Unknown platform",
-		platformType:  "unknown",
-		expectedImage: "",
-	}}
-
-	for _, tc := range tc {
-		t.Run(tc.name, func(t *testing.T) {
-			image := getCloudNodeManagerFromImages(tc.platformType, images)
-			assert.Equal(t, tc.expectedImage, image)
 		})
 	}
 }
 
 func TestComposeConfig(t *testing.T) {
 	defaultManagementNamespace := "test-namespace"
+
+	defaultImagesFileContent := `{
+    		"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+    		"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+    		"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+			"cloudControllerManagerIBM": "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
+    		"cloudControllerManagerAzure": "quay.io/openshift/origin-azure-cloud-controller-manager",
+    		"cloudNodeManagerAzure": "quay.io/openshift/origin-azure-cloud-node-manager"
+		}`
+
+	defaultImagesReference := ImagesReference{
+		CloudControllerManagerOperator:  "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+		CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+		CloudControllerManagerAzure:     "quay.io/openshift/origin-azure-cloud-controller-manager",
+		CloudNodeManagerAzure:           "quay.io/openshift/origin-azure-cloud-node-manager",
+		CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
+		CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+	}
 
 	tc := []struct {
 		name          string
@@ -251,7 +175,7 @@ func TestComposeConfig(t *testing.T) {
 		expectConfig  OperatorConfig
 		expectError   string
 	}{{
-		name:      "Unmarshal images from file for AWS",
+		name:      "Unmarshal images from file",
 		namespace: defaultManagementNamespace,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
@@ -260,58 +184,11 @@ func TestComposeConfig(t *testing.T) {
 				},
 			},
 		},
-		imagesContent: `{
-			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-		}`,
+		imagesContent: defaultImagesFileContent,
 		expectConfig: OperatorConfig{
-			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			ImagesReference:  defaultImagesReference,
 			ManagedNamespace: defaultManagementNamespace,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
-		},
-	}, {
-		name:      "Unmarshal images from file for OpenStack",
-		namespace: defaultManagementNamespace,
-		infra: &configv1.Infrastructure{
-			Status: configv1.InfrastructureStatus{
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.OpenStackPlatformType,
-				},
-			},
-		},
-		imagesContent: `{
-			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-		}`,
-		expectConfig: OperatorConfig{
-			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
-			ManagedNamespace: defaultManagementNamespace,
-			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
-		},
-	}, {
-		name:      "Unmarshal images from file for unknown platform returns nothing",
-		namespace: "otherNamespace",
-		infra: &configv1.Infrastructure{
-			Status: configv1.InfrastructureStatus{
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.NonePlatformType,
-				},
-			},
-		},
-		imagesContent: `{
-			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
- 			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-		}`,
-		expectConfig: OperatorConfig{
-			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			ControllerImage:  "",
-			ManagedNamespace: "otherNamespace",
-			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.NonePlatformType},
 		},
 	}, {
 		name: "Broken JSON is rejected",
@@ -338,15 +215,9 @@ func TestComposeConfig(t *testing.T) {
 				},
 			},
 		},
-		imagesContent: `{
-			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-		}`,
 		expectConfig: OperatorConfig{
-			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			ControllerImage:  "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			ManagedNamespace: defaultManagementNamespace,
+			ImagesReference:  defaultImagesReference,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
 			IsSingleReplica:  true,
 		},
@@ -365,58 +236,6 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		expectError: "platform status is not populated on infrastructure",
-	}, {
-		name:      "Unmarshal images from file for AWS",
-		namespace: defaultManagementNamespace,
-		infra: &configv1.Infrastructure{
-			Status: configv1.InfrastructureStatus{
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-		},
-		clusterProxy: &configv1.Proxy{
-			Status: configv1.ProxyStatus{
-				HTTPProxy: "http://squid.corp.acme.com:3128",
-			},
-		},
-		imagesContent: `{
-			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-		}`,
-		expectConfig: OperatorConfig{
-			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			ManagedNamespace: defaultManagementNamespace,
-			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
-			ClusterProxy: &configv1.Proxy{
-				Status: configv1.ProxyStatus{
-					HTTPProxy: "http://squid.corp.acme.com:3128",
-				},
-			},
-		},
-	}, {
-		name:      "Unmarshal Operator image to operator config",
-		namespace: defaultManagementNamespace,
-		infra: &configv1.Infrastructure{
-			Status: configv1.InfrastructureStatus{
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-		},
-		imagesContent: `{
-			"cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			"cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			"cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
-		}`,
-		expectConfig: OperatorConfig{
-			OperatorImage:    "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			ControllerImage:  "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-			ManagedNamespace: defaultManagementNamespace,
-			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
-		},
 	}, {
 		name:        "Empty infra",
 		namespace:   defaultManagementNamespace,
@@ -451,6 +270,9 @@ func TestComposeConfig(t *testing.T) {
 			assert.NoError(t, err)
 			defer file.Close()
 
+			if tc.imagesContent == "" {
+				tc.imagesContent = defaultImagesFileContent
+			}
 			_, err = file.WriteString(tc.imagesContent)
 			assert.NoError(t, err)
 

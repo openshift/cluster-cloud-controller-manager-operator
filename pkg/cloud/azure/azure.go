@@ -2,37 +2,82 @@ package azure
 
 import (
 	"embed"
+	"fmt"
+
+	"github.com/asaskevich/govalidator"
+	appsv1 "k8s.io/api/apps/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
-	appsv1 "k8s.io/api/apps/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
+
+const providerName = "azure"
 
 var (
 	//go:embed assets/*
-	azureFs embed.FS
-
-	azureResources []client.Object
-
-	azureSources = []common.ObjectSource{
-		{Object: &appsv1.DaemonSet{}, Path: "assets/cloud-node-manager-daemonset.yaml"},
-		{Object: &appsv1.Deployment{}, Path: "assets/cloud-controller-manager-deployment.yaml"},
+	assetsFs  embed.FS
+	templates = []common.TemplateSource{
+		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/cloud-controller-manager-deployment.yaml"},
+		{ReferenceObject: &appsv1.DaemonSet{}, EmbedFsPath: "assets/cloud-node-manager-daemonset.yaml"},
 	}
 )
 
-func init() {
-	var err error
-	azureResources, err = common.ReadResources(azureFs, azureSources)
-	utilruntime.Must(err)
+type imagesReference struct {
+	CloudControllerManager string `valid:"required"`
+	CloudNodeManager       string `valid:"required"`
 }
 
-// GetResources returns a list of Azure resources for provisioning CCM in running cluster
-func GetResources() []client.Object {
-	resources := make([]client.Object, len(azureResources))
-	for i := range azureResources {
-		resources[i] = azureResources[i].DeepCopyObject().(client.Object)
+var templateValuesValidationMap = map[string]interface{}{
+	"images":             "required",
+	"infrastructureName": "required,type(string)",
+}
+
+type azureAssets struct {
+	operatorConfig    config.OperatorConfig
+	renderedResources []client.Object
+}
+
+func (assets *azureAssets) GetRenderedResources() []client.Object {
+	return assets.renderedResources
+}
+
+func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
+	values := common.TemplateValues{
+		"images":             images,
+		"infrastructureName": operatorConfig.InfrastructureName,
+	}
+	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
+	if err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets, error) {
+	images := &imagesReference{
+		CloudControllerManager: config.ImagesReference.CloudControllerManagerAzure,
+		CloudNodeManager:       config.ImagesReference.CloudNodeManagerAzure,
+	}
+	_, err := govalidator.ValidateStruct(images)
+	if err != nil {
+		return nil, fmt.Errorf("%s: missed images in config: %v", providerName, err)
+	}
+	assets := &azureAssets{
+		operatorConfig: config,
+	}
+	objTemplates, err := common.ReadTemplates(assetsFs, templates)
+	if err != nil {
+		return nil, err
+	}
+	templateValues, err := getTemplateValues(images, config)
+	if err != nil {
+		return nil, fmt.Errorf("can not construct template values for %s assets: %v", providerName, err)
 	}
 
-	return resources
+	assets.renderedResources, err = common.RenderTemplates(objTemplates, templateValues)
+	if err != nil {
+		return nil, err
+	}
+	return assets, nil
 }

@@ -1,20 +1,16 @@
 package cloud
 
 import (
-	"strings"
-	"testing"
-
+	"fmt"
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azurestack"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/ibm"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strings"
+	"testing"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
 const (
@@ -35,98 +31,129 @@ func getDummyPlatformStatus(platformType configv1.PlatformType, isAzureStack boo
 }
 
 type testPlatform struct {
-	platfromType   configv1.PlatformType
 	platformStatus *configv1.PlatformStatus
 }
 
+func (tp *testPlatform) getOperatorConfig() config.OperatorConfig {
+	return config.OperatorConfig{
+		ManagedNamespace: "openshift-cloud-controller-manager",
+		ImagesReference: config.ImagesReference{
+			CloudControllerManagerOperator:  "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
+			CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
+			CloudControllerManagerAzure:     "quay.io/openshift/origin-azure-cloud-controller-manager",
+			CloudNodeManagerAzure:           "quay.io/openshift/origin-azure-cloud-node-manager",
+			CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
+			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+		},
+		PlatformStatus:     tp.platformStatus,
+		InfrastructureName: "my-cool-cluster-777",
+	}
+}
+
+type testPlatformsMap map[string]testPlatform
+
+func getPlatforms() testPlatformsMap {
+	return testPlatformsMap{
+		string(configv1.AWSPlatformType):       {getDummyPlatformStatus(configv1.AWSPlatformType, false)},
+		string(configv1.OpenStackPlatformType): {getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
+		string(configv1.GCPPlatformType):       {getDummyPlatformStatus(configv1.GCPPlatformType, false)},
+		string(configv1.AzurePlatformType):     {getDummyPlatformStatus(configv1.AzurePlatformType, false)},
+		string(configv1.VSpherePlatformType):   {getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
+		string(configv1.OvirtPlatformType):     {getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
+		string(configv1.IBMCloudPlatformType):  {getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
+		string(configv1.LibvirtPlatformType):   {getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
+		string(configv1.KubevirtPlatformType):  {getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
+		string(configv1.BareMetalPlatformType): {getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
+		string(configv1.NonePlatformType):      {getDummyPlatformStatus(configv1.NonePlatformType, false)},
+		"AzureStackHub":                        {getDummyPlatformStatus(configv1.AzurePlatformType, true)},
+	}
+}
+
 func TestGetResources(t *testing.T) {
+	platformsMap := getPlatforms()
 
 	tc := []struct {
-		name           string
-		platform       configv1.PlatformType
-		platformStatus configv1.PlatformStatus
-		isAzureStack   bool
-		expected       []client.Object
+		name                      string
+		testPlatform              testPlatform
+		expectedResourceCount     int
+		expectedResourcesKindName []string
 	}{{
-		name:     "AWS resources returned as expected",
-		platform: configv1.AWSPlatformType,
-		expected: aws.GetResources(),
+		name:                      "AWS resources returned as expected",
+		testPlatform:              platformsMap[string(configv1.AWSPlatformType)],
+		expectedResourceCount:     1,
+		expectedResourcesKindName: []string{"Deployment/aws-cloud-controller-manager"},
 	}, {
-		name:     "OpenStack resources returned as expected",
-		platform: configv1.OpenStackPlatformType,
-		expected: openstack.GetResources(),
+		name:                      "OpenStack resources returned as expected",
+		testPlatform:              platformsMap[string(configv1.OpenStackPlatformType)],
+		expectedResourceCount:     2,
+		expectedResourcesKindName: []string{"ConfigMap/openstack-cloud-controller-manager-config", "Deployment/openstack-cloud-controller-manager"},
 	}, {
-		name:     "GCP resources are empty, as the platform is not yet supported",
-		platform: configv1.GCPPlatformType,
+		name:         "GCP resources are empty, as the platform is not yet supported",
+		testPlatform: platformsMap[string(configv1.GCPPlatformType)],
 	}, {
-		name:     "Azure resources returned as expected",
-		platform: configv1.AzurePlatformType,
-		expected: azure.GetResources(),
+		name:                      "Azure resources returned as expected",
+		testPlatform:              platformsMap[string(configv1.AzurePlatformType)],
+		expectedResourceCount:     2,
+		expectedResourcesKindName: []string{"Deployment/azure-cloud-controller-manager", "DaemonSet/azure-cloud-node-manager"},
 	}, {
-		name:         "Azure Stack resources returned as expected",
-		platform:     configv1.AzurePlatformType,
-		isAzureStack: true,
-		expected:     azurestack.GetResources(),
+		name:                      "Azure Stack resources returned as expected",
+		testPlatform:              platformsMap["AzureStackHub"],
+		expectedResourceCount:     2,
+		expectedResourcesKindName: []string{"Deployment/azure-cloud-controller-manager", "DaemonSet/azure-cloud-node-manager"},
 	}, {
-		name:     "VSphere resources are empty, as the platform is not yet supported",
-		platform: configv1.VSpherePlatformType,
+		name:         "VSphere resources are empty, as the platform is not yet supported",
+		testPlatform: platformsMap[string(configv1.VSpherePlatformType)],
 	}, {
-		name:     "OVirt resources are empty, as the platform is not yet supported",
-		platform: configv1.OvirtPlatformType,
+		name:         "OVirt resources are empty, as the platform is not yet supported",
+		testPlatform: platformsMap[string(configv1.OvirtPlatformType)],
 	}, {
-		name:     "IBMCloud resources returned as expected",
-		platform: configv1.IBMCloudPlatformType,
-		expected: ibm.GetResources(),
+		name:                      "IBMCloud resources are empty, as the platform is not yet supported",
+		testPlatform:              platformsMap[string(configv1.IBMCloudPlatformType)],
+		expectedResourceCount:     1,
+		expectedResourcesKindName: []string{"Deployment/ibm-cloud-controller-manager"},
 	}, {
-		name:     "Libvirt resources are empty",
-		platform: configv1.LibvirtPlatformType,
+		name:         "Libvirt resources are empty",
+		testPlatform: platformsMap[string(configv1.LibvirtPlatformType)],
 	}, {
-		name:     "Kubevirt resources are empty",
-		platform: configv1.KubevirtPlatformType,
+		name:         "Kubevirt resources are empty",
+		testPlatform: platformsMap[string(configv1.KubevirtPlatformType)],
 	}, {
-		name:     "BareMetal resources are empty",
-		platform: configv1.BareMetalPlatformType,
+		name:         "BareMetal resources are empty",
+		testPlatform: platformsMap[string(configv1.BareMetalPlatformType)],
 	}, {
-		name:     "None platform resources are empty",
-		platform: configv1.NonePlatformType,
+		name:         "None platform resources are empty",
+		testPlatform: platformsMap[string(configv1.NonePlatformType)],
 	}}
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			resources := GetResources(getDummyPlatformStatus(tc.platform, tc.isAzureStack))
+			resources := GetResources(tc.testPlatform.getOperatorConfig())
 
-			assert.Equal(t, len(tc.expected), len(resources))
-			assert.EqualValues(t, tc.expected, resources)
+			assert.Equal(t, tc.expectedResourceCount, len(resources))
+
+			otherResourcesArray := GetResources(tc.testPlatform.getOperatorConfig())
+			assert.EqualValues(t, otherResourcesArray, resources)
+
+			if tc.expectedResourceCount > 0 {
+				assert.NotZero(t, tc.expectedResourcesKindName, "expectedResourcesKindName for this testcase should be specified")
+
+				for _, resource := range resources {
+					resourceKind := resource.GetObjectKind().GroupVersionKind().Kind
+					resourceKindName := fmt.Sprintf("%s/%s", resourceKind, resource.GetName())
+					assert.Contains(t, tc.expectedResourcesKindName, resourceKindName)
+				}
+			}
 
 			// Edit and repeat procedure to ensure modification in place is not present
 			if len(resources) > 0 {
 				resources[0].SetName("different")
-				newResources := GetResources(getDummyPlatformStatus(tc.platform, tc.isAzureStack))
+				newResources := GetResources(tc.testPlatform.getOperatorConfig())
 
-				assert.Equal(t, len(tc.expected), len(newResources))
-				assert.EqualValues(t, tc.expected, newResources)
+				assert.Equal(t, len(otherResourcesArray), len(newResources))
+				assert.EqualValues(t, otherResourcesArray, newResources)
 				assert.NotEqualValues(t, resources, newResources)
 			}
 		})
-	}
-}
-
-// getTestPlatforms returns the list of platforms to be tested using our static
-// resource analysis tests
-func getTestPlatforms() []testPlatform {
-	return []testPlatform{
-		{configv1.AWSPlatformType, getDummyPlatformStatus(configv1.AWSPlatformType, false)},
-		{configv1.OpenStackPlatformType, getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
-		{configv1.GCPPlatformType, getDummyPlatformStatus(configv1.GCPPlatformType, false)},
-		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, false)},
-		{configv1.AzurePlatformType, getDummyPlatformStatus(configv1.AzurePlatformType, true)}, // stackhub
-		{configv1.VSpherePlatformType, getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
-		{configv1.OvirtPlatformType, getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
-		{configv1.IBMCloudPlatformType, getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
-		{configv1.LibvirtPlatformType, getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
-		{configv1.KubevirtPlatformType, getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
-		{configv1.BareMetalPlatformType, getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
-		{configv1.NonePlatformType, getDummyPlatformStatus(configv1.NonePlatformType, false)},
 	}
 }
 
@@ -136,16 +163,10 @@ func TestPodSpec(t *testing.T) {
 		the different platform resources.
 	*/
 
-	for _, platform := range getTestPlatforms() {
-		platformName := string(platform.platfromType)
-		if platform.platformStatus != nil &&
-			platform.platformStatus.Azure != nil &&
-			platform.platformStatus.Azure.CloudName == configv1.AzureStackCloud {
-			platformName += "StackHub"
-		}
-
+	platforms := getPlatforms()
+	for platformName, platform := range platforms {
 		t.Run(platformName, func(t *testing.T) {
-			resources := GetResources(platform.platformStatus)
+			resources := GetResources(platform.getOperatorConfig())
 
 			for _, resource := range resources {
 				var podSpec corev1.PodSpec
@@ -325,16 +346,10 @@ func checkCloudControllerManagerFlags(t *testing.T, podSpec corev1.PodSpec) {
 }
 
 func TestDeploymentPodAntiAffinity(t *testing.T) {
-	for _, platform := range getTestPlatforms() {
-		platformName := string(platform.platfromType)
-		if platform.platformStatus != nil &&
-			platform.platformStatus.Azure != nil &&
-			platform.platformStatus.Azure.CloudName == configv1.AzureStackCloud {
-			platformName += "StackHub"
-		}
-
+	platforms := getPlatforms()
+	for platformName, platform := range platforms {
 		t.Run(platformName, func(t *testing.T) {
-			resources := GetResources(platform.platformStatus)
+			resources := GetResources(platform.getOperatorConfig())
 
 			for _, resource := range resources {
 				switch obj := resource.(type) {
@@ -373,16 +388,11 @@ func TestDeploymentStrategy(t *testing.T) {
 		port before creating the new pod
 	*/
 
-	for _, platform := range getTestPlatforms() {
-		platformName := string(platform.platfromType)
-		if platform.platformStatus != nil &&
-			platform.platformStatus.Azure != nil &&
-			platform.platformStatus.Azure.CloudName == configv1.AzureStackCloud {
-			platformName += "StackHub"
-		}
+	platforms := getPlatforms()
+	for platformName, platform := range platforms {
 
 		t.Run(platformName, func(t *testing.T) {
-			resources := GetResources(platform.platformStatus)
+			resources := GetResources(platform.getOperatorConfig())
 
 			for _, resource := range resources {
 				switch obj := resource.(type) {

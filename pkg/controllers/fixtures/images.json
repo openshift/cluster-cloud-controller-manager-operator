@@ -1,5 +1,7 @@
 {
     "cloudControllerManagerOperator": "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
     "cloudControllerManagerAWS": "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager"
+    "cloudControllerManagerOpenStack": "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+    "cloudControllerManagerAzure": "quay.io/openshift/origin-azure-cloud-controller-manager",
+    "cloudNodeManagerAzure": "quay.io/openshift/origin-azure-cloud-node-manager"
 }

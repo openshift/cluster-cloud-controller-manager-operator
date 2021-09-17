@@ -48,7 +48,7 @@ spec:
           operator: Exists
       initContainers:
         - name: azure-inject-credentials
-          image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
+          image: {{ .images.Operator }}
           command:
             - /azure-config-credentials-injector
           args:
@@ -73,13 +73,13 @@ spec:
               mountPath: /tmp/merged-cloud-config
       containers:
         - name: cloud-controller-manager
-          image: quay.io/openshift/origin-azure-cloud-controller-manager:4.8.0
+          image: {{ .images.CloudControllerManager }}
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CLOUD_CONFIG
               value: /etc/cloud-config/cloud.conf
             - name: OCP_INFRASTRUCTURE_NAME
-              value: kubernetes # default cluster name in ccm
+              value: {{ .infrastructureName }}
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/cloud-config-original/endpoints.conf
           resources:
