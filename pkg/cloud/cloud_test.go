@@ -134,11 +134,13 @@ func TestGetResources(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			resources := GetResources(tc.testPlatform.getOperatorConfig())
+			resources, err := GetResources(tc.testPlatform.getOperatorConfig())
+			assert.NoError(t, err)
 
 			assert.Equal(t, tc.expectedResourceCount, len(resources))
 
-			otherResourcesArray := GetResources(tc.testPlatform.getOperatorConfig())
+			otherResourcesArray, err := GetResources(tc.testPlatform.getOperatorConfig())
+			assert.NoError(t, err)
 			assert.EqualValues(t, otherResourcesArray, resources)
 
 			if tc.expectedResourceCount > 0 {
@@ -154,7 +156,8 @@ func TestGetResources(t *testing.T) {
 			// Edit and repeat procedure to ensure modification in place is not present
 			if len(resources) > 0 {
 				resources[0].SetName("different")
-				newResources := GetResources(tc.testPlatform.getOperatorConfig())
+				newResources, err := GetResources(tc.testPlatform.getOperatorConfig())
+				assert.NoError(t, err)
 
 				assert.Equal(t, len(otherResourcesArray), len(newResources))
 				assert.EqualValues(t, otherResourcesArray, newResources)
@@ -166,7 +169,8 @@ func TestGetResources(t *testing.T) {
 			t.Run(fmt.Sprintf("Benchmark: %s", tc.name), func(t *testing.T) {
 				benchResulst := testing.Benchmark(func(b *testing.B) {
 					for i := 0; i < b.N; i++ {
-						GetResources(tc.testPlatform.getOperatorConfig())
+						_, err := GetResources(tc.testPlatform.getOperatorConfig())
+						assert.NoError(t, err)
 					}
 				})
 				assert.True(
@@ -189,7 +193,8 @@ func TestPodSpec(t *testing.T) {
 	platforms := getPlatforms()
 	for platformName, platform := range platforms {
 		t.Run(platformName, func(t *testing.T) {
-			resources := GetResources(platform.getOperatorConfig())
+			resources, err := GetResources(platform.getOperatorConfig())
+			assert.NoError(t, err)
 
 			for _, resource := range resources {
 				var podSpec corev1.PodSpec
@@ -372,7 +377,8 @@ func TestDeploymentPodAntiAffinity(t *testing.T) {
 	platforms := getPlatforms()
 	for platformName, platform := range platforms {
 		t.Run(platformName, func(t *testing.T) {
-			resources := GetResources(platform.getOperatorConfig())
+			resources, err := GetResources(platform.getOperatorConfig())
+			assert.NoError(t, err)
 
 			for _, resource := range resources {
 				switch obj := resource.(type) {
@@ -415,7 +421,8 @@ func TestDeploymentStrategy(t *testing.T) {
 	for platformName, platform := range platforms {
 
 		t.Run(platformName, func(t *testing.T) {
-			resources := GetResources(platform.getOperatorConfig())
+			resources, err := GetResources(platform.getOperatorConfig())
+			assert.NoError(t, err)
 
 			for _, resource := range resources {
 				switch obj := resource.(type) {

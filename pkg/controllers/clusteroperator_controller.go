@@ -159,7 +159,10 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 
 func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig) error {
 	// Deploy resources for platform
-	resources := cloud.GetResources(config)
+	resources, err := cloud.GetResources(config)
+	if err != nil {
+		return err
+	}
 	updated, err := r.applyResources(ctx, resources)
 	if err != nil {
 		return err

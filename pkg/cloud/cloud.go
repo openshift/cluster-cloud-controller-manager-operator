@@ -1,8 +1,6 @@
 package cloud
 
 import (
-	"fmt"
-
 	configv1 "github.com/openshift/api/config/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,15 +22,19 @@ import (
 // changes in their spec. However you can extend any resource spec with
 // values not specified in the provided source resource. These changes
 // would be preserved.
-func GetResources(operatorConfig config.OperatorConfig) []client.Object {
+func GetResources(operatorConfig config.OperatorConfig) ([]client.Object, error) {
 	assets, err := getAssets(operatorConfig)
 	if err != nil {
-		klog.Errorf("can not get assets: %s", err.Error())
-		return nil
+		if _, isPlatformNotFoundError := err.(*platformNotFoundError); isPlatformNotFoundError {
+			klog.Infof("platform not supported: %v", err)
+			return nil, nil
+		}
+		klog.Errorf("can not get assets: %v", err)
+		return nil, err
 	}
 	renderedObjects := assets.GetRenderedResources()
 	substitutedObjects := common.SubstituteCommonPartsFromConfig(operatorConfig, renderedObjects)
-	return substitutedObjects
+	return substitutedObjects, nil
 }
 
 // getAssets internal function which returns fully initialized CloudProviderAssets object.
@@ -62,7 +64,7 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 	case configv1.IBMCloudPlatformType:
 		return ibm.NewProviderAssets, nil
 	default:
-		return nil, fmt.Errorf("unrecognized platform type %q found in infrastructure", platformStatus.Type)
+		return nil, newPlatformNotFoundError(platformStatus.Type)
 	}
 }
 

@@ -322,7 +322,8 @@ var _ = Describe("Component sync controller", func() {
 				return
 			}
 
-			operands = cloud.GetResources(operatorConfig)
+			operands, err = cloud.GetResources(operatorConfig)
+			Expect(err).To(Succeed())
 			Expect(len(watchMap)).To(BeEquivalentTo(len(operands)))
 			for _, obj := range operands {
 				watchKey, err := constructKeyForWatchedObject(obj, operatorController.Scheme)
@@ -373,9 +374,9 @@ var _ = Describe("Component sync controller", func() {
 			status: &configv1.InfrastructureStatus{
 				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
 				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.IBMCloudPlatformType,
+				Platform:               configv1.KubevirtPlatformType,
 				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.IBMCloudPlatformType,
+					Type: configv1.KubevirtPlatformType,
 				},
 			},
 			featureGateSpec:   externalFeatureGateSpec,
@@ -447,12 +448,13 @@ var _ = Describe("Apply resources should", func() {
 				PlatformStatus: status,
 			}
 		}
-
 	})
 
 	It("Expect update when resources are not found", func() {
 		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
-		awsResources := cloud.GetResources(operatorConfig)
+		awsResources, err := cloud.GetResources(operatorConfig)
+		Expect(err).To(Succeed())
+
 		resources = append(resources, awsResources...)
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
@@ -465,7 +467,9 @@ var _ = Describe("Apply resources should", func() {
 		var dep *appsv1.Deployment
 		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
 
-		freshResources := cloud.GetResources(operatorConfig)
+		freshResources, err := cloud.GetResources(operatorConfig)
+		Expect(err).To(Succeed())
+
 		for _, res := range freshResources {
 			if deployment, ok := res.(*appsv1.Deployment); ok {
 				dep = deployment
@@ -494,7 +498,9 @@ var _ = Describe("Apply resources should", func() {
 
 	It("Expect error when object requested is incorrect", func() {
 		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
-		objects := cloud.GetResources(operatorConfig)
+		objects, err := cloud.GetResources(operatorConfig)
+		Expect(err).To(Succeed())
+
 		objects[0].SetNamespace("non-existent")
 
 		updated, err := reconciler.applyResources(context.TODO(), objects)
@@ -505,7 +511,9 @@ var _ = Describe("Apply resources should", func() {
 
 	It("Expect no update when resources are applied twice", func() {
 		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
-		awsResources := cloud.GetResources(operatorConfig)
+		awsResources, err := cloud.GetResources(operatorConfig)
+		Expect(err).To(Succeed())
+
 		resources = append(resources, awsResources...)
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
