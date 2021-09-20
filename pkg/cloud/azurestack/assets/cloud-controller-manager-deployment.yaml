@@ -103,8 +103,7 @@ spec:
                 --v=6 \
                 --cloud-config=$(CLOUD_CONFIG) \
                 --cloud-provider=azure \
-                --controllers=*,-cloud-node,-route \
-                --allocate-node-cidrs=false \
+                --controllers=*,-cloud-node \
                 --configure-cloud-routes=false \
                 --use-service-account-credentials=true \
                 --bind-address=127.0.0.1 \
