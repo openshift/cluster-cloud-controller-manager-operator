@@ -46,7 +46,7 @@ spec:
           operator: Exists
       containers:
         - name: cloud-node-manager
-          image: quay.io/openshift/origin-azure-cloud-node-manager:4.8.0
+          image: {{ .images.CloudNodeManager }}
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash

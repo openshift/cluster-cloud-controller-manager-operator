@@ -4,21 +4,57 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
-func TestGetResources(t *testing.T) {
-	resources := GetResources()
-	assert.Len(t, resources, 2)
+func TestResourcesRenderingSmoke(t *testing.T) {
 
-	var names, kinds []string
-	for _, r := range resources {
-		names = append(names, r.GetName())
-		kinds = append(kinds, r.GetObjectKind().GroupVersionKind().Kind)
+	tc := []struct {
+		name       string
+		config     config.OperatorConfig
+		initErrMsg string
+	}{
+		{
+			name:       "Empty config",
+			config:     config.OperatorConfig{},
+			initErrMsg: "azurestack: missed images in config: CloudControllerManager: non zero value required;CloudNodeManager: non zero value required;Operator: non zero value required",
+		}, {
+			name: "No infra config",
+			config: config.OperatorConfig{
+				ManagedNamespace: "my-cool-namespace",
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerOperator: "Operator",
+					CloudControllerManagerAzure:    "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:          "CloudNodeManagerAzure",
+				},
+			},
+			initErrMsg: "can not construct template values for azurestack assets: infrastructureName: non zero value required",
+		}, {
+			name: "Minimal allowed config",
+			config: config.OperatorConfig{
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerOperator: "Operator",
+					CloudControllerManagerAzure:    "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:          "CloudNodeManagerAzure",
+				},
+				InfrastructureName: "infra",
+			},
+		},
 	}
 
-	assert.Contains(t, names, "azure-cloud-controller-manager")
-	assert.Contains(t, kinds, "Deployment")
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			assets, err := NewProviderAssets(tc.config)
+			if tc.initErrMsg != "" {
+				assert.EqualError(t, err, tc.initErrMsg)
+				return
+			} else {
+				assert.NoError(t, err)
+			}
 
-	assert.Contains(t, names, "azure-cloud-node-manager")
-	assert.Contains(t, kinds, "DaemonSet")
+			resources := assets.GetRenderedResources()
+			assert.Len(t, resources, 2)
+		})
+	}
 }

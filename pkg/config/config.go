@@ -10,8 +10,11 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// imagesReference allows build systems to inject imagesReference for CCCMO components
-type imagesReference struct {
+// ImagesReference allows build systems to inject ImagesReference for CCCMO components
+// This structure widely using for construct CloudProviderAssets objects and represents expected structure of
+// `cloud-controller-manager-images` config map which manages and populating by `openshift-cluster-version-operator`.
+// See manifests/0000_26_cloud-controller-manager-operator_01_images.configmap.yaml
+type ImagesReference struct {
 	CloudControllerManagerOperator  string `json:"cloudControllerManagerOperator"`
 	CloudControllerManagerAWS       string `json:"cloudControllerManagerAWS"`
 	CloudControllerManagerAzure     string `json:"cloudControllerManagerAzure"`
@@ -23,73 +26,43 @@ type imagesReference struct {
 // OperatorConfig contains configuration values for templating resources
 type OperatorConfig struct {
 	ManagedNamespace   string
-	OperatorImage      string
-	ControllerImage    string
-	CloudNodeImage     string
+	ImagesReference    ImagesReference
 	IsSingleReplica    bool
 	InfrastructureName string
 	PlatformStatus     *configv1.PlatformStatus
 	ClusterProxy       *configv1.Proxy
 }
 
-// GetProviderFromInfrastructure reads the Infrastructure resource and returns Platform value
-func GetProviderFromInfrastructure(infra *configv1.Infrastructure) (configv1.PlatformType, error) {
+// checkInfrastructureResource checks Infrastructure resource for platform status presence
+func checkInfrastructureResource(infra *configv1.Infrastructure) error {
 	if infra == nil || infra.Status.PlatformStatus == nil {
-		return "", fmt.Errorf("platform status is not populated on infrastructure")
+		return fmt.Errorf("platform status is not populated on infrastructure")
 	}
 	if infra.Status.PlatformStatus.Type == "" {
-		return "", fmt.Errorf("no platform provider found on infrastructure")
+		return fmt.Errorf("no platform provider found on infrastructure")
 	}
 
-	return infra.Status.PlatformStatus.Type, nil
+	return nil
 }
 
 // getImagesFromJSONFile is used in operator to read the content of mounted ConfigMap
 // containing images for substitution in templates
-func getImagesFromJSONFile(filePath string) (imagesReference, error) {
+func getImagesFromJSONFile(filePath string) (ImagesReference, error) {
 	data, err := ioutil.ReadFile(filepath.Clean(filePath))
 	if err != nil {
-		return imagesReference{}, err
+		return ImagesReference{}, err
 	}
 
-	i := imagesReference{}
+	i := ImagesReference{}
 	if err := json.Unmarshal(data, &i); err != nil {
-		return imagesReference{}, err
-	}
-	if i.CloudControllerManagerOperator == "" {
-		return imagesReference{}, fmt.Errorf("operator image was not found in images ConfigMap")
+		return ImagesReference{}, err
 	}
 	return i, nil
 }
 
-// getCloudControllerManagerFromImages returns a CCM binary image later used in substitution
-func getCloudControllerManagerFromImages(platform configv1.PlatformType, images imagesReference) string {
-	switch platform {
-	case configv1.AWSPlatformType:
-		return images.CloudControllerManagerAWS
-	case configv1.OpenStackPlatformType:
-		return images.CloudControllerManagerOpenStack
-	case configv1.AzurePlatformType:
-		return images.CloudControllerManagerAzure
-	case configv1.IBMCloudPlatformType:
-		return images.CloudControllerManagerIBM
-	default:
-		return ""
-	}
-}
-
-func getCloudNodeManagerFromImages(platform configv1.PlatformType, images imagesReference) string {
-	switch platform {
-	case configv1.AzurePlatformType:
-		return images.CloudNodeManagerAzure
-	default:
-		return ""
-	}
-}
-
 // ComposeConfig creates a Config for operator
 func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string) (OperatorConfig, error) {
-	platform, err := GetProviderFromInfrastructure(infrastructure)
+	err := checkInfrastructureResource(infrastructure)
 	if err != nil {
 		klog.Errorf("Unable to get platform from infrastructure: %s", err)
 		return OperatorConfig{}, err
@@ -105,9 +78,7 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
 		ClusterProxy:       clusterProxy,
 		ManagedNamespace:   managedNamespace,
-		OperatorImage:      images.CloudControllerManagerOperator,
-		ControllerImage:    getCloudControllerManagerFromImages(platform, images),
-		CloudNodeImage:     getCloudNodeManagerFromImages(platform, images),
+		ImagesReference:    images,
 		InfrastructureName: infrastructure.Status.InfrastructureName,
 		IsSingleReplica:    infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
 	}

@@ -4,22 +4,43 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
-func TestGetResources(t *testing.T) {
-	resources := GetResources()
-	assert.Len(t, resources, 2)
+func TestResourcesRenderingSmoke(t *testing.T) {
 
-	var names, kinds []string
-	for _, r := range resources {
-		names = append(names, r.GetName())
-		kinds = append(kinds, r.GetObjectKind().GroupVersionKind().Kind)
+	tc := []struct {
+		name       string
+		config     config.OperatorConfig
+		initErrMsg string
+	}{
+		{
+			name:       "Empty config",
+			config:     config.OperatorConfig{},
+			initErrMsg: "openstack: missed images in config: CloudControllerManager: non zero value required",
+		}, {
+			name: "Minimal allowed config",
+			config: config.OperatorConfig{
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerOpenStack: "CloudControllerManagerOpenstack",
+				},
+			},
+		},
 	}
 
-	assert.Contains(t, names, "openstack-cloud-controller-manager")
-	assert.Contains(t, names, "openstack-cloud-controller-manager-config")
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			assets, err := NewProviderAssets(tc.config)
+			if tc.initErrMsg != "" {
+				assert.EqualError(t, err, tc.initErrMsg)
+				return
+			} else {
+				assert.NoError(t, err)
+			}
 
-	assert.Contains(t, kinds, "Deployment")
-	assert.Contains(t, kinds, "ConfigMap")
-
+			resources := assets.GetRenderedResources()
+			assert.Len(t, resources, 2)
+		})
+	}
 }

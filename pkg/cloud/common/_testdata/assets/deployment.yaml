@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sample
+  name: {{ .name }}
   namespace: sample
 spec:
   replicas: 1
   selector:
     matchLabels:
-      k8s-app: aws-cloud-controller-manager
+      k8s-app: {{ .someLabel }}
   template:
     metadata:
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
-        k8s-app: aws-cloud-controller-manager
+        k8s-app: {{ .someLabel }}
     spec:
       containers:
       - args:
         - -v=2
-        image: test:image
+        image: {{ .images.Foo }}
         imagePullPolicy: IfNotPresent
         name: cloud-controller-manager
