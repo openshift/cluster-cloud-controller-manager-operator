@@ -14,5 +14,6 @@ data:
       "cloudControllerManagerAzure": "quay.io/openshift/origin-azure-cloud-controller-manager",
       "cloudNodeManagerAzure": "quay.io/openshift/origin-azure-cloud-node-manager",
       "cloudControllerManagerIBM": "quay.io/openshift/origin-ibm-cloud-controller-manager",
-      "cloudControllerManagerOpenStack": "quay.io/openshift/origin-openstack-cloud-controller-manager"
+      "cloudControllerManagerOpenStack": "quay.io/openshift/origin-openstack-cloud-controller-manager",
+      "cloudControllerManagerVSphere": "quay.io/openshift/origin-vsphere-cloud-controller-manager"
     }

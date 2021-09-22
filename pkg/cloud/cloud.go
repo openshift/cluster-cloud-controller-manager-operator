@@ -13,6 +13,7 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azurestack"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/ibm"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere"
 )
 
 // GetResources selectively returns a list of resources required for
@@ -66,6 +67,8 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 	case configv1.PowerVSPlatformType:
 		//Power VS platform uses ibm cloud provider
 		return ibm.NewProviderAssets, nil
+	case configv1.VSpherePlatformType:
+		return vsphere.NewProviderAssets, nil
 	default:
 		return nil, newPlatformNotFoundError(platformStatus.Type)
 	}

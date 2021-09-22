@@ -47,6 +47,7 @@ func (tp *testPlatform) getOperatorConfig() config.OperatorConfig {
 			CloudNodeManagerAzure:           "quay.io/openshift/origin-azure-cloud-node-manager",
 			CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
+			CloudControllerManagerVSphere:   "registry.ci.openshift.org/openshift:vsphere-cloud-controller-manager",
 		},
 		PlatformStatus:     tp.platformStatus,
 		InfrastructureName: "my-cool-cluster-777",
@@ -108,8 +109,10 @@ func TestGetResources(t *testing.T) {
 		expectedResourceCount:     2,
 		expectedResourcesKindName: []string{"Deployment/azure-cloud-controller-manager", "DaemonSet/azure-cloud-node-manager"},
 	}, {
-		name:         "VSphere resources are empty, as the platform is not yet supported",
-		testPlatform: platformsMap[string(configv1.VSpherePlatformType)],
+		name:                      "VSphere resources returned as expected",
+		testPlatform:              platformsMap[string(configv1.VSpherePlatformType)],
+		expectedResourceCount:     1,
+		expectedResourcesKindName: []string{"DaemonSet/vsphere-cloud-controller-manager"},
 	}, {
 		name:         "OVirt resources are empty, as the platform is not yet supported",
 		testPlatform: platformsMap[string(configv1.OvirtPlatformType)],
