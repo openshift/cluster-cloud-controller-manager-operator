@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 	appsv1 "k8s.io/api/apps/v1"
@@ -218,6 +219,7 @@ func constructKeyForWatchedObject(object client.Object, scheme *runtime.Scheme) 
 var _ = Describe("Component sync controller", func() {
 	var infra *configv1.Infrastructure
 	var fg *configv1.FeatureGate
+	var kcm *operatorv1.KubeControllerManager
 	var operatorController *CloudOperatorReconciler
 	var operands []client.Object
 	var watcher mockedWatcher
@@ -227,6 +229,20 @@ var _ = Describe("Component sync controller", func() {
 			FeatureSet: configv1.CustomNoUpgrade,
 			CustomNoUpgrade: &configv1.CustomFeatureGates{
 				Enabled: []string{cloudprovider.ExternalCloudProviderFeature},
+			},
+		},
+	}
+
+	kcmStatus := &operatorv1.KubeControllerManagerStatus{
+		StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
+			OperatorStatus: operatorv1.OperatorStatus{
+				Conditions: []operatorv1.OperatorCondition{
+					{
+						Type:               cloudControllerOwnershipCondition,
+						Status:             operatorv1.ConditionFalse,
+						LastTransitionTime: metav1.Now(),
+					},
+				},
 			},
 		},
 	}
@@ -257,6 +273,19 @@ var _ = Describe("Component sync controller", func() {
 		fg = &configv1.FeatureGate{}
 		fg.SetName(externalFeatureGateName)
 
+		kcm = &operatorv1.KubeControllerManager{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: kcmResourceName,
+			},
+			Spec: operatorv1.KubeControllerManagerSpec{
+				StaticPodOperatorSpec: operatorv1.StaticPodOperatorSpec{
+					OperatorSpec: operatorv1.OperatorSpec{
+						ManagementState: operatorv1.Managed,
+					},
+				},
+			},
+		}
+
 		operands = nil
 
 		operatorController = &CloudOperatorReconciler{
@@ -272,15 +301,18 @@ var _ = Describe("Component sync controller", func() {
 
 		Expect(cl.Create(context.Background(), infra.DeepCopy())).To(Succeed())
 		Expect(cl.Create(context.Background(), fg.DeepCopy())).To(Succeed())
+		Expect(cl.Create(context.Background(), kcm.DeepCopy())).To(Succeed())
 	})
 
 	AfterEach(func() {
 		Expect(cl.Delete(context.Background(), infra.DeepCopy())).To(Succeed())
 		Expect(cl.Delete(context.Background(), fg.DeepCopy())).To(Succeed())
+		Expect(cl.Delete(context.Background(), kcm.DeepCopy())).To(Succeed())
 
 		Eventually(func() bool {
 			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra.DeepCopy())) &&
-				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg.DeepCopy()))
+				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg.DeepCopy())) &&
+				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(kcm), kcm.DeepCopy()))
 		}, timeout).Should(BeTrue())
 
 		for _, operand := range operands {
@@ -295,6 +327,7 @@ var _ = Describe("Component sync controller", func() {
 	type testCase struct {
 		status            *configv1.InfrastructureStatus
 		featureGateSpec   *configv1.FeatureGateSpec
+		kcmStatus         *operatorv1.KubeControllerManagerStatus
 		expectProvisioned bool
 	}
 
@@ -308,6 +341,12 @@ var _ = Describe("Component sync controller", func() {
 				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg)).To(Succeed())
 				fg.Spec = *tc.featureGateSpec
 				Expect(cl.Update(context.Background(), fg.DeepCopy())).To(Succeed())
+			}
+
+			if tc.kcmStatus != nil {
+				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(kcm), kcm)).To(Succeed())
+				kcm.Status = *tc.kcmStatus
+				Expect(cl.Status().Update(context.Background(), kcm.DeepCopy())).To(Succeed())
 			}
 
 			_, err := operatorController.Reconcile(context.Background(), reconcile.Request{})
@@ -356,6 +395,7 @@ var _ = Describe("Component sync controller", func() {
 				},
 			},
 			featureGateSpec:   externalFeatureGateSpec,
+			kcmStatus:         kcmStatus,
 			expectProvisioned: true,
 		}),
 		Entry("Should provision OpenStack resources", testCase{
@@ -368,6 +408,20 @@ var _ = Describe("Component sync controller", func() {
 				},
 			},
 			featureGateSpec:   externalFeatureGateSpec,
+			kcmStatus:         kcmStatus,
+			expectProvisioned: true,
+		}),
+		Entry("Should provision resources if FG is set and KCM object doesn't exist", testCase{
+			status: &configv1.InfrastructureStatus{
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.AWSPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+			featureGateSpec:   externalFeatureGateSpec,
+			kcmStatus:         &operatorv1.KubeControllerManagerStatus{},
 			expectProvisioned: true,
 		}),
 		Entry("Should not provision resources for currently unsupported platform", testCase{
@@ -380,6 +434,7 @@ var _ = Describe("Component sync controller", func() {
 				},
 			},
 			featureGateSpec:   externalFeatureGateSpec,
+			kcmStatus:         kcmStatus,
 			expectProvisioned: false,
 		}),
 		Entry("Should not provision resources for AWS if external FeatureGate is not present", testCase{
@@ -391,6 +446,7 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.AWSPlatformType,
 				},
 			},
+			kcmStatus:         kcmStatus,
 			expectProvisioned: false,
 		}),
 		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
@@ -400,6 +456,56 @@ var _ = Describe("Component sync controller", func() {
 				Platform:               configv1.OpenStackPlatformType,
 				PlatformStatus: &configv1.PlatformStatus{
 					Type: configv1.OpenStackPlatformType,
+				},
+			},
+			expectProvisioned: false,
+		}),
+		Entry("Should not provision resources because KCM still owns the controllers", testCase{
+			status: &configv1.InfrastructureStatus{
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.AWSPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+			featureGateSpec: externalFeatureGateSpec,
+			kcmStatus: &operatorv1.KubeControllerManagerStatus{
+				StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
+					OperatorStatus: operatorv1.OperatorStatus{
+						Conditions: []operatorv1.OperatorCondition{
+							{
+								Type:               cloudControllerOwnershipCondition,
+								Status:             operatorv1.ConditionTrue,
+								LastTransitionTime: metav1.Now(),
+							},
+						},
+					},
+				},
+			},
+			expectProvisioned: false,
+		}),
+		Entry("Should not provision resources because KCMO hasn't set CloudControllerOwner condition", testCase{
+			status: &configv1.InfrastructureStatus{
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.AWSPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+			featureGateSpec: externalFeatureGateSpec,
+			kcmStatus: &operatorv1.KubeControllerManagerStatus{
+				StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
+					OperatorStatus: operatorv1.OperatorStatus{
+						Conditions: []operatorv1.OperatorCondition{
+							{
+								Type:               "StaticPodsAvailable",
+								Status:             operatorv1.ConditionTrue,
+								LastTransitionTime: metav1.Now(),
+							},
+						},
+					},
 				},
 			},
 			expectProvisioned: false,
