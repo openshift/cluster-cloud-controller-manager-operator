@@ -11,6 +11,7 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azurestack"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/gcp"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/ibm"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 )
@@ -61,6 +62,8 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 			return azurestack.NewProviderAssets, nil
 		}
 		return azure.NewProviderAssets, nil
+	case configv1.GCPPlatformType:
+		return gcp.NewProviderAssets, nil
 	case configv1.IBMCloudPlatformType:
 		return ibm.NewProviderAssets, nil
 	case configv1.PowerVSPlatformType:

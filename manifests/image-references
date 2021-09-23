@@ -18,6 +18,10 @@ spec:
     from:
       kind: DockerImage
       name: quay.io/openshift/origin-azure-cloud-node-manager
+  - name: gcp-cloud-controller-manager
+    from:
+      kind: DockerImage
+      name: quay.io/openshift/origin-gcp-cloud-controller-manager
   - name: ibm-cloud-controller-manager
     from:
       kind: DockerImage

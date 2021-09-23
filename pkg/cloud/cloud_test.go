@@ -45,6 +45,7 @@ func (tp *testPlatform) getOperatorConfig() config.OperatorConfig {
 			CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			CloudControllerManagerAzure:     "quay.io/openshift/origin-azure-cloud-controller-manager",
 			CloudNodeManagerAzure:           "quay.io/openshift/origin-azure-cloud-node-manager",
+			CloudControllerManagerGCP:       "registry.ci.openshift.org/openshift:gcp-cloud-controller-manager",
 			CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 		},
@@ -95,8 +96,10 @@ func TestGetResources(t *testing.T) {
 		expectedResourceCount:     2,
 		expectedResourcesKindName: []string{"ConfigMap/openstack-cloud-controller-manager-config", "Deployment/openstack-cloud-controller-manager"},
 	}, {
-		name:         "GCP resources are empty, as the platform is not yet supported",
-		testPlatform: platformsMap[string(configv1.GCPPlatformType)],
+		name:                      "GCP resources returned as expected",
+		testPlatform:              platformsMap[string(configv1.GCPPlatformType)],
+		expectedResourceCount:     1,
+		expectedResourcesKindName: []string{"Deployment/gcp-cloud-controller-manager"},
 	}, {
 		name:                      "Azure resources returned as expected",
 		testPlatform:              platformsMap[string(configv1.AzurePlatformType)],
