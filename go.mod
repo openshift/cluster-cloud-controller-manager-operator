@@ -9,8 +9,8 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.14.0
-	github.com/openshift/api v0.0.0-20210831091943-07e756545ac1
-	github.com/openshift/library-go v0.0.0-20210906100234-6754cfd64cb5
+	github.com/openshift/api v0.0.0-20210924154557-a4f696157341
+	github.com/openshift/library-go v0.0.0-20210930103404-8911cacccb05
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
