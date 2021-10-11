@@ -127,6 +127,11 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	if err := r.setCloudControllerOwnerCondition(ctx); err != nil {
+		klog.Errorf("Unable to sync cluster operator status: %s", err)
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -216,6 +221,14 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra *configv1.Infrastructure) (bool, error) {
+	// If CCM already owns cloud controllers, then provision is allowed by default
+	ownedByCCM, err := r.isCloudControllersOwnedByCCM(ctx)
+	if err != nil {
+		return false, err
+	} else if ownedByCCM {
+		return true, nil
+	}
+
 	featureGate := &configv1.FeatureGate{}
 	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
 		klog.Infof("FeatureGate cluster does not exist. Skipping...")
@@ -304,4 +317,29 @@ func (r *CloudOperatorReconciler) isCloudControllersOwnedByKCM(ctx context.Conte
 	}
 
 	return ownedByKCM, nil
+}
+
+func (r *CloudOperatorReconciler) isCloudControllersOwnedByCCM(ctx context.Context) (bool, error) {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		klog.Errorf("Unable to retrive ClusterOperator object: %v", err)
+
+		if err := r.setStatusDegraded(ctx, err); err != nil {
+			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+		}
+		return false, err
+	}
+
+	// If there is no condition, we assume that CCM doesn't own the Cloud Controllers
+	ownedByCCM := false
+	if co.Status.Conditions != nil {
+		for _, cond := range co.Status.Conditions {
+			if cond.Type == cloudControllerOwnershipCondition {
+				ownedByCCM = cond.Status == configv1.ConditionTrue
+			}
+		}
+	}
+
+	return ownedByCCM, nil
 }

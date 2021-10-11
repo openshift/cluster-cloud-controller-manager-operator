@@ -220,6 +220,7 @@ var _ = Describe("Component sync controller", func() {
 	var infra *configv1.Infrastructure
 	var fg *configv1.FeatureGate
 	var kcm *operatorv1.KubeControllerManager
+	var co *configv1.ClusterOperator
 	var operatorController *CloudOperatorReconciler
 	var operands []client.Object
 	var watcher mockedWatcher
@@ -286,6 +287,9 @@ var _ = Describe("Component sync controller", func() {
 			},
 		}
 
+		co = &configv1.ClusterOperator{}
+		co.SetName(clusterOperatorName)
+
 		operands = nil
 
 		operatorController = &CloudOperatorReconciler{
@@ -302,16 +306,19 @@ var _ = Describe("Component sync controller", func() {
 		Expect(cl.Create(context.Background(), infra.DeepCopy())).To(Succeed())
 		Expect(cl.Create(context.Background(), fg.DeepCopy())).To(Succeed())
 		Expect(cl.Create(context.Background(), kcm.DeepCopy())).To(Succeed())
+		Expect(cl.Create(context.Background(), co.DeepCopy())).To(Succeed())
 	})
 
 	AfterEach(func() {
 		Expect(cl.Delete(context.Background(), infra.DeepCopy())).To(Succeed())
 		Expect(cl.Delete(context.Background(), fg.DeepCopy())).To(Succeed())
 		Expect(cl.Delete(context.Background(), kcm.DeepCopy())).To(Succeed())
+		Expect(cl.Delete(context.Background(), co.DeepCopy())).To(Succeed())
 
 		Eventually(func() bool {
 			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra.DeepCopy())) &&
 				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(fg), fg.DeepCopy())) &&
+				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(co), fg.DeepCopy())) &&
 				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(kcm), kcm.DeepCopy()))
 		}, timeout).Should(BeTrue())
 
@@ -355,6 +362,18 @@ var _ = Describe("Component sync controller", func() {
 			watchMap := watcher.getWatchedResources()
 
 			operatorConfig := getOperatorConfigForPlatform(tc.status.PlatformStatus)
+
+			clusterOperator, err := operatorController.getOrCreateClusterOperator(context.Background())
+			Expect(err).To(Succeed())
+			if tc.expectProvisioned == true {
+				ownedByCCM := false
+				for _, cond := range clusterOperator.Status.Conditions {
+					if cond.Type == cloudControllerOwnershipCondition {
+						ownedByCCM = cond.Status == configv1.ConditionTrue
+					}
+				}
+				Expect(ownedByCCM).To(BeTrue())
+			}
 
 			if tc.expectProvisioned == false {
 				Expect(len(watchMap)).To(BeZero())
