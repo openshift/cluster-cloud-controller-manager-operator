@@ -58,7 +58,7 @@ spec:
         - mountPath: /etc/kubernetes
           name: host-etc-kube
           readOnly: true
-      - name: cloud-config-sync-controller
+      - name: config-sync-controllers
         image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
         command:
           - /bin/bash
@@ -71,7 +71,7 @@ spec:
             else
               URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
             fi
-            exec /cloud-config-sync-controller \
+            exec /config-sync-controllers \
             --leader-elect=true \
             --leader-elect-lease-duration=137s \
             --leader-elect-renew-deadline=107s \
@@ -185,7 +185,7 @@ spec:
         - mountPath: /etc/kubernetes
           name: host-etc-kube
           readOnly: true
-      - name: cloud-config-sync-controller
+      - name: config-sync-controllers
         image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
         command:
           - /bin/bash
@@ -196,7 +196,7 @@ spec:
             if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
               source /etc/kubernetes/apiserver-url.env
             fi
-            exec /cloud-config-sync-controller \
+            exec /config-sync-controllers \
             --leader-elect \
             --metrics-bind-address=:8081 \
             --health-addr=:9441

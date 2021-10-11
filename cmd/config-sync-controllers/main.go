@@ -91,7 +91,7 @@ func main() {
 	options.BindLeaderElectionFlags(&leaderElectionConfig, pflag.CommandLine)
 	pflag.Parse()
 
-	ctrl.SetLogger(klogr.New().WithName("CCMOCloudConfigSyncController"))
+	ctrl.SetLogger(klogr.New().WithName("CCMOConfigSyncController"))
 
 	syncPeriod := 10 * time.Minute
 	cacheBuilder := cache.MultiNamespacedCacheBuilder([]string{
@@ -119,7 +119,7 @@ func main() {
 	if err = (&controllers.CloudConfigReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
-		Recorder:        mgr.GetEventRecorderFor("cloud-controller-manager-operator-config-sync-controller"),
+		Recorder:        mgr.GetEventRecorderFor("cloud-controller-manager-operator-cloud-config-sync-controllers"),
 		TargetNamespace: *managedNamespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create cloud-config sync controller", "controller", "ClusterOperator")
