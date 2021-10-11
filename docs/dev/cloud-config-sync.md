@@ -10,7 +10,7 @@ There are two places where this ConfigMap is stored on a running cluster at the 
 1. `kube-cloud-config` ConfigMap in `openshift-config-managed` namespace.
 2. ConfigMap with an arbitrary name in `openshift-config` namespace. Such name might be taken from the `cluster` Infrastructure resource spec.
 
-This ConfigMap should be copied from one of the places described above and kept in sync within the CCCMO managed namespace for further mounting onto cloud provider pods. For such purposes `cloud-config-sync-controller` has been introduced as a [separate binary](https://github.com/openshift/cluster-cloud-controller-manager-operator/pull/86) in CCCMO pod.
+This ConfigMap should be copied from one of the places described above and kept in sync within the CCCMO managed namespace for further mounting onto cloud provider pods. For such purposes `config-sync-controllers` has been introduced as a [separate binary](https://github.com/openshift/cluster-cloud-controller-manager-operator/pull/86) in CCCMO pod.
 
 ## Implementation Description
 
@@ -26,3 +26,7 @@ If `openshift-config-managed/kube-cloud-config` does not exists - the controller
 ## Links
 - [library-go implementation](https://github.com/openshift/library-go/blob/master/pkg/operator/configobserver/cloudprovider/observe_cloudprovider.go#L82)
 - [cluster-config-operator repository](https://github.com/openshift/cluster-config-operator)
+
+## Notable changes
+
+- 10.11.2021: `cloud-config-sync-controller` binary was renamed to `config-sync-controllers`
