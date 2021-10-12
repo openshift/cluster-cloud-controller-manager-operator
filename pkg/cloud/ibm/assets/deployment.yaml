@@ -109,7 +109,16 @@ spec:
             name: cloud-conf
           - mountPath: /etc/vpc
             name: ibm-cloud-credentials
+          - name: trusted-ca
+            mountPath: /etc/pki/ca-trust/extracted/pem
+            readOnly: true
       volumes:
+        - name: trusted-ca
+          configMap:
+            name: ccm-trusted-ca
+            items:
+              - key: ca-bundle.crt
+                path: tls-ca-bundle.pem
         - name: host-etc-kube
           hostPath:
             path: /etc/kubernetes

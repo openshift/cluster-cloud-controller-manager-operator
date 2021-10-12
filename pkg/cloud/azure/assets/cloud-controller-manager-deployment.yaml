@@ -93,6 +93,9 @@ spec:
             - name: config-accm
               mountPath: /etc/kubernetes-cloud-config
               readOnly: true
+            - name: trusted-ca
+              mountPath: /etc/pki/ca-trust/extracted/pem
+              readOnly: true
       volumes:
         - name: config-accm
           configMap:
@@ -100,6 +103,12 @@ spec:
             items:
               - key: cloud.conf
                 path: cloud.conf
+        - name: trusted-ca
+          configMap:
+            name: ccm-trusted-ca
+            items:
+              - key: ca-bundle.crt
+                path: tls-ca-bundle.pem
         - name: host-etc-kube
           hostPath:
             path: /etc/kubernetes

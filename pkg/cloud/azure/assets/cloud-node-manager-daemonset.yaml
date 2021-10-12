@@ -73,11 +73,20 @@ spec:
             - name: host-etc-kube
               mountPath: /etc/kubernetes
               readOnly: true
+            - name: trusted-ca
+              mountPath: /etc/pki/ca-trust/extracted/pem
+              readOnly: true
           resources:
             requests:
               cpu: 50m
               memory: 50Mi
       volumes:
+        - name: trusted-ca
+          configMap:
+            name: ccm-trusted-ca
+            items:
+              - key: ca-bundle.crt
+                path: tls-ca-bundle.pem
         - name: host-etc-kube
           hostPath:
             path: /etc/kubernetes

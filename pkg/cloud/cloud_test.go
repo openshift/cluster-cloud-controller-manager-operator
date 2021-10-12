@@ -213,6 +213,7 @@ func TestPodSpec(t *testing.T) {
 				checkResourceRunsBeforeCNI(t, podSpec)
 				checkLeaderElection(t, podSpec)
 				checkCloudControllerManagerFlags(t, podSpec)
+				checkTrustedCAMounted(t, podSpec)
 			}
 		})
 	}
@@ -439,5 +440,24 @@ func TestDeploymentStrategy(t *testing.T) {
 func checkDeploymentStrategy(t *testing.T, strategy appsv1.DeploymentStrategy) {
 	if strategy.Type != appsv1.RecreateDeploymentStrategyType {
 		t.Errorf("Deployment should set strategy type to \"Recreate\"")
+	}
+}
+
+func checkTrustedCAMounted(t *testing.T, podSpec corev1.PodSpec) {
+	trustedCAVolume := corev1.Volume{
+		Name: "trusted-ca",
+		VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "ccm-trusted-ca"},
+			Items:                []corev1.KeyToPath{{Key: "ca-bundle.crt", Path: "tls-ca-bundle.pem"}},
+		}},
+	}
+	trustedCAVolumeMount := corev1.VolumeMount{
+		MountPath: "/etc/pki/ca-trust/extracted/pem",
+		Name:      "trusted-ca",
+		ReadOnly:  true,
+	}
+	assert.Contains(t, podSpec.Volumes, trustedCAVolume, "PodSpec %s volumes should contain trusted-ca volume")
+	for _, c := range podSpec.Containers {
+		assert.Contains(t, c.VolumeMounts, trustedCAVolumeMount, "Container VolumeMounts should contain trusted ca volume mount")
 	}
 }
