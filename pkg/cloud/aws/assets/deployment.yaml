@@ -55,6 +55,9 @@ spec:
         - mountPath: /etc/kubernetes
           name: host-etc-kube
           readOnly: true
+        - name: trusted-ca
+          mountPath: /etc/pki/ca-trust/extracted/pem
+          readOnly: true
       hostNetwork: true
       nodeSelector:
         node-role.kubernetes.io/master: ""
@@ -85,6 +88,12 @@ spec:
         key: node.kubernetes.io/not-ready
         operator: Exists
       volumes:
+      - name: trusted-ca
+        configMap:
+          name: ccm-trusted-ca
+          items:
+            - key: ca-bundle.crt
+              path: tls-ca-bundle.pem
       - name: host-etc-kube
         hostPath:
           path: /etc/kubernetes
