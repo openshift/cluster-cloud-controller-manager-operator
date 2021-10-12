@@ -92,7 +92,7 @@ func main() {
 	options.BindLeaderElectionFlags(&leaderElectionConfig, pflag.CommandLine)
 	pflag.Parse()
 
-	ctrl.SetLogger(klogr.New().WithName("CCMOConfigSyncController"))
+	ctrl.SetLogger(klogr.New().WithName("CCCMOConfigSyncControllers"))
 
 	syncPeriod := 10 * time.Minute
 	cacheBuilder := cache.MultiNamespacedCacheBuilder([]string{
@@ -120,10 +120,20 @@ func main() {
 	if err = (&controllers.CloudConfigReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
-		Recorder:        mgr.GetEventRecorderFor("cloud-controller-manager-operator-cloud-config-sync-controllers"),
+		Recorder:        mgr.GetEventRecorderFor("cloud-controller-manager-operator-cloud-config-sync-controller"),
 		TargetNamespace: *managedNamespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create cloud-config sync controller", "controller", "ClusterOperator")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.TrustedCABundleReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("cloud-controller-manager-operator-ca-sync-controller"),
+		TargetNamespace: *managedNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create Trusted CA sync controller", "controller", "ClusterOperator")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

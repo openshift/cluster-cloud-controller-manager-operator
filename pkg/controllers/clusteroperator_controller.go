@@ -40,7 +40,6 @@ import (
 
 const (
 	externalFeatureGateName = "cluster"
-	proxyResourceName       = "cluster"
 	kcmResourceName         = "cluster"
 
 	// Condition type for Cloud Controller ownership
