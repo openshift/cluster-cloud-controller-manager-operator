@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"fmt"
+
 	configv1 "github.com/openshift/api/config/v1"
 )
 

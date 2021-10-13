@@ -39,6 +39,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
+
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 	// +kubebuilder:scaffold:imports
