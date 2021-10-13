@@ -114,6 +114,23 @@ func (r *CloudOperatorReconciler) setStatusAvailable(ctx context.Context) error 
 	return r.syncStatus(ctx, co, conds)
 }
 
+// setCloudControllerOwnerCondition sets the CloudControllerOwner condition to True, with the given reason and message.
+func (r *CloudOperatorReconciler) setCloudControllerOwnerCondition(ctx context.Context) error {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		return err
+	}
+
+	conds := []configv1.ClusterOperatorStatusCondition{
+		newClusterOperatorStatusCondition("CloudControllerOwner", configv1.ConditionTrue, ReasonAsExpected,
+			fmt.Sprintf("Cluster Cloud Controller Manager Operator owns cloud controllers at %s", r.ReleaseVersion)),
+	}
+
+	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
+	klog.V(2).Info("Setting condition CloudControllerOwner to True")
+	return r.syncStatus(ctx, co, conds)
+}
+
 func printOperandVersions(versions []configv1.OperandVersion) string {
 	versionsOutput := []string{}
 	for _, operand := range versions {

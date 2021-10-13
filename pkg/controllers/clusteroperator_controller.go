@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -40,6 +41,10 @@ import (
 const (
 	externalFeatureGateName = "cluster"
 	proxyResourceName       = "cluster"
+	kcmResourceName         = "cluster"
+
+	// Condition type for Cloud Controller ownership
+	cloudControllerOwnershipCondition = "CloudControllerOwner"
 )
 
 // CloudOperatorReconciler reconciles a ClusterOperator object
@@ -118,6 +123,11 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	}
 
 	if err := r.setStatusAvailable(ctx); err != nil {
+		klog.Errorf("Unable to sync cluster operator status: %s", err)
+		return ctrl.Result{}, err
+	}
+
+	if err := r.setCloudControllerOwnerCondition(ctx); err != nil {
 		klog.Errorf("Unable to sync cluster operator status: %s", err)
 		return ctrl.Result{}, err
 	}
@@ -211,6 +221,14 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra *configv1.Infrastructure) (bool, error) {
+	// If CCM already owns cloud controllers, then provision is allowed by default
+	ownedByCCM, err := r.isCloudControllersOwnedByCCM(ctx)
+	if err != nil {
+		return false, err
+	} else if ownedByCCM {
+		return true, nil
+	}
+
 	featureGate := &configv1.FeatureGate{}
 	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
 		klog.Infof("FeatureGate cluster does not exist. Skipping...")
@@ -251,7 +269,77 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 		return false, nil
 	}
 
-	// TODO: Add part confirming migration is finished for KCM before allowing provisioning
+	ownedByKCM, err := r.isCloudControllersOwnedByKCM(ctx)
+	if err != nil {
+		return false, err
+	}
+	if ownedByKCM {
+		// KCM resource found and it owns Cloud provider
+		klog.Infof("KubeControllerManager still owns Cloud Controllers. Skipping...")
+
+		if err := r.setStatusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return false, err
+		}
+
+		return false, nil
+	}
 
 	return true, nil
+}
+
+func (r *CloudOperatorReconciler) isCloudControllersOwnedByKCM(ctx context.Context) (bool, error) {
+	kcm := &operatorv1.KubeControllerManager{}
+	err := r.Get(ctx, client.ObjectKey{Name: kcmResourceName}, kcm)
+	if err != nil {
+		klog.Errorf("Unable to retrive KubeControllerManager object: %v", err)
+
+		if err := r.setStatusDegraded(ctx, err); err != nil {
+			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+		}
+		return false, err
+	}
+
+	if len(kcm.Status.Conditions) == 0 {
+		// If KCM Conditions object doesn't exist, we assume that we are in bootstrapping process and
+		// the controllers are not owned by KCM.
+		klog.Info("KubeControllerManager status not found, cluster is bootstrapping with external cloud providers")
+		return false, nil
+	}
+
+	// If there is no condition, we assume that KCM owns the Cloud Controllers
+	ownedByKCM := true
+	for _, cond := range kcm.Status.Conditions {
+		if cond.Type == cloudControllerOwnershipCondition {
+			ownedByKCM = cond.Status == operatorv1.ConditionTrue
+		}
+	}
+
+	return ownedByKCM, nil
+}
+
+func (r *CloudOperatorReconciler) isCloudControllersOwnedByCCM(ctx context.Context) (bool, error) {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		klog.Errorf("Unable to retrive ClusterOperator object: %v", err)
+
+		if err := r.setStatusDegraded(ctx, err); err != nil {
+			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+		}
+		return false, err
+	}
+
+	// If there is no condition, we assume that CCM doesn't own the Cloud Controllers
+	ownedByCCM := false
+	if co.Status.Conditions != nil {
+		for _, cond := range co.Status.Conditions {
+			if cond.Type == cloudControllerOwnershipCondition {
+				ownedByCCM = cond.Status == configv1.ConditionTrue
+			}
+		}
+	}
+
+	return ownedByCCM, nil
 }

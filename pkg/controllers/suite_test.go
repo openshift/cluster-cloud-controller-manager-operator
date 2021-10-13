@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -42,6 +43,9 @@ import (
 
 func init() {
 	if err := configv1.Install(scheme.Scheme); err != nil {
+		panic(err)
+	}
+	if err := operatorv1.Install(scheme.Scheme); err != nil {
 		panic(err)
 	}
 	if err := v1.AddToScheme(scheme.Scheme); err != nil {
@@ -73,6 +77,7 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("../..", "vendor", "github.com", "openshift", "api", "config", "v1"),
+			filepath.Join("../..", "vendor", "github.com", "openshift", "api", "operator", "v1"),
 		},
 	}
 

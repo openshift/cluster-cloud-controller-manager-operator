@@ -119,6 +119,7 @@ github.com/onsi/gomega/types
 # github.com/openshift/api v0.0.0-20210924154557-a4f696157341
 ## explicit
 github.com/openshift/api/config/v1
+github.com/openshift/api/operator/v1
 # github.com/openshift/library-go v0.0.0-20210930103404-8911cacccb05
 ## explicit
 github.com/openshift/library-go/pkg/cloudprovider
