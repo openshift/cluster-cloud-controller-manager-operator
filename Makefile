@@ -48,7 +48,7 @@ manifests: controller-gen
 # Run go fmt against code
 .PHONY: fmt
 fmt:
-	go fmt ./...
+	hack/goimports.sh
 
 # Run go vet against code
 .PHONY: vet
