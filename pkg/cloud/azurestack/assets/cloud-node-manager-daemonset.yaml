@@ -111,6 +111,9 @@ spec:
             - name: cloud-config
               mountPath: /etc/cloud-config
               readOnly: true
+            - name: trusted-ca
+              mountPath: /etc/pki/ca-trust/extracted/pem
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -128,5 +131,11 @@ spec:
                 path: cloud.conf
               - key: endpoints
                 path: endpoints.conf
+        - name: trusted-ca
+          configMap:
+            name: ccm-trusted-ca
+            items:
+              - key: ca-bundle.crt
+                path: tls-ca-bundle.pem
         - name: cloud-config
           emptyDir: {}
