@@ -651,6 +651,236 @@ var _ = Describe("Apply resources should", func() {
 		Expect(updated).To(BeFalse())
 	})
 
+	It("Expect to have just one item in the port list after it's been updated", func() {
+		var dep *appsv1.Deployment
+		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
+
+		freshResources, err := cloud.GetResources(operatorConfig)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		for _, res := range freshResources {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				dep = deployment
+				break
+			}
+		}
+
+		resources = append(resources, dep)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// Manually changing the port number
+		ports := []corev1.ContainerPort{
+			{
+				ContainerPort: 11258,
+				Name:          "https",
+				Protocol:      corev1.ProtocolTCP,
+			},
+		}
+		dep.Spec.Template.Spec.Containers[0].Ports = ports
+		err = reconciler.Update(context.TODO(), dep)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		// Checking that the port has been updated and there is only one item in the list
+		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
+		Expect(len(dep.Spec.Template.Spec.Containers[0].Ports)).To(Equal(1))
+		Expect(dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort).To(Equal(int32(11258)))
+
+		// Apply resources again
+		freshResources, err = cloud.GetResources(operatorConfig)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		for _, res := range freshResources {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				resources = []client.Object{deployment}
+				break
+			}
+		}
+
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// Checking that the port has been reverted back and there is only one item in the list
+		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
+		Expect(len(dep.Spec.Template.Spec.Containers[0].Ports)).To(Equal(1))
+		Expect(dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort).To(Equal(int32(10258)))
+	})
+
+	It("Expect to have just one item in the port list after user added another one", func() {
+		var dep *appsv1.Deployment
+		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
+
+		freshResources, err := cloud.GetResources(operatorConfig)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		for _, res := range freshResources {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				dep = deployment
+				break
+			}
+		}
+
+		resources = append(resources, dep)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// Manually adding another port
+		newPort := corev1.ContainerPort{
+			ContainerPort: 11258,
+			Name:          "http",
+			Protocol:      corev1.ProtocolTCP,
+		}
+		dep.Spec.Template.Spec.Containers[0].Ports = append(dep.Spec.Template.Spec.Containers[0].Ports, newPort)
+		err = reconciler.Update(context.TODO(), dep)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		// Checking that the port has been added and there are two items in the list
+		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
+		Expect(len(dep.Spec.Template.Spec.Containers[0].Ports)).To(Equal(2))
+		Expect(dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort).To(Equal(int32(10258)))
+		Expect(dep.Spec.Template.Spec.Containers[0].Ports[1].ContainerPort).To(Equal(int32(11258)))
+
+		// Apply resources again
+		freshResources, err = cloud.GetResources(operatorConfig)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		for _, res := range freshResources {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				resources = []client.Object{deployment}
+				break
+			}
+		}
+
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// Checking that the port list has been reverted back and there is only one item in the list
+		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
+		Expect(len(dep.Spec.Template.Spec.Containers[0].Ports)).To(Equal(1))
+		Expect(dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort).To(Equal(int32(10258)))
+	})
+
+	It("Expect to have deployment labels merged with user ones", func() {
+		var dep *appsv1.Deployment
+
+		labelName := "my-label"
+		labelValue := "someValue"
+
+		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
+
+		freshResources, err := cloud.GetResources(operatorConfig)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		for _, res := range freshResources {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				dep = deployment
+				break
+			}
+		}
+
+		resources = append(resources, dep)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// Manually inserting a new label
+		dep.Labels[labelName] = labelValue
+		err = reconciler.Update(context.TODO(), dep)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		// Checking that the label has been added and there are two items in the map
+		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
+		Expect(len(dep.Labels)).To(Equal(2))
+		Expect(dep.Labels[labelName]).To(Equal(labelValue))
+
+		// Apply resources again
+		freshResources, err = cloud.GetResources(operatorConfig)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		for _, res := range freshResources {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				resources = []client.Object{deployment}
+				break
+			}
+		}
+
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// Checking that the new label is still there
+		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
+		Expect(len(dep.Labels)).To(Equal(2))
+		Expect(dep.Labels[labelName]).To(Equal(labelValue))
+	})
+
+	It("Expect to have modified system label reverted back", func() {
+		var dep *appsv1.Deployment
+		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
+
+		freshResources, err := cloud.GetResources(operatorConfig)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		for _, res := range freshResources {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				dep = deployment
+				break
+			}
+		}
+
+		resources = append(resources, dep)
+
+		updated, err := reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// Now the deployment has just one label "k8s-app: aws-cloud-controller-manager"
+		// Manually modifying the value
+		dep.Labels["k8s-app"] = "someValue"
+		err = reconciler.Update(context.TODO(), dep)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		// Checking that the label has been updated
+		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
+		Expect(len(dep.Labels)).To(Equal(1))
+		Expect(dep.Labels["k8s-app"]).To(Equal("someValue"))
+
+		// Apply resources again
+		freshResources, err = cloud.GetResources(operatorConfig)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		for _, res := range freshResources {
+			if deployment, ok := res.(*appsv1.Deployment); ok {
+				resources = []client.Object{deployment}
+				break
+			}
+		}
+
+		updated, err = reconciler.applyResources(context.TODO(), resources)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated).To(BeTrue())
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+
+		// Checking that the label value has been reverted and there is only one item in the map
+		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
+		Expect(len(dep.Labels)).To(Equal(1))
+		Expect(dep.Labels["k8s-app"]).To(Equal("aws-cloud-controller-manager"))
+	})
+
 	AfterEach(func() {
 		for _, operand := range resources {
 			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
