@@ -100,6 +100,16 @@ var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 		Expect(err).Should(Not(Succeed()))
 		Expect(err.Error()).Should(BeEquivalentTo("key foo specified in infra resource does not found in source configmap openshift-config/test-config"))
 	})
+
+	It("config preparation should not touch extra fields in infra ConfigMap", func() {
+		extendedInfraConfig := infraCloudConfig.DeepCopy()
+		extendedInfraConfig.Data = map[string]string{infraCloudConfKey: "bar", "bar": "baz"}
+		preparedConfig, err := reconciler.prepareSourceConfigMap(extendedInfraConfig, infra)
+		Expect(err).Should(Succeed())
+		_, ok := preparedConfig.Data[defaultConfigKey]
+		Expect(ok).Should(BeTrue())
+		Expect(len(preparedConfig.Data)).Should(BeEquivalentTo(2))
+	})
 })
 
 var _ = Describe("Cloud config sync controller", func() {
@@ -117,7 +127,7 @@ var _ = Describe("Cloud config sync controller", func() {
 
 	var reconciler *CloudConfigReconciler
 
-	syncedConfigMapKey := client.ObjectKey{Namespace: targetNamespaceName, Name: cloudConfigMapName}
+	syncedConfigMapKey := client.ObjectKey{Namespace: targetNamespaceName, Name: syncedCloudConfigMapName}
 
 	BeforeEach(func() {
 		By("Setting up a new manager")
@@ -275,5 +285,20 @@ var _ = Describe("Cloud config sync controller", func() {
 			}
 			return syncedCloudConfigMap.Data[defaultConfigKey] == "infra one changed", nil
 		}).Should(BeTrue())
+	})
+
+	It("all keys from cloud-config should be synced", func() {
+		changedManagedConfig := managedCloudConfig.DeepCopy()
+		changedManagedConfig.Data = map[string]string{
+			infraCloudConfKey: "infra config", cloudProviderConfigCABundleConfigMapKey: "some pem there",
+			"baz": "fizz",
+		}
+		Expect(cl.Update(ctx, changedManagedConfig)).Should(Succeed())
+
+		Eventually(func() {
+			syncedCloudConfigMap := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)).Should(Succeed())
+			Expect(len(syncedCloudConfigMap.Data)).Should(BeEquivalentTo(3))
+		}).Should(Succeed())
 	})
 })

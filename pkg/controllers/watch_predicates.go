@@ -61,7 +61,7 @@ func featureGatePredicates() predicate.Funcs {
 func ownCloudConfigPredicate(targetNamespace string) predicate.Funcs {
 	isOwnCloudConfigMap := func(obj runtime.Object) bool {
 		configMap, ok := obj.(*corev1.ConfigMap)
-		return ok && configMap.GetNamespace() == targetNamespace && configMap.GetName() == cloudConfigMapName
+		return ok && configMap.GetNamespace() == targetNamespace && configMap.GetName() == syncedCloudConfigMapName
 	}
 
 	return predicate.Funcs{
