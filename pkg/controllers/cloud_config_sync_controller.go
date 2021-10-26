@@ -22,8 +22,7 @@ import (
 const (
 	managedCloudConfigMapName = "kube-cloud-config"
 
-	cloudConfigMapName = "cloud-conf"
-	defaultConfigKey   = "cloud.conf"
+	defaultConfigKey = "cloud.conf"
 )
 
 type CloudConfigReconciler struct {
@@ -68,7 +67,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	targetCM := &corev1.ConfigMap{}
 	targetConfigMapKey := client.ObjectKey{
 		Namespace: r.TargetNamespace,
-		Name:      cloudConfigMapName,
+		Name:      syncedCloudConfigMapName,
 	}
 
 	// If the config does not exist, it will be created later, so we can ignore a Not Found error
@@ -116,7 +115,7 @@ func (r *CloudConfigReconciler) isCloudConfigEqual(source *corev1.ConfigMap, tar
 }
 
 func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source *corev1.ConfigMap, target *corev1.ConfigMap) error {
-	target.SetName(cloudConfigMapName)
+	target.SetName(syncedCloudConfigMapName)
 	target.SetNamespace(r.TargetNamespace)
 	target.Data = source.Data
 	target.BinaryData = source.BinaryData
