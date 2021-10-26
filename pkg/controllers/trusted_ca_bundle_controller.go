@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"fmt"
@@ -28,7 +29,11 @@ import (
 const (
 	trustedCAConfigMapName      = "ccm-trusted-ca"
 	trustedCABundleConfigMapKey = "ca-bundle.crt"
-	systemTrustBundlePath       = "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
+	// key in cloud-provider config is different for some reason.
+	// https://github.com/openshift/installer/blob/master/pkg/asset/manifests/cloudproviderconfig.go#L41
+	// https://github.com/openshift/installer/blob/master/pkg/asset/manifests/cloudproviderconfig.go#L99
+	cloudProviderConfigCABundleConfigMapKey = "ca-bundle.pem"
+	systemTrustBundlePath                   = "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
 )
 
 type TrustedCABundleReconciler struct {
@@ -59,7 +64,8 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return reconcile.Result{}, fmt.Errorf("failed to get proxy '%s': %v", req.Name, err)
 	}
 
-	// check if changed config map in 'openshift-config' namespace is proxy trusted ca
+	// Check if changed config map in 'openshift-config' namespace is proxy trusted ca.
+	// If not, return early
 	if req.Namespace == OpenshiftConfigNamespace {
 		if proxyConfig.Spec.TrustedCA.Name != req.Name {
 			klog.Infof("changed config map %s is not a proxy trusted ca, skipping", req)
@@ -71,21 +77,18 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to get system trust bundle: %v", err)
 	}
-	ccmTrustedConfigMap := r.makeCABundleConfigMap(systemTrustBundle)
 
-	if isSpecTrustedCASet(&proxyConfig.Spec) {
-		userCABundle, err := r.getUserCABundle(ctx, proxyConfig.Spec.TrustedCA.Name)
-		if err != nil {
-			klog.Warningf("failed to get user defined trust bundle, system CA will be used: %v", err)
-		} else {
-			mergedTrustBundle, err := r.mergeCABundles(userCABundle, systemTrustBundle)
-			if err != nil {
-				return reconcile.Result{}, fmt.Errorf("can not merge system and user trust bundles: %v", err)
-			}
-			ccmTrustedConfigMap = r.makeCABundleConfigMap(mergedTrustBundle)
-		}
+	proxyCABundle, mergedTrustBundle, err := r.addProxyCABundle(ctx, proxyConfig, systemTrustBundle)
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err)
 	}
 
+	_, mergedTrustBundle, err = r.addCloudConfigCABundle(ctx, proxyCABundle, mergedTrustBundle)
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err)
+	}
+
+	ccmTrustedConfigMap := r.makeCABundleConfigMap(mergedTrustBundle)
 	if err := r.createOrUpdateConfigMap(ctx, ccmTrustedConfigMap); err != nil {
 		return reconcile.Result{}, fmt.Errorf("can not update target trust bundle configmap: %v", err)
 	}
@@ -93,14 +96,72 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{}, nil
 }
 
-func (r *TrustedCABundleReconciler) getUserCABundle(ctx context.Context, trustedCA string) ([]byte, error) {
+// addProxyCABundle checks ca bundle referred by Proxy resource and adds it to passed bundle
+// in case if proxy one is valid.
+// This function returns added bundle as first value, result as second and an error if it was occurred.
+func (r *TrustedCABundleReconciler) addProxyCABundle(ctx context.Context, proxyConfig *configv1.Proxy, originalCABundle []byte) ([]byte, []byte, error) {
+	if isSpecTrustedCASet(&proxyConfig.Spec) {
+		userProxyCABundle, err := r.getUserProxyCABundle(ctx, proxyConfig.Spec.TrustedCA.Name)
+		if err != nil {
+			klog.Warningf("failed to get user defined proxy trust bundle, system CA will be used: %v", err)
+			return nil, originalCABundle, nil
+		}
+		resultCABundle, err := r.mergeCABundles(userProxyCABundle, originalCABundle)
+		if err != nil {
+			return userProxyCABundle, nil, fmt.Errorf("can not merge system and user trust bundles: %v", err)
+		}
+		return userProxyCABundle, resultCABundle, nil
+	}
+	return nil, originalCABundle, nil
+}
+
+// addCloudConfigCABundle checks cloud-config for additional CA bundle presence and adds it to passed bundle
+// in case found one is valid.
+// This function returns added bundle as first value, result as second and an error if it was occurred.
+// Note: missed cloud-config not considered an error, because no cloud-config is expected on some platforms (AWS)
+func (r *TrustedCABundleReconciler) addCloudConfigCABundle(ctx context.Context, proxyCABundle []byte, originalCABundle []byte) ([]byte, []byte, error) {
+	// Due to installer implementation nuances, 'additionalTrustBundle' does not always end up in Proxy object.
+	// For handling this situation we have to check synced cloud-config for additional CA bundle presence.
+	// See https://github.com/openshift/installer/pull/5251#issuecomment-932622321 and
+	// https://github.com/openshift/installer/pull/5248 for additional context.
+	// However, some platforms might not have cloud-config at all (AWS), so missed cloud config is not an error.
+	ccmSyncedCloudConfig := &corev1.ConfigMap{}
+	syncedCloudConfigObjectKey := types.NamespacedName{Name: syncedCloudConfigMapName, Namespace: r.TargetNamespace}
+	if err := r.Get(ctx, syncedCloudConfigObjectKey, ccmSyncedCloudConfig); err != nil {
+		klog.Infof("cloud-config was not found: %v", err)
+		return nil, originalCABundle, nil
+	}
+
+	_, found := ccmSyncedCloudConfig.Data[cloudProviderConfigCABundleConfigMapKey]
+	if found {
+		klog.Infof("additional CA bundle key found in cloud-config")
+		_, cloudConfigCABundle, err := r.getCABundleConfigMapData(ccmSyncedCloudConfig, cloudProviderConfigCABundleConfigMapKey)
+		if err != nil {
+			klog.Warningf("failed to parse additional CA bundle from cloud-config, system and proxy CAs will be used: %v", err)
+			return nil, originalCABundle, nil
+		}
+		if bytes.Equal(proxyCABundle, cloudConfigCABundle) {
+			klog.Infof("proxy CA and cloud-config CA bundles are equal, no need to merge")
+			return nil, originalCABundle, nil
+		}
+		klog.Infof("proxy CA and cloud-config CA bundles are not equal, merging")
+		mergedCABundle, err := r.mergeCABundles(cloudConfigCABundle, originalCABundle)
+		if err != nil {
+			return cloudConfigCABundle, nil, fmt.Errorf("can not merge system and user trust bundle from cloud-config: %v", err)
+		}
+		return cloudConfigCABundle, mergedCABundle, nil
+	}
+	return nil, originalCABundle, nil
+}
+
+func (r *TrustedCABundleReconciler) getUserProxyCABundle(ctx context.Context, trustedCA string) ([]byte, error) {
 	cfgMap, err := r.getUserCABundleConfigMap(ctx, trustedCA)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate configmap reference for proxy trustedCA '%s': %v",
 			trustedCA, err)
 	}
 
-	_, bundleData, err := r.getCABundleConfigMapData(cfgMap)
+	_, bundleData, err := r.getCABundleConfigMapData(cfgMap, trustedCABundleConfigMapKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate trust bundle for proxy trustedCA '%s': %v",
 			trustedCA, err)
@@ -118,8 +179,8 @@ func (r *TrustedCABundleReconciler) getUserCABundleConfigMap(ctx context.Context
 	return cfgMap, nil
 }
 
-func (r *TrustedCABundleReconciler) getCABundleConfigMapData(cfgMap *corev1.ConfigMap) ([]*x509.Certificate, []byte, error) {
-	certBundle, bundleData, err := util.TrustBundleConfigMap(cfgMap)
+func (r *TrustedCABundleReconciler) getCABundleConfigMapData(cfgMap *corev1.ConfigMap, caBundleKey string) ([]*x509.Certificate, []byte, error) {
+	certBundle, bundleData, err := util.TrustBundleConfigMap(cfgMap, caBundleKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -201,6 +262,7 @@ func (r *TrustedCABundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				predicate.Or(
 					openshiftConfigNamespacedPredicate(),
 					ccmTrustedCABundleConfigMapPredicates(r.TargetNamespace),
+					ownCloudConfigPredicate(r.TargetNamespace),
 				),
 			),
 		).
