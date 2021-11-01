@@ -6,6 +6,7 @@ metadata:
   annotations:
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
+    exclude.release.openshift.io/internal-openshift-hosted: "true"
   labels:
     k8s-app: cloud-manager-operator
 spec:
@@ -140,6 +141,7 @@ metadata:
   annotations:
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
+    exclude.release.openshift.io/internal-openshift-hosted: "true"
     release.openshift.io/delete: "true"
   labels:
     k8s-app: cloud-manager-operator
