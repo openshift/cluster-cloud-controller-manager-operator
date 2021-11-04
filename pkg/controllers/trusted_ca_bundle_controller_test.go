@@ -56,6 +56,13 @@ func makeProxyResource() *v1.Proxy {
 	}
 }
 
+func makeSyncedCloudConfig(namespace string, data map[string]string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+		Name:      syncedCloudConfigMapName,
+		Namespace: namespace,
+	}, Data: data}
+}
+
 var _ = Describe("Trusted CA bundle sync controller", func() {
 	var rec *record.FakeRecorder
 
@@ -69,6 +76,7 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 
 	var proxyResource *v1.Proxy
 	var additionalCAConfigMap *corev1.ConfigMap
+	var syncedCloudConfigConfigMap *corev1.ConfigMap
 
 	mergedCAObjectKey := client.ObjectKey{Namespace: targetNamespaceName, Name: trustedCAConfigMapName}
 
@@ -89,9 +97,11 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		By("Creating needed ConfigMaps and Update Proxy")
 		proxyResource = makeProxyResource()
 		additionalCAConfigMap, err = makeValidUserCAConfigMap(additionalAmazonCAPemPath)
+		syncedCloudConfigConfigMap = makeSyncedCloudConfig(targetNamespaceName, map[string]string{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cl.Create(ctx, proxyResource)).To(Succeed())
 		Expect(cl.Create(ctx, additionalCAConfigMap)).To(Succeed())
+		Expect(cl.Create(ctx, syncedCloudConfigConfigMap)).To(Succeed())
 
 		var mgrCtx context.Context
 		mgrCtx, mgrCtxCancel = context.WithCancel(ctx)
@@ -123,15 +133,18 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 			).Should(BeTrue())
 		}
 
-		if additionalCAConfigMap != nil {
-			Expect(cl.Delete(ctx, additionalCAConfigMap, deleteOptions)).To(Succeed())
+		allCMs := &corev1.ConfigMapList{}
+		Expect(cl.List(ctx, allCMs)).To(Succeed())
+		for _, cm := range allCMs.Items {
+			Expect(cl.Delete(ctx, cm.DeepCopy(), deleteOptions)).To(Succeed())
 			Eventually(
-				apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(additionalCAConfigMap), &corev1.ConfigMap{})),
+				apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})),
 			).Should(BeTrue())
 		}
 
 		proxyResource = nil
 		additionalCAConfigMap = nil
+		syncedCloudConfigConfigMap = nil
 	})
 
 	It("CA should be synced and merged up after first reconcile", func() {
@@ -147,7 +160,9 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 
 	It("ca bundle should be synced up if own one was deleted or changed", func() {
 		mergedTrustedCA := &corev1.ConfigMap{}
-		Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).Should(Succeed())
+		Eventually(func() {
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).Should(Succeed())
+		}).Should(Succeed())
 		certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(certs)).Should(BeEquivalentTo(3))
@@ -175,7 +190,9 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 
 	It("ca bundle should be synced up if user one in openshift-config was changed", func() {
 		mergedTrustedCA := &corev1.ConfigMap{}
-		Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).Should(Succeed())
+		Eventually(func() {
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).Should(Succeed())
+		}).Should(Succeed())
 		certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(certs)).Should(BeEquivalentTo(3))
@@ -230,6 +247,114 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(certs)).Should(BeEquivalentTo(2))
 			Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("GlobalSign"))
+		}).Should(Succeed())
+	})
+
+	It("ca bundle from cloud config should be added if it differs from proxy one", func() {
+		Eventually(func() {
+			mergedTrustedCA := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).To(Succeed())
+			certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(certs)).Should(BeEquivalentTo(3))
+			Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("Amazon"))
+		}).Should(Succeed())
+
+		msCA, err := ioutil.ReadFile(additionalMsCAPemPath)
+		Expect(err).To(Succeed())
+		syncedCloudConfigConfigMap.Data = map[string]string{cloudProviderConfigCABundleConfigMapKey: string(msCA)}
+		Expect(cl.Update(ctx, syncedCloudConfigConfigMap)).To(Succeed())
+
+		Eventually(func() {
+			mergedTrustedCA := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).To(Succeed())
+			certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(certs)).Should(BeEquivalentTo(4))
+			Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("Microsoft Corporation"))
+		}).Should(Succeed())
+	})
+
+	It("ca bundle from cloud config should not be added if it is the same as proxy one", func() {
+		Eventually(func() {
+			mergedTrustedCA := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).To(Succeed())
+			certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(certs)).Should(BeEquivalentTo(3))
+			Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("Amazon"))
+		}).Should(Succeed())
+
+		awsCA, err := ioutil.ReadFile(additionalAmazonCAPemPath)
+		Expect(err).To(Succeed())
+		syncedCloudConfigConfigMap.Data = map[string]string{cloudProviderConfigCABundleConfigMapKey: string(awsCA)}
+		Expect(cl.Update(ctx, syncedCloudConfigConfigMap)).To(Succeed())
+
+		Eventually(func() {
+			mergedTrustedCA := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).To(Succeed())
+			certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(certs)).Should(BeEquivalentTo(3))
+			Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("Amazon"))
+		}).Should(Succeed())
+	})
+
+	It("proxy ca should still be added to merged bundle in case if cloud-config contains broken one", func() {
+		awsCA, err := ioutil.ReadFile(systemCAInvalid)
+		Expect(err).To(Succeed())
+		syncedCloudConfigConfigMap.Data = map[string]string{cloudProviderConfigCABundleConfigMapKey: string(awsCA)}
+		Expect(cl.Update(ctx, syncedCloudConfigConfigMap)).To(Succeed())
+
+		Eventually(func() {
+			mergedTrustedCA := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).To(Succeed())
+			certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(certs)).Should(BeEquivalentTo(3))
+			Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("Amazon"))
+		}).Should(Succeed())
+	})
+
+	It("cloud-config ca should still be added to merged bundle in case if proxy one contains broken CA", func() {
+		additionalCAConfigMap.Data = map[string]string{additionalCAConfigMapKey: "kekekeke"}
+		Expect(cl.Update(ctx, additionalCAConfigMap)).To(Succeed())
+
+		msCA, err := ioutil.ReadFile(additionalMsCAPemPath)
+		Expect(err).To(Succeed())
+		syncedCloudConfigConfigMap.Data = map[string]string{cloudProviderConfigCABundleConfigMapKey: string(msCA)}
+		Expect(cl.Update(ctx, syncedCloudConfigConfigMap)).To(Succeed())
+
+		Eventually(func() {
+			mergedTrustedCA := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).To(Succeed())
+			certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(certs)).Should(BeEquivalentTo(3))
+			Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("Microsoft Corporation"))
+		}).Should(Succeed())
+	})
+
+	It("merged bundle should be generated without cloud-config at all", func() {
+		Expect(cl.Delete(ctx, syncedCloudConfigConfigMap)).To(Succeed())
+		Eventually(
+			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(syncedCloudConfigConfigMap), &corev1.ConfigMap{})),
+		).Should(BeTrue())
+		syncedCloudConfigConfigMap = nil
+
+		mergedTrustedCA := &corev1.ConfigMap{}
+		Eventually(func() {
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).Should(Succeed())
+		}).Should(Succeed())
+		Expect(cl.Delete(ctx, mergedTrustedCA)).To(Succeed())
+
+		Eventually(func() {
+			mergedTrustedCA := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, mergedCAObjectKey, mergedTrustedCA)).To(Succeed())
+			certs, err := util.CertificateData([]byte(mergedTrustedCA.Data[additionalCAConfigMapKey]))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(certs)).Should(BeEquivalentTo(3))
+			Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("Amazon"))
 		}).Should(Succeed())
 	})
 })

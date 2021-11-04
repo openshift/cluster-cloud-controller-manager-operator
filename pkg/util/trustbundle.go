@@ -10,21 +10,20 @@ import (
 
 const (
 	// certPEMBlock is the type taken from the preamble of a PEM-encoded structure.
-	certPEMBlock                = "CERTIFICATE"
-	trustedCABundleConfigMapKey = "ca-bundle.crt"
+	certPEMBlock = "CERTIFICATE"
 )
 
 // TrustBundleConfigMap validates that ConfigMap contains a
-// trust bundle named "ca-bundle.crt" and that "ca-bundle.crt"
+// trust bundle named aa "caBundleKey" argument and that "caBundleKey"
 // contains one or more valid PEM encoded certificates, returning
-// a byte slice of "ca-bundle.crt" contents upon success.
-func TrustBundleConfigMap(cfgMap *corev1.ConfigMap) ([]*x509.Certificate, []byte, error) {
-	if _, ok := cfgMap.Data[trustedCABundleConfigMapKey]; !ok {
-		return nil, nil, fmt.Errorf("ConfigMap %q is missing %q", cfgMap.Name, trustedCABundleConfigMapKey)
+// a byte slice of "caBundleKey" contents upon success.
+func TrustBundleConfigMap(cfgMap *corev1.ConfigMap, caBundleKey string) ([]*x509.Certificate, []byte, error) {
+	if _, ok := cfgMap.Data[caBundleKey]; !ok {
+		return nil, nil, fmt.Errorf("ConfigMap %q is missing %q", cfgMap.Name, caBundleKey)
 	}
-	trustBundleData := []byte(cfgMap.Data[trustedCABundleConfigMapKey])
+	trustBundleData := []byte(cfgMap.Data[caBundleKey])
 	if len(trustBundleData) == 0 {
-		return nil, nil, fmt.Errorf("data key %q is empty from ConfigMap %q", trustedCABundleConfigMapKey, cfgMap.Name)
+		return nil, nil, fmt.Errorf("data key %q is empty from ConfigMap %q", caBundleKey, cfgMap.Name)
 	}
 	certBundle, err := CertificateData(trustBundleData)
 	if err != nil {
