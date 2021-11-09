@@ -75,7 +75,6 @@ spec:
             --configure-cloud-routes=false \
             --cloud-provider=ibm \
             --cloud-config=/etc/ibm/cloud.conf \
-            --feature-gates=IPv6DualStack=false \
             --profiling=false \
             --leader-elect=true \
             --leader-elect-lease-duration=137s \
