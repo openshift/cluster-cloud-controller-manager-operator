@@ -120,7 +120,7 @@ github.com/onsi/gomega/types
 ## explicit
 github.com/openshift/api/config/v1
 github.com/openshift/api/operator/v1
-# github.com/openshift/library-go v0.0.0-20210930103404-8911cacccb05
+# github.com/openshift/library-go v0.0.0-20211103140146-29c9bb8362e2
 ## explicit
 github.com/openshift/library-go/pkg/cloudprovider
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
