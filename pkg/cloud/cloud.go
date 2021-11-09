@@ -63,6 +63,9 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 		return azure.NewProviderAssets, nil
 	case configv1.IBMCloudPlatformType:
 		return ibm.NewProviderAssets, nil
+	case configv1.PowerVSPlatformType:
+		//Power VS platform uses ibm cloud provider
+		return ibm.NewProviderAssets, nil
 	default:
 		return nil, newPlatformNotFoundError(platformStatus.Type)
 	}
