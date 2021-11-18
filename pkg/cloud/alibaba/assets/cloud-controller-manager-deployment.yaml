@@ -58,7 +58,6 @@ spec:
                 source /etc/kubernetes/apiserver-url.env
               fi
               exec /cloud-controller-manager \
-              --address=127.0.0.1 \
               --allow-untagged-cloud=true \
               --leader-elect=true \
               --leader-elect-lease-duration=137s \
