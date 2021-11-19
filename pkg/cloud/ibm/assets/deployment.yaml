@@ -59,6 +59,8 @@ spec:
                 fieldPath: status.podIP
           - name: VPCCTL_CLOUD_CONFIG
             value: /etc/ibm/cloud.conf
+          - name: VPCCTL_PUBLIC_ENDPOINT
+            value: {{ .enablePublicEndpoint }}
         command:
           - /bin/bash
           - -c
