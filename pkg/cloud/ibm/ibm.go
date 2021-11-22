@@ -4,6 +4,8 @@ import (
 	"embed"
 	"fmt"
 
+	configv1 "github.com/openshift/api/config/v1"
+
 	"github.com/asaskevich/govalidator"
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,7 +29,8 @@ type imagesReference struct {
 }
 
 var templateValuesValidationMap = map[string]interface{}{
-	"images": "required",
+	"images":               "required",
+	"enablePublicEndpoint": "required",
 }
 
 type ibmAssets struct {
@@ -39,15 +42,29 @@ func (assets *ibmAssets) GetRenderedResources() []client.Object {
 	return assets.renderedResources
 }
 
-func getTemplateValues(images *imagesReference) (common.TemplateValues, error) {
+func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
 	values := common.TemplateValues{
-		"images": images,
+		"images":               images,
+		"enablePublicEndpoint": fmt.Sprintf("%t", getEnablePublicEndpointValue(operatorConfig)),
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
 		return nil, err
 	}
 	return values, nil
+}
+
+func getEnablePublicEndpointValue(operatorConfig config.OperatorConfig) bool {
+	if operatorConfig.PlatformStatus == nil {
+		return false
+	}
+	switch operatorConfig.PlatformStatus.Type {
+	case configv1.PowerVSPlatformType:
+		// For Power VS Platform enable public endpoints
+		return true
+	default:
+		return false
+	}
 }
 
 func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets, error) {
@@ -66,7 +83,7 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 	if err != nil {
 		return nil, err
 	}
-	templateValues, err := getTemplateValues(images)
+	templateValues, err := getTemplateValues(images, config)
 	if err != nil {
 		return nil, fmt.Errorf("can not construct template values for %s assets: %v", providerName, err)
 	}
