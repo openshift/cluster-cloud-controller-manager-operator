@@ -19,6 +19,7 @@ type ImagesReference struct {
 	CloudControllerManagerAWS       string `json:"cloudControllerManagerAWS"`
 	CloudControllerManagerAzure     string `json:"cloudControllerManagerAzure"`
 	CloudNodeManagerAzure           string `json:"cloudNodeManagerAzure"`
+	CloudControllerManagerGCP       string `json:"cloudControllerManagerGCP"`
 	CloudControllerManagerIBM       string `json:"cloudControllerManagerIBM"`
 	CloudControllerManagerOpenStack string `json:"cloudControllerManagerOpenStack"`
 }
