@@ -112,7 +112,7 @@ func TestGetResources(t *testing.T) {
 		name:                      "VSphere resources returned as expected",
 		testPlatform:              platformsMap[string(configv1.VSpherePlatformType)],
 		expectedResourceCount:     1,
-		expectedResourcesKindName: []string{"DaemonSet/vsphere-cloud-controller-manager"},
+		expectedResourcesKindName: []string{"Deployment/vsphere-cloud-controller-manager"},
 	}, {
 		name:         "OVirt resources are empty, as the platform is not yet supported",
 		testPlatform: platformsMap[string(configv1.OvirtPlatformType)],

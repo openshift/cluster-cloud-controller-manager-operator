@@ -23,7 +23,7 @@ var (
 	//go:embed assets/*
 	assetsFs  embed.FS
 	templates = []common.TemplateSource{
-		{ReferenceObject: &appsv1.DaemonSet{}, EmbedFsPath: "assets/cloud-controller-manager-daemonset.yaml"},
+		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/cloud-controller-manager-deployment.yaml"},
 	}
 )
 
