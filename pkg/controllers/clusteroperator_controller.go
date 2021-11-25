@@ -36,6 +36,7 @@ import (
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers/resourceapply"
 )
 
 const (
@@ -151,39 +152,20 @@ func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.Operat
 	return nil
 }
 
-// applyResources will apply all resources as is to the cluster with
-// server-side apply patch and will enforce all the conflicts
+// applyResources will apply all resources as-is to the cluster, allowing adding of custom annotations and lables
 func (r *CloudOperatorReconciler) applyResources(ctx context.Context, resources []client.Object) (bool, error) {
 	updated := false
+	var err error
 
 	for _, resource := range resources {
-		resourceExisting := resource.DeepCopyObject().(client.Object)
-		err := r.Get(ctx, client.ObjectKeyFromObject(resourceExisting), resourceExisting)
-		if errors.IsNotFound(err) {
-			klog.Infof("Resource %s %q needs to be created, operator progressing...", resource.GetObjectKind().GroupVersionKind(), client.ObjectKeyFromObject(resource))
-			updated = true
-		} else if err != nil {
-			r.Recorder.Event(resource, corev1.EventTypeWarning, "Update failed", err.Error())
+		updated, err = resourceapply.ApplyResource(ctx, r.Client, r.Recorder, resource)
+		if err != nil {
 			return false, err
-		}
-
-		resourceUpdated := resource.DeepCopyObject().(client.Object)
-		if err := r.Patch(ctx, resourceUpdated, client.Apply, client.ForceOwnership, client.FieldOwner(clusterOperatorName)); err != nil {
-			klog.Errorf("Unable to apply object %s '%s': %+v", resource.GetObjectKind().GroupVersionKind(), resource.GetName(), err)
-			r.Recorder.Event(resourceExisting, corev1.EventTypeWarning, "Update failed", err.Error())
-			return false, err
-		}
-		klog.V(2).Infof("Applied %s %q successfully", resource.GetObjectKind().GroupVersionKind(), client.ObjectKeyFromObject(resource))
-
-		if resourceExisting.GetGeneration() != resourceUpdated.GetGeneration() {
-			klog.Infof("Resource %s %q generation increased, resource updated, operator progressing...", resource.GetObjectKind().GroupVersionKind(), client.ObjectKeyFromObject(resource))
-			updated = true
-			r.Recorder.Event(resourceExisting, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
 		}
 
 		if err := r.watcher.Watch(ctx, resource); err != nil {
 			klog.Errorf("Unable to establish watch on object %s '%s': %+v", resource.GetObjectKind().GroupVersionKind(), resource.GetName(), err)
-			r.Recorder.Event(resourceExisting, corev1.EventTypeWarning, "Establish watch failed", err.Error())
+			r.Recorder.Event(resource, corev1.EventTypeWarning, "Establish watch failed", err.Error())
 			return false, err
 		}
 	}
