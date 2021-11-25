@@ -30,3 +30,7 @@ spec:
     from:
       kind: DockerImage
       name: quay.io/openshift/origin-openstack-cloud-controller-manager
+  - name: vsphere-cloud-controller-manager
+    from:
+      kind: DockerImage
+      name: quay.io/openshift/origin-vsphere-cloud-controller-manager
