@@ -16,6 +16,7 @@ import (
 // See manifests/0000_26_cloud-controller-manager-operator_01_images.configmap.yaml
 type ImagesReference struct {
 	CloudControllerManagerOperator  string `json:"cloudControllerManagerOperator"`
+	CloudControllerManagerAlibaba   string `json:"cloudControllerManagerAlibaba"`
 	CloudControllerManagerAWS       string `json:"cloudControllerManagerAWS"`
 	CloudControllerManagerAzure     string `json:"cloudControllerManagerAzure"`
 	CloudNodeManagerAzure           string `json:"cloudNodeManagerAzure"`
