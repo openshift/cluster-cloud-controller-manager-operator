@@ -57,7 +57,7 @@ spec:
               if [[ -f /etc/kubernetes/apiserver-url.env ]]; then
                 source /etc/kubernetes/apiserver-url.env
               fi
-              exec /cloud-controller-manager \
+              exec /bin/alibaba-cloud-controller-manager \
               --allow-untagged-cloud=true \
               --leader-elect=true \
               --leader-elect-lease-duration=137s \
