@@ -42,7 +42,7 @@ var _ = Describe("Cluster Operator status controller", func() {
 
 	BeforeEach(func() {
 		operatorController = &CloudOperatorReconciler{
-			ClusterOperatorStatus: ClusterOperatorStatus{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:           cl,
 				ManagedNamespace: defaultManagementNamespace,
 				Recorder:         record.NewFakeRecorder(32),
@@ -295,7 +295,7 @@ var _ = Describe("Component sync controller", func() {
 		operands = nil
 
 		operatorController = &CloudOperatorReconciler{
-			ClusterOperatorStatus: ClusterOperatorStatus{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:           cl,
 				ManagedNamespace: testManagedNamespace,
 				Recorder:         record.NewFakeRecorder(32),
@@ -558,7 +558,7 @@ var _ = Describe("Apply resources should", func() {
 
 		recorder = record.NewFakeRecorder(32)
 		reconciler = &CloudOperatorReconciler{
-			ClusterOperatorStatus: ClusterOperatorStatus{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:   cl,
 				Recorder: recorder,
 			},

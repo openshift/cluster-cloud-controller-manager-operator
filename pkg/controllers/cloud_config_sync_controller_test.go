@@ -146,10 +146,12 @@ var _ = Describe("Cloud config sync controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler = &CloudConfigReconciler{
-			Client:          cl,
-			Scheme:          scheme.Scheme,
-			Recorder:        rec,
-			TargetNamespace: targetNamespaceName,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Recorder:         rec,
+				ManagedNamespace: targetNamespaceName,
+			},
+			Scheme: scheme.Scheme,
 		}
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
@@ -317,9 +319,11 @@ var _ = Describe("Cloud config sync reconciler", func() {
 
 	BeforeEach(func() {
 		reconciler = &CloudConfigReconciler{
-			Client:          cl,
-			Scheme:          scheme.Scheme,
-			TargetNamespace: targetNamespaceName,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				ManagedNamespace: targetNamespaceName,
+			},
+			Scheme: scheme.Scheme,
 		}
 
 		Expect(cl.Create(ctx, makeInfraCloudConfig())).To(Succeed())
