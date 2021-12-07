@@ -22,13 +22,13 @@ unit:
 	hack/unit-tests.sh
 
 # Build operator binaries
-build: operator cloud-config-sync-controller azure-config-credentials-injector
+build: operator config-sync-controllers azure-config-credentials-injector
 
 operator:
 	go build -o bin/cluster-controller-manager-operator cmd/cluster-cloud-controller-manager-operator/main.go
 
-cloud-config-sync-controller:
-	go build -o bin/cloud-config-sync-controller cmd/cloud-config-sync-controller/main.go
+config-sync-controllers:
+	go build -o bin/config-sync-controllers cmd/config-sync-controllers/main.go
 
 azure-config-credentials-injector:
 	go build -o bin/azure-config-credentials-injector cmd/azure-config-credentials-injector/main.go

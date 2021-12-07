@@ -89,6 +89,9 @@ spec:
             - name: config-occm
               mountPath: /etc/openstack/config
               readOnly: true
+            - name: trusted-ca
+              mountPath: /etc/pki/ca-trust/extracted/pem
+              readOnly: true
       volumes:
         - name: host-etc-kube
           hostPath:
@@ -100,6 +103,12 @@ spec:
             items:
               - key: clouds.yaml
                 path: clouds.yaml
+        - name: trusted-ca
+          configMap:
+            name: ccm-trusted-ca
+            items:
+              - key: ca-bundle.crt
+                path: tls-ca-bundle.pem
         - name: config-occm
           configMap:
             name: openstack-cloud-controller-manager-config

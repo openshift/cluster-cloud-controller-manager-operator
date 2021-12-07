@@ -7,4 +7,8 @@ const (
 
 	OpenshiftConfigNamespace        = "openshift-config"
 	OpenshiftManagedConfigNamespace = "openshift-config-managed"
+
+	syncedCloudConfigMapName = "cloud-conf"
+
+	proxyResourceName = "cluster"
 )

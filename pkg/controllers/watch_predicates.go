@@ -61,7 +61,7 @@ func featureGatePredicates() predicate.Funcs {
 func ownCloudConfigPredicate(targetNamespace string) predicate.Funcs {
 	isOwnCloudConfigMap := func(obj runtime.Object) bool {
 		configMap, ok := obj.(*corev1.ConfigMap)
-		return ok && configMap.GetNamespace() == targetNamespace && configMap.GetName() == cloudConfigMapName
+		return ok && configMap.GetNamespace() == targetNamespace && configMap.GetName() == syncedCloudConfigMapName
 	}
 
 	return predicate.Funcs{
@@ -91,5 +91,32 @@ func openshiftCloudConfigMapPredicates() predicate.Funcs {
 		UpdateFunc:  func(e event.UpdateEvent) bool { return isCloudConfigMap(e.ObjectNew) },
 		GenericFunc: func(e event.GenericEvent) bool { return isCloudConfigMap(e.Object) },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return isCloudConfigMap(e.Object) },
+	}
+}
+
+func ccmTrustedCABundleConfigMapPredicates(targetNamespace string) predicate.Funcs {
+	isTrustedCaConfigMap := func(obj runtime.Object) bool {
+		configMap, ok := obj.(*corev1.ConfigMap)
+		return ok && configMap.GetNamespace() == targetNamespace && configMap.GetName() == trustedCAConfigMapName
+	}
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return isTrustedCaConfigMap(e.Object) },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return isTrustedCaConfigMap(e.ObjectNew) },
+		GenericFunc: func(e event.GenericEvent) bool { return isTrustedCaConfigMap(e.Object) },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return isTrustedCaConfigMap(e.Object) },
+	}
+}
+
+// Config maps from 'openshift-config' namespace
+func openshiftConfigNamespacedPredicate() predicate.Funcs {
+	isTrustedCaConfigMap := func(obj runtime.Object) bool {
+		configMap, ok := obj.(*corev1.ConfigMap)
+		return ok && configMap.GetNamespace() == OpenshiftConfigNamespace
+	}
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return isTrustedCaConfigMap(e.Object) },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return isTrustedCaConfigMap(e.ObjectNew) },
+		GenericFunc: func(e event.GenericEvent) bool { return isTrustedCaConfigMap(e.Object) },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return isTrustedCaConfigMap(e.Object) },
 	}
 }

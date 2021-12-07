@@ -39,7 +39,6 @@ import (
 
 const (
 	externalFeatureGateName = "cluster"
-	proxyResourceName       = "cluster"
 )
 
 // CloudOperatorReconciler reconciles a ClusterOperator object
