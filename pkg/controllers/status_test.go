@@ -79,9 +79,11 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 		startTime := metav1.NewTime(time.Now().Add(-time.Second))
 
 		optr := CloudOperatorReconciler{
-			Scheme:         scheme.Scheme,
-			Recorder:       record.NewFakeRecorder(32),
-			ReleaseVersion: tc.desiredVersion,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Recorder:       record.NewFakeRecorder(32),
+				ReleaseVersion: tc.desiredVersion,
+			},
+			Scheme: scheme.Scheme,
 		}
 
 		builder := fake.NewClientBuilder()
@@ -201,9 +203,11 @@ func TestOperatorSetStatusDegraded(t *testing.T) {
 		startTime := metav1.NewTime(time.Now().Add(-time.Second))
 
 		optr := CloudOperatorReconciler{
-			Scheme:         scheme.Scheme,
-			Recorder:       record.NewFakeRecorder(32),
-			ReleaseVersion: tc.desiredVersion,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Recorder:       record.NewFakeRecorder(32),
+				ReleaseVersion: tc.desiredVersion,
+			},
+			Scheme: scheme.Scheme,
 		}
 
 		builder := fake.NewClientBuilder()
@@ -320,9 +324,11 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 		startTime := metav1.NewTime(time.Now().Add(-time.Second))
 
 		optr := CloudOperatorReconciler{
-			Scheme:         scheme.Scheme,
-			Recorder:       record.NewFakeRecorder(32),
-			ReleaseVersion: tc.desiredVersion,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Recorder:       record.NewFakeRecorder(32),
+				ReleaseVersion: tc.desiredVersion,
+			},
+			Scheme: scheme.Scheme,
 		}
 
 		builder := fake.NewClientBuilder()

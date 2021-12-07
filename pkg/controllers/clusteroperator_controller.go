@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -49,13 +48,10 @@ const (
 
 // CloudOperatorReconciler reconciles a ClusterOperator object
 type CloudOperatorReconciler struct {
-	client.Client
-	Scheme           *runtime.Scheme
-	Recorder         record.EventRecorder
-	watcher          ObjectWatcher
-	ReleaseVersion   string
-	ManagedNamespace string
-	ImagesFile       string
+	ClusterOperatorStatusClient
+	Scheme     *runtime.Scheme
+	watcher    ObjectWatcher
+	ImagesFile string
 }
 
 // +kubebuilder:rbac:groups=config.openshift.io,resources=clusteroperators,verbs=get;list;watch;create;update;patch;delete

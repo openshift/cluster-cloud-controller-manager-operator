@@ -42,10 +42,12 @@ var _ = Describe("Cluster Operator status controller", func() {
 
 	BeforeEach(func() {
 		operatorController = &CloudOperatorReconciler{
-			Client:           cl,
-			Scheme:           scheme.Scheme,
-			ManagedNamespace: defaultManagementNamespace,
-			Recorder:         record.NewFakeRecorder(32),
+			ClusterOperatorStatus: ClusterOperatorStatus{
+				Client:           cl,
+				ManagedNamespace: defaultManagementNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme: scheme.Scheme,
 		}
 		operator = &configv1.ClusterOperator{}
 		operator.SetName(clusterOperatorName)
@@ -293,12 +295,14 @@ var _ = Describe("Component sync controller", func() {
 		operands = nil
 
 		operatorController = &CloudOperatorReconciler{
-			Client:           cl,
-			Scheme:           scheme.Scheme,
-			watcher:          w,
-			ManagedNamespace: testManagedNamespace,
-			ImagesFile:       testImagesFilePath,
-			Recorder:         record.NewFakeRecorder(32),
+			ClusterOperatorStatus: ClusterOperatorStatus{
+				Client:           cl,
+				ManagedNamespace: testManagedNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme:     scheme.Scheme,
+			watcher:    w,
+			ImagesFile: testImagesFilePath,
 		}
 		originalWatcher, _ := w.(*objectWatcher)
 		watcher = mockedWatcher{watcher: originalWatcher}
@@ -554,10 +558,12 @@ var _ = Describe("Apply resources should", func() {
 
 		recorder = record.NewFakeRecorder(32)
 		reconciler = &CloudOperatorReconciler{
-			Client:   cl,
-			Scheme:   scheme.Scheme,
-			Recorder: recorder,
-			watcher:  w,
+			ClusterOperatorStatus: ClusterOperatorStatus{
+				Client:   cl,
+				Recorder: recorder,
+			},
+			Scheme:  scheme.Scheme,
+			watcher: w,
 		}
 
 		getConfigForPlatform = func(status *configv1.PlatformStatus) config.OperatorConfig {
