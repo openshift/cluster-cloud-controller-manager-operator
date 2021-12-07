@@ -86,10 +86,12 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler = &TrustedCABundleReconciler{
-			Client:          cl,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Recorder:         rec,
+				ManagedNamespace: targetNamespaceName,
+			},
 			Scheme:          scheme.Scheme,
-			Recorder:        rec,
-			TargetNamespace: targetNamespaceName,
 			trustBundlePath: systemCAValid,
 		}
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())

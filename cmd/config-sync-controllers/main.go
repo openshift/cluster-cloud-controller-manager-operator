@@ -130,10 +130,12 @@ func main() {
 	}
 
 	if err = (&controllers.TrustedCABundleReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		Recorder:        mgr.GetEventRecorderFor("cloud-controller-manager-operator-ca-sync-controller"),
-		TargetNamespace: *managedNamespace,
+		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
+			Client:           mgr.GetClient(),
+			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator-ca-sync-controller"),
+			ManagedNamespace: *managedNamespace,
+		},
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create Trusted CA sync controller", "controller", "ClusterOperator")
 		os.Exit(1)
