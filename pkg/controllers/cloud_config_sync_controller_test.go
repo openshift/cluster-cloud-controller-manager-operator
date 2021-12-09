@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/pointer"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -304,5 +305,86 @@ var _ = Describe("Cloud config sync controller", func() {
 			Expect(cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)).Should(Succeed())
 			Expect(len(syncedCloudConfigMap.Data)).Should(BeEquivalentTo(3))
 		}).Should(Succeed())
+	})
+})
+
+var _ = Describe("Cloud config sync reconciler", func() {
+	// Tests which does not involve manager, dedicated to exercise Reconcile method
+	var reconciler *CloudConfigReconciler
+
+	ctx := context.Background()
+	targetNamespaceName := testManagedNamespace
+
+	BeforeEach(func() {
+		reconciler = &CloudConfigReconciler{
+			Client:          cl,
+			Scheme:          scheme.Scheme,
+			TargetNamespace: targetNamespaceName,
+		}
+
+		Expect(cl.Create(ctx, makeInfraCloudConfig())).To(Succeed())
+	})
+
+	It("reconcile should fail if no infra resource found", func() {
+		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+		Expect(err.Error()).Should(BeEquivalentTo("infrastructures.config.openshift.io \"cluster\" not found"))
+	})
+
+	It("should fail if no PlatformStatus in infra resource presented ", func() {
+		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+		Expect(err.Error()).Should(BeEquivalentTo("platformStatus is required"))
+	})
+
+	It("should skip config sync for AWS platform", func() {
+		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+		Expect(err).To(BeNil())
+		allCMs := &corev1.ConfigMapList{}
+		Expect(cl.List(ctx, allCMs)).To(Succeed())
+		Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
+	})
+
+	It("should perform config sync for Azure platform", func() {
+		infraResource := makeInfrastructureResource(configv1.AzurePlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+		Expect(err).To(BeNil())
+		allCMs := &corev1.ConfigMapList{}
+		Expect(cl.List(ctx, allCMs)).To(Succeed())
+		Expect(len(allCMs.Items)).NotTo(BeZero())
+		Expect(len(allCMs.Items)).To(BeEquivalentTo(2))
+	})
+
+	AfterEach(func() {
+		deleteOptions := &client.DeleteOptions{
+			GracePeriodSeconds: pointer.Int64(0),
+		}
+
+		infra := &configv1.Infrastructure{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: infrastructureResourceName,
+			},
+		}
+		// omitted error intentionally, 404 might be there for some cases
+		cl.Delete(ctx, infra) //nolint:errcheck
+		Eventually(
+			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)),
+		).Should(BeTrue())
+
+		allCMs := &corev1.ConfigMapList{}
+		Expect(cl.List(ctx, allCMs)).To(Succeed())
+		for _, cm := range allCMs.Items {
+			Expect(cl.Delete(ctx, cm.DeepCopy(), deleteOptions)).To(Succeed())
+			Eventually(
+				apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})),
+			).Should(BeTrue())
+		}
 	})
 })
