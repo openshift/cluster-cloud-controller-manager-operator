@@ -198,6 +198,19 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra *configv1.Infrastructure) (bool, error) {
+	// Check if dependant controllers are available
+	available, err := r.checkControllerConditions(ctx)
+	if err != nil {
+		if err := r.setStatusDegraded(ctx, err); err != nil {
+			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+		}
+		return false, err
+	}
+	if !available {
+		return false, nil
+	}
+
 	// If CCM already owns cloud controllers, then provision is allowed by default
 	ownedByCCM, err := r.isCloudControllersOwnedByCCM(ctx)
 	if err != nil {
@@ -319,4 +332,34 @@ func (r *CloudOperatorReconciler) isCloudControllersOwnedByCCM(ctx context.Conte
 	}
 
 	return ownedByCCM, nil
+}
+
+// checkControllerConditions returns True if all dependant controllers are available, and error if any
+// of them is degraded
+func (r *CloudOperatorReconciler) checkControllerConditions(ctx context.Context) (bool, error) {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	cloudConfigControllerAvailable := false
+	trustedCABundleControllerAvailable := false
+
+	for _, cond := range co.Status.Conditions {
+		if cond.Type == cloudConfigControllerDegradedCondition || cond.Type == trustedCABundleControllerDegradedCondition {
+			if cond.Status == configv1.ConditionTrue {
+				return false, fmt.Errorf("failed to apply resources because %s condition is set to True", cond.Type)
+			}
+		}
+
+		if cond.Type == cloudConfigControllerAvailableCondition && cond.Status == configv1.ConditionTrue {
+			cloudConfigControllerAvailable = true
+		}
+
+		if cond.Type == trustedCABundleControllerAvailableCondition && cond.Status == configv1.ConditionTrue {
+			trustedCABundleControllerAvailable = true
+		}
+	}
+
+	return cloudConfigControllerAvailable && trustedCABundleControllerAvailable, nil
 }
