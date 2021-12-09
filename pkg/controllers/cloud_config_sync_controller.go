@@ -35,6 +35,21 @@ type CloudConfigReconciler struct {
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	klog.Infof("%s emitted event, syncing cloud-conf ConfigMap", req)
 
+	infra := &configv1.Infrastructure{}
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
+		klog.Errorf("infrastructure resource not found")
+		return ctrl.Result{}, err
+	}
+
+	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !syncNeeded {
+		klog.Infof("cloud-config sync is not needed, returning early")
+		return ctrl.Result{}, nil
+	}
+
 	// Use kube-cloud-config from openshift-config-managed namespace as default source.
 	// If it is not exists try to use cloud-config reference from infra resource.
 	// https://github.com/openshift/library-go/blob/master/pkg/operator/configobserver/cloudprovider/observe_cloudprovider.go#L82
@@ -44,11 +59,6 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	sourceCM := &corev1.ConfigMap{}
 	if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); errors.IsNotFound(err) {
 		klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
-		infra := &configv1.Infrastructure{}
-		if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
-			klog.Errorf("infrastructure resource not found")
-			return ctrl.Result{}, err
-		}
 
 		openshiftUnmanagedCMKey := client.ObjectKey{Name: infra.Spec.CloudConfig.Name, Namespace: OpenshiftConfigNamespace}
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); err != nil {
@@ -87,6 +97,18 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1.PlatformStatus) (bool, error) {
+	if platformStatus == nil {
+		return false, fmt.Errorf("platformStatus is required")
+	}
+	switch platformStatus.Type {
+	case configv1.AWSPlatformType: // aws ccm does not use cloud-config at the moment
+		return false, nil
+	default:
+		return true, nil
+	}
 }
 
 func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap, infra *configv1.Infrastructure) (*corev1.ConfigMap, error) {

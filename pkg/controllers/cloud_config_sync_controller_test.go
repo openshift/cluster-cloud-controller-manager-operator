@@ -22,7 +22,7 @@ const (
 	infraCloudConfKey  = "foo"
 )
 
-func makeInfrastructureResource() *configv1.Infrastructure {
+func makeInfrastructureResource(platform configv1.PlatformType) *configv1.Infrastructure {
 	return &configv1.Infrastructure{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: infrastructureResourceName,
@@ -33,9 +33,20 @@ func makeInfrastructureResource() *configv1.Infrastructure {
 				Key:  infraCloudConfKey,
 			},
 			PlatformSpec: configv1.PlatformSpec{
-				Type: configv1.AzurePlatformType,
+				Type: platform,
 			},
 		},
+	}
+}
+
+func makeInfraStatus(platform configv1.PlatformType) configv1.InfrastructureStatus {
+	return configv1.InfrastructureStatus{
+		PlatformStatus: &configv1.PlatformStatus{
+			Type: platform,
+		},
+		Platform:               platform,
+		InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+		ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
 	}
 }
 
@@ -73,7 +84,7 @@ var _ = Describe("isCloudConfigEqual reconciler method", func() {
 
 var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 	reconciler := &CloudConfigReconciler{}
-	infra := makeInfrastructureResource()
+	infra := makeInfrastructureResource(configv1.AzurePlatformType)
 	infraCloudConfig := makeInfraCloudConfig()
 	managedCloudConfig := makeManagedCloudConfig()
 
@@ -142,7 +153,10 @@ var _ = Describe("Cloud config sync controller", func() {
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
 		By("Creating Infra resource")
-		Expect(cl.Create(ctx, makeInfrastructureResource())).To(Succeed())
+		infraResource := makeInfrastructureResource(configv1.AzurePlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
 
 		By("Creating needed ConfigMaps")
 		infraCloudConfig = makeInfraCloudConfig()
@@ -185,7 +199,7 @@ var _ = Describe("Cloud config sync controller", func() {
 		infraCloudConfig = nil
 		managedCloudConfig = nil
 
-		infra := makeInfrastructureResource()
+		infra := makeInfrastructureResource(configv1.AzurePlatformType)
 		Expect(cl.Delete(ctx, infra)).To(Succeed())
 		Eventually(
 			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)),
