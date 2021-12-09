@@ -250,6 +250,31 @@ var _ = Describe("Component sync controller", func() {
 		},
 	}
 
+	coStatus := &configv1.ClusterOperatorStatus{
+		Conditions: []configv1.ClusterOperatorStatusCondition{
+			{
+				Type:               cloudConfigControllerAvailableCondition,
+				Status:             configv1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Type:               trustedCABundleControllerAvailableCondition,
+				Status:             configv1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Type:               cloudConfigControllerDegradedCondition,
+				Status:             configv1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+			},
+			{
+				Type:               trustedCABundleControllerDegradedCondition,
+				Status:             configv1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+			},
+		},
+	}
+
 	getOperatorConfigForPlatform := func(status *configv1.PlatformStatus) config.OperatorConfig {
 		return config.OperatorConfig{
 			ManagedNamespace: DefaultManagedNamespace,
@@ -339,7 +364,9 @@ var _ = Describe("Component sync controller", func() {
 		status            *configv1.InfrastructureStatus
 		featureGateSpec   *configv1.FeatureGateSpec
 		kcmStatus         *operatorv1.KubeControllerManagerStatus
+		coStatus          *configv1.ClusterOperatorStatus
 		expectProvisioned bool
+		expectError       bool
 	}
 
 	DescribeTable("should ensure resources are provisioned",
@@ -360,8 +387,17 @@ var _ = Describe("Component sync controller", func() {
 				Expect(cl.Status().Update(context.Background(), kcm.DeepCopy())).To(Succeed())
 			}
 
+			if tc.coStatus != nil {
+				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(co), co)).To(Succeed())
+				co.Status = *tc.coStatus
+				Expect(cl.Status().Update(context.Background(), co.DeepCopy())).To(Succeed())
+			}
+
 			_, err := operatorController.Reconcile(context.Background(), reconcile.Request{})
-			Expect(err).To(Succeed())
+			if tc.expectError {
+				Expect(err).Should(HaveOccurred())
+				return
+			}
 
 			watchMap := watcher.getWatchedResources()
 
@@ -419,6 +455,7 @@ var _ = Describe("Component sync controller", func() {
 			},
 			featureGateSpec:   externalFeatureGateSpec,
 			kcmStatus:         kcmStatus,
+			coStatus:          coStatus,
 			expectProvisioned: true,
 		}),
 		Entry("Should provision OpenStack resources", testCase{
@@ -432,6 +469,7 @@ var _ = Describe("Component sync controller", func() {
 			},
 			featureGateSpec:   externalFeatureGateSpec,
 			kcmStatus:         kcmStatus,
+			coStatus:          coStatus,
 			expectProvisioned: true,
 		}),
 		Entry("Should provision resources if FG is set and KCM object doesn't exist", testCase{
@@ -445,6 +483,7 @@ var _ = Describe("Component sync controller", func() {
 			},
 			featureGateSpec:   externalFeatureGateSpec,
 			kcmStatus:         &operatorv1.KubeControllerManagerStatus{},
+			coStatus:          coStatus,
 			expectProvisioned: true,
 		}),
 		Entry("Should not provision resources for currently unsupported platform", testCase{
@@ -458,6 +497,7 @@ var _ = Describe("Component sync controller", func() {
 			},
 			featureGateSpec:   externalFeatureGateSpec,
 			kcmStatus:         kcmStatus,
+			coStatus:          coStatus,
 			expectProvisioned: false,
 		}),
 		Entry("Should not provision resources for AWS if external FeatureGate is not present", testCase{
@@ -470,6 +510,7 @@ var _ = Describe("Component sync controller", func() {
 				},
 			},
 			kcmStatus:         kcmStatus,
+			coStatus:          coStatus,
 			expectProvisioned: false,
 		}),
 		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
@@ -506,6 +547,7 @@ var _ = Describe("Component sync controller", func() {
 					},
 				},
 			},
+			coStatus:          coStatus,
 			expectProvisioned: false,
 		}),
 		Entry("Should not provision resources because KCMO hasn't set CloudControllerOwner condition", testCase{
@@ -528,6 +570,82 @@ var _ = Describe("Component sync controller", func() {
 								LastTransitionTime: metav1.Now(),
 							},
 						},
+					},
+				},
+			},
+			coStatus:          coStatus,
+			expectProvisioned: false,
+		}),
+		Entry("Should not provision resources because one controller is degraded", testCase{
+			status: &configv1.InfrastructureStatus{
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.AWSPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+			featureGateSpec: externalFeatureGateSpec,
+			kcmStatus:       kcmStatus,
+			coStatus: &configv1.ClusterOperatorStatus{
+				Conditions: []configv1.ClusterOperatorStatusCondition{
+					{
+						Type:               cloudConfigControllerAvailableCondition,
+						Status:             configv1.ConditionFalse,
+						LastTransitionTime: metav1.Now(),
+					},
+					{
+						Type:               trustedCABundleControllerAvailableCondition,
+						Status:             configv1.ConditionTrue,
+						LastTransitionTime: metav1.Now(),
+					},
+					{
+						Type:               cloudConfigControllerDegradedCondition,
+						Status:             configv1.ConditionTrue,
+						LastTransitionTime: metav1.Now(),
+					},
+					{
+						Type:               trustedCABundleControllerDegradedCondition,
+						Status:             configv1.ConditionFalse,
+						LastTransitionTime: metav1.Now(),
+					},
+				},
+			},
+			expectProvisioned: false,
+			expectError:       true,
+		}),
+		Entry("Should not provision resources because one controller is not available", testCase{
+			status: &configv1.InfrastructureStatus{
+				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+				Platform:               configv1.AWSPlatformType,
+				PlatformStatus: &configv1.PlatformStatus{
+					Type: configv1.AWSPlatformType,
+				},
+			},
+			featureGateSpec: externalFeatureGateSpec,
+			kcmStatus:       kcmStatus,
+			coStatus: &configv1.ClusterOperatorStatus{
+				Conditions: []configv1.ClusterOperatorStatusCondition{
+					{
+						Type:               cloudConfigControllerAvailableCondition,
+						Status:             configv1.ConditionFalse,
+						LastTransitionTime: metav1.Now(),
+					},
+					{
+						Type:               trustedCABundleControllerAvailableCondition,
+						Status:             configv1.ConditionTrue,
+						LastTransitionTime: metav1.Now(),
+					},
+					{
+						Type:               cloudConfigControllerDegradedCondition,
+						Status:             configv1.ConditionFalse,
+						LastTransitionTime: metav1.Now(),
+					},
+					{
+						Type:               trustedCABundleControllerDegradedCondition,
+						Status:             configv1.ConditionFalse,
+						LastTransitionTime: metav1.Now(),
 					},
 				},
 			},
