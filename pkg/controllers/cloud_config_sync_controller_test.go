@@ -345,8 +345,8 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 		Expect(err).To(BeNil())
 		allCMs := &corev1.ConfigMapList{}
-		Expect(cl.List(ctx, allCMs)).To(Succeed())
-		Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
+		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+		Expect(len(allCMs.Items)).To(BeZero())
 	})
 
 	It("should perform config sync for Azure platform", func() {
@@ -357,9 +357,9 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 		Expect(err).To(BeNil())
 		allCMs := &corev1.ConfigMapList{}
-		Expect(cl.List(ctx, allCMs)).To(Succeed())
+		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
 		Expect(len(allCMs.Items)).NotTo(BeZero())
-		Expect(len(allCMs.Items)).To(BeEquivalentTo(2))
+		Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
 	})
 
 	AfterEach(func() {
