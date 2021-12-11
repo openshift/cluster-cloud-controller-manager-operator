@@ -185,6 +185,16 @@ var _ = Describe("Cloud config sync controller", func() {
 		mgrCtxCancel()
 		Eventually(mgrStopped, timeout).Should(BeClosed())
 
+		co := &configv1.ClusterOperator{}
+		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		if err == nil || !apierrors.IsNotFound(err) {
+			Eventually(func() bool {
+				err := cl.Delete(context.Background(), co)
+				return err == nil || apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		}
+		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+
 		By("Cleanup resources")
 		deleteOptions := &client.DeleteOptions{
 			GracePeriodSeconds: pointer.Int64(0),
@@ -370,6 +380,16 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		deleteOptions := &client.DeleteOptions{
 			GracePeriodSeconds: pointer.Int64(0),
 		}
+
+		co := &configv1.ClusterOperator{}
+		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		if err == nil || !apierrors.IsNotFound(err) {
+			Eventually(func() bool {
+				err := cl.Delete(context.Background(), co)
+				return err == nil || apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		}
+		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
 
 		infra := &configv1.Infrastructure{
 			ObjectMeta: metav1.ObjectMeta{

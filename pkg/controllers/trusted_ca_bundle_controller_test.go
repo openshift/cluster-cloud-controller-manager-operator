@@ -128,6 +128,16 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 			GracePeriodSeconds: pointer.Int64(0),
 		}
 
+		co := &v1.ClusterOperator{}
+		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		if err == nil || !apierrors.IsNotFound(err) {
+			Eventually(func() bool {
+				err := cl.Delete(context.Background(), co)
+				return err == nil || apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		}
+		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+
 		if proxyResource != nil {
 			Expect(cl.Delete(ctx, proxyResource, deleteOptions)).To(Succeed())
 			Eventually(

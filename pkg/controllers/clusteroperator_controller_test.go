@@ -1006,6 +1006,16 @@ var _ = Describe("Apply resources should", func() {
 	})
 
 	AfterEach(func() {
+		co := &configv1.ClusterOperator{}
+		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		if err == nil || !apierrors.IsNotFound(err) {
+			Eventually(func() bool {
+				err := cl.Delete(context.Background(), co)
+				return err == nil || apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		}
+		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+
 		for _, operand := range resources {
 			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
 
