@@ -146,10 +146,12 @@ var _ = Describe("Cloud config sync controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler = &CloudConfigReconciler{
-			Client:          cl,
-			Scheme:          scheme.Scheme,
-			Recorder:        rec,
-			TargetNamespace: targetNamespaceName,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Recorder:         rec,
+				ManagedNamespace: targetNamespaceName,
+			},
+			Scheme: scheme.Scheme,
 		}
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
@@ -182,6 +184,16 @@ var _ = Describe("Cloud config sync controller", func() {
 		By("Closing the manager")
 		mgrCtxCancel()
 		Eventually(mgrStopped, timeout).Should(BeClosed())
+
+		co := &configv1.ClusterOperator{}
+		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		if err == nil || !apierrors.IsNotFound(err) {
+			Eventually(func() bool {
+				err := cl.Delete(context.Background(), co)
+				return err == nil || apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		}
+		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
 
 		By("Cleanup resources")
 		deleteOptions := &client.DeleteOptions{
@@ -317,9 +329,11 @@ var _ = Describe("Cloud config sync reconciler", func() {
 
 	BeforeEach(func() {
 		reconciler = &CloudConfigReconciler{
-			Client:          cl,
-			Scheme:          scheme.Scheme,
-			TargetNamespace: targetNamespaceName,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				ManagedNamespace: targetNamespaceName,
+			},
+			Scheme: scheme.Scheme,
 		}
 
 		Expect(cl.Create(ctx, makeInfraCloudConfig())).To(Succeed())
@@ -366,6 +380,16 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		deleteOptions := &client.DeleteOptions{
 			GracePeriodSeconds: pointer.Int64(0),
 		}
+
+		co := &configv1.ClusterOperator{}
+		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		if err == nil || !apierrors.IsNotFound(err) {
+			Eventually(func() bool {
+				err := cl.Delete(context.Background(), co)
+				return err == nil || apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		}
+		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
 
 		infra := &configv1.Infrastructure{
 			ObjectMeta: metav1.ObjectMeta{

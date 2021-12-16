@@ -86,10 +86,12 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler = &TrustedCABundleReconciler{
-			Client:          cl,
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Recorder:         rec,
+				ManagedNamespace: targetNamespaceName,
+			},
 			Scheme:          scheme.Scheme,
-			Recorder:        rec,
-			TargetNamespace: targetNamespaceName,
 			trustBundlePath: systemCAValid,
 		}
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
@@ -125,6 +127,16 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		deleteOptions := &client.DeleteOptions{
 			GracePeriodSeconds: pointer.Int64(0),
 		}
+
+		co := &v1.ClusterOperator{}
+		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		if err == nil || !apierrors.IsNotFound(err) {
+			Eventually(func() bool {
+				err := cl.Delete(context.Background(), co)
+				return err == nil || apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		}
+		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
 
 		if proxyResource != nil {
 			Expect(cl.Delete(ctx, proxyResource, deleteOptions)).To(Succeed())

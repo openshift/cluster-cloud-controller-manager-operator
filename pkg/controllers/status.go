@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -30,10 +31,17 @@ const (
 	defaultManagementNamespace = "openshift-cloud-controller-manager-operator"
 )
 
+type ClusterOperatorStatusClient struct {
+	client.Client
+	Recorder         record.EventRecorder
+	ManagedNamespace string
+	ReleaseVersion   string
+}
+
 // setStatusDegraded sets the Degraded condition to True, with the given reason and
 // message, and sets the upgradeable condition.  It does not modify any existing
 // Available or Progressing conditions.
-func (r *CloudOperatorReconciler) setStatusDegraded(ctx context.Context, reconcileErr error) error {
+func (r *ClusterOperatorStatusClient) setStatusDegraded(ctx context.Context, reconcileErr error) error {
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		klog.Errorf("Failed to get or create Cluster Operator: %v", err)
@@ -64,7 +72,7 @@ func (r *CloudOperatorReconciler) setStatusDegraded(ctx context.Context, reconci
 // setStatusProgressing sets the Progressing condition to True, with the given
 // reason and message, and sets the upgradeable condition to True.  It does not
 // modify any existing Available or Degraded conditions.
-func (r *CloudOperatorReconciler) setStatusProgressing(ctx context.Context) error {
+func (r *ClusterOperatorStatusClient) setStatusProgressing(ctx context.Context) error {
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		klog.Errorf("Failed to get or create Cluster Operator: %v", err)
@@ -95,7 +103,7 @@ func (r *CloudOperatorReconciler) setStatusProgressing(ctx context.Context) erro
 
 // setStatusAvailable sets the Available condition to True, with the given reason
 // and message, and sets both the Progressing and Degraded conditions to False.
-func (r *CloudOperatorReconciler) setStatusAvailable(ctx context.Context) error {
+func (r *ClusterOperatorStatusClient) setStatusAvailable(ctx context.Context) error {
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		return err
@@ -151,7 +159,7 @@ func newClusterOperatorStatusCondition(conditionType configv1.ClusterStatusCondi
 	}
 }
 
-func (r *CloudOperatorReconciler) getOrCreateClusterOperator(ctx context.Context) (*configv1.ClusterOperator, error) {
+func (r *ClusterOperatorStatusClient) getOrCreateClusterOperator(ctx context.Context) (*configv1.ClusterOperator, error) {
 	co := &configv1.ClusterOperator{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: clusterOperatorName,
@@ -175,7 +183,7 @@ func (r *CloudOperatorReconciler) getOrCreateClusterOperator(ctx context.Context
 	return co, nil
 }
 
-func (r *CloudOperatorReconciler) relatedObjects() []configv1.ObjectReference {
+func (r *ClusterOperatorStatusClient) relatedObjects() []configv1.ObjectReference {
 	// TBD: Add an actual set of object references from getResources method
 	return []configv1.ObjectReference{
 		{Resource: "namespaces", Name: defaultManagementNamespace},
@@ -185,7 +193,7 @@ func (r *CloudOperatorReconciler) relatedObjects() []configv1.ObjectReference {
 }
 
 //syncStatus applies the new condition to the ClusterOperator object.
-func (r *CloudOperatorReconciler) syncStatus(ctx context.Context, co *configv1.ClusterOperator, conds []configv1.ClusterOperatorStatusCondition) error {
+func (r *ClusterOperatorStatusClient) syncStatus(ctx context.Context, co *configv1.ClusterOperator, conds []configv1.ClusterOperatorStatusCondition) error {
 	for _, c := range conds {
 		v1helpers.SetStatusCondition(&co.Status.Conditions, c)
 	}

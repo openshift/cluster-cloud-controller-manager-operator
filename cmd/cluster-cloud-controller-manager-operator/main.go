@@ -128,12 +128,14 @@ func main() {
 	}
 
 	if err = (&controllers.CloudOperatorReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
-		ReleaseVersion:   getReleaseVersion(),
-		ManagedNamespace: *managedNamespace,
-		ImagesFile:       *imagesFile,
+		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
+			Client:           mgr.GetClient(),
+			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
+			ReleaseVersion:   getReleaseVersion(),
+			ManagedNamespace: *managedNamespace,
+		},
+		Scheme:     mgr.GetScheme(),
+		ImagesFile: *imagesFile,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterOperator")
 		os.Exit(1)

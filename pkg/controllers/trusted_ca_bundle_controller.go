@@ -13,7 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -34,13 +33,15 @@ const (
 	// https://github.com/openshift/installer/blob/master/pkg/asset/manifests/cloudproviderconfig.go#L99
 	cloudProviderConfigCABundleConfigMapKey = "ca-bundle.pem"
 	systemTrustBundlePath                   = "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
+
+	// Controller conditions for the Cluster Operator resource
+	trustedCABundleControllerAvailableCondition = "TrustedCABundleControllerControllerAvailable"
+	trustedCABundleControllerDegradedCondition  = "TrustedCABundleControllerControllerDegraded"
 )
 
 type TrustedCABundleReconciler struct {
-	client.Client
+	ClusterOperatorStatusClient
 	Scheme          *runtime.Scheme
-	Recorder        record.EventRecorder
-	TargetNamespace string
 	trustBundlePath string
 }
 
@@ -58,7 +59,13 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			// Request object not found, could have been deleted after reconcile request.
 			// Return and don't requeue
 			klog.Infof("proxy not found; reconciliation will be skipped")
+			if err := r.setAvailableCondition(ctx); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
+			}
 			return reconcile.Result{}, nil
+		}
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, fmt.Errorf("failed to get proxy '%s': %v", req.Name, err)
@@ -66,31 +73,49 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Check if changed config map in 'openshift-config' namespace is proxy trusted ca.
 	// If not, return early
-	if req.Namespace == OpenshiftConfigNamespace {
-		if proxyConfig.Spec.TrustedCA.Name != req.Name {
-			klog.Infof("changed config map %s is not a proxy trusted ca, skipping", req)
-			return reconcile.Result{}, nil
+	if req.Namespace == OpenshiftConfigNamespace && proxyConfig.Spec.TrustedCA.Name != req.Name {
+		if err := r.setAvailableCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 		}
+
+		klog.Infof("changed config map %s is not a proxy trusted ca, skipping", req)
+		return reconcile.Result{}, nil
 	}
 
 	systemTrustBundle, err := r.getSystemTrustBundle()
 	if err != nil {
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
+		}
 		return reconcile.Result{}, fmt.Errorf("failed to get system trust bundle: %v", err)
 	}
 
 	proxyCABundle, mergedTrustBundle, err := r.addProxyCABundle(ctx, proxyConfig, systemTrustBundle)
 	if err != nil {
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
+		}
 		return reconcile.Result{}, fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err)
 	}
 
 	_, mergedTrustBundle, err = r.addCloudConfigCABundle(ctx, proxyCABundle, mergedTrustBundle)
 	if err != nil {
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
+		}
 		return reconcile.Result{}, fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err)
 	}
 
 	ccmTrustedConfigMap := r.makeCABundleConfigMap(mergedTrustBundle)
 	if err := r.createOrUpdateConfigMap(ctx, ccmTrustedConfigMap); err != nil {
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
+		}
 		return reconcile.Result{}, fmt.Errorf("can not update target trust bundle configmap: %v", err)
+	}
+
+	if err := r.setAvailableCondition(ctx); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 	}
 
 	return ctrl.Result{}, nil
@@ -126,7 +151,7 @@ func (r *TrustedCABundleReconciler) addCloudConfigCABundle(ctx context.Context, 
 	// https://github.com/openshift/installer/pull/5248 for additional context.
 	// However, some platforms might not have cloud-config at all (AWS), so missed cloud config is not an error.
 	ccmSyncedCloudConfig := &corev1.ConfigMap{}
-	syncedCloudConfigObjectKey := types.NamespacedName{Name: syncedCloudConfigMapName, Namespace: r.TargetNamespace}
+	syncedCloudConfigObjectKey := types.NamespacedName{Name: syncedCloudConfigMapName, Namespace: r.ManagedNamespace}
 	if err := r.Get(ctx, syncedCloudConfigObjectKey, ccmSyncedCloudConfig); err != nil {
 		klog.Infof("cloud-config was not found: %v", err)
 		return nil, originalCABundle, nil
@@ -192,7 +217,7 @@ func (r *TrustedCABundleReconciler) makeCABundleConfigMap(trustBundle []byte) *c
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      trustedCAConfigMapName,
-			Namespace: r.TargetNamespace,
+			Namespace: r.ManagedNamespace,
 		},
 		Data: map[string]string{
 			trustedCABundleConfigMapKey: string(trustBundle),
@@ -261,8 +286,8 @@ func (r *TrustedCABundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(
 				predicate.Or(
 					openshiftConfigNamespacedPredicate(),
-					ccmTrustedCABundleConfigMapPredicates(r.TargetNamespace),
-					ownCloudConfigPredicate(r.TargetNamespace),
+					ccmTrustedCABundleConfigMapPredicates(r.ManagedNamespace),
+					ownCloudConfigPredicate(r.ManagedNamespace),
 				),
 			),
 		).
@@ -272,4 +297,40 @@ func (r *TrustedCABundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		)
 
 	return build.Complete(r)
+}
+
+func (r *TrustedCABundleReconciler) setAvailableCondition(ctx context.Context) error {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		return err
+	}
+
+	conds := []configv1.ClusterOperatorStatusCondition{
+		newClusterOperatorStatusCondition(trustedCABundleControllerAvailableCondition, configv1.ConditionTrue, ReasonAsExpected,
+			"Trusted CA Bundle Controller works as expected"),
+		newClusterOperatorStatusCondition(trustedCABundleControllerDegradedCondition, configv1.ConditionFalse, ReasonAsExpected,
+			"Trusted CA Bundle Controller works as expected"),
+	}
+
+	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
+	klog.Info("Trusted CA Bundle Controller is available")
+	return r.syncStatus(ctx, co, conds)
+}
+
+func (r *TrustedCABundleReconciler) setDegradedCondition(ctx context.Context) error {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		return err
+	}
+
+	conds := []configv1.ClusterOperatorStatusCondition{
+		newClusterOperatorStatusCondition(trustedCABundleControllerAvailableCondition, configv1.ConditionFalse, ReasonSyncFailed,
+			"Trusted CA Bundle Controller failed to sync cloud config"),
+		newClusterOperatorStatusCondition(trustedCABundleControllerDegradedCondition, configv1.ConditionTrue, ReasonSyncFailed,
+			"Trusted CA Bundle Controller failed to sync cloud config"),
+	}
+
+	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
+	klog.Info("Trusted CA Bundle Controller is degraded")
+	return r.syncStatus(ctx, co, conds)
 }

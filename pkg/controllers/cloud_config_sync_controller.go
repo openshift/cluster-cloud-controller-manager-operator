@@ -9,7 +9,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -23,13 +22,15 @@ const (
 	managedCloudConfigMapName = "kube-cloud-config"
 
 	defaultConfigKey = "cloud.conf"
+
+	// Controller conditions for the Cluster Operator resource
+	cloudConfigControllerAvailableCondition = "CloudConfigControllerAvailable"
+	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
 )
 
 type CloudConfigReconciler struct {
-	client.Client
-	Scheme          *runtime.Scheme
-	Recorder        record.EventRecorder
-	TargetNamespace string
+	ClusterOperatorStatusClient
+	Scheme *runtime.Scheme
 }
 
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -38,14 +39,23 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
 		klog.Errorf("infrastructure resource not found")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
 		return ctrl.Result{}, err
 	}
 
 	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus)
 	if err != nil {
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
 		return ctrl.Result{}, err
 	}
 	if !syncNeeded {
+		if err := r.setAvailableCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
 		klog.Infof("cloud-config sync is not needed, returning early")
 		return ctrl.Result{}, nil
 	}
@@ -63,37 +73,59 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		openshiftUnmanagedCMKey := client.ObjectKey{Name: infra.Spec.CloudConfig.Name, Namespace: OpenshiftConfigNamespace}
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); err != nil {
 			klog.Errorf("unable to get cloud-config for sync")
+			if err := r.setDegradedCondition(ctx); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+			}
 			return ctrl.Result{}, err
 		}
 		sourceCM, err = r.prepareSourceConfigMap(sourceCM, infra)
 		if err != nil {
+			if err := r.setDegradedCondition(ctx); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+			}
 			return ctrl.Result{}, err
 		}
 	} else if err != nil {
 		klog.Errorf("unable to get managed cloud-config for sync")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
 		return ctrl.Result{}, err
 	}
 
 	targetCM := &corev1.ConfigMap{}
 	targetConfigMapKey := client.ObjectKey{
-		Namespace: r.TargetNamespace,
+		Namespace: r.ManagedNamespace,
 		Name:      syncedCloudConfigMapName,
 	}
 
 	// If the config does not exist, it will be created later, so we can ignore a Not Found error
 	if err := r.Get(ctx, targetConfigMapKey, targetCM); err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("unable to get target cloud-config for sync")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
 		return ctrl.Result{}, err
 	}
 
 	if r.isCloudConfigEqual(sourceCM, targetCM) {
 		klog.Infof("source and target cloud-config content are equal, no sync needed")
+		if err := r.setAvailableCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
 		return ctrl.Result{}, nil
 	}
 
 	if err := r.syncCloudConfigData(ctx, sourceCM, targetCM); err != nil {
 		klog.Errorf("unable to sync cloud config")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
 		return ctrl.Result{}, err
+	}
+
+	if err := r.setAvailableCondition(ctx); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 	}
 
 	return ctrl.Result{}, nil
@@ -138,7 +170,7 @@ func (r *CloudConfigReconciler) isCloudConfigEqual(source *corev1.ConfigMap, tar
 
 func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source *corev1.ConfigMap, target *corev1.ConfigMap) error {
 	target.SetName(syncedCloudConfigMapName)
-	target.SetNamespace(r.TargetNamespace)
+	target.SetNamespace(r.ManagedNamespace)
 	target.Data = source.Data
 	target.BinaryData = source.BinaryData
 	target.Immutable = source.Immutable
@@ -162,7 +194,7 @@ func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.ConfigMap{},
 			builder.WithPredicates(
 				predicate.Or(
-					ownCloudConfigPredicate(r.TargetNamespace),
+					ownCloudConfigPredicate(r.ManagedNamespace),
 					openshiftCloudConfigMapPredicates(),
 				),
 			),
@@ -174,4 +206,40 @@ func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		)
 
 	return build.Complete(r)
+}
+
+func (r *CloudConfigReconciler) setAvailableCondition(ctx context.Context) error {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		return err
+	}
+
+	conds := []configv1.ClusterOperatorStatusCondition{
+		newClusterOperatorStatusCondition(cloudConfigControllerAvailableCondition, configv1.ConditionTrue, ReasonAsExpected,
+			"Cloud Config Controller works as expected"),
+		newClusterOperatorStatusCondition(cloudConfigControllerDegradedCondition, configv1.ConditionFalse, ReasonAsExpected,
+			"Cloud Config Controller works as expected"),
+	}
+
+	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
+	klog.Info("Cloud Config Controller is available")
+	return r.syncStatus(ctx, co, conds)
+}
+
+func (r *CloudConfigReconciler) setDegradedCondition(ctx context.Context) error {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		return err
+	}
+
+	conds := []configv1.ClusterOperatorStatusCondition{
+		newClusterOperatorStatusCondition(cloudConfigControllerAvailableCondition, configv1.ConditionFalse, ReasonSyncFailed,
+			"Cloud Config Controller failed to sync cloud config"),
+		newClusterOperatorStatusCondition(cloudConfigControllerDegradedCondition, configv1.ConditionTrue, ReasonSyncFailed,
+			"Cloud Config Controller failed to sync cloud config"),
+	}
+
+	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
+	klog.Info("Cloud Config Controller is degraded")
+	return r.syncStatus(ctx, co, conds)
 }
