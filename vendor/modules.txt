@@ -119,7 +119,7 @@ github.com/openshift/api/operator/v1
 # github.com/openshift/client-go v0.0.0-20211209144617-7385dd6338e3
 github.com/openshift/client-go/config/clientset/versioned/scheme
 github.com/openshift/client-go/config/clientset/versioned/typed/config/v1
-# github.com/openshift/library-go v0.0.0-20211214183058-58531ccbde67
+# github.com/openshift/library-go v0.0.0-20211217155025-d48a1fb9b7c2
 ## explicit
 github.com/openshift/library-go/pkg/cloudprovider
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
