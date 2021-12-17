@@ -363,6 +363,18 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		Expect(len(allCMs.Items)).To(BeZero())
 	})
 
+	It("should skip config sync for BareMetal platform", func() {
+		infraResource := makeInfrastructureResource(configv1.BareMetalPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+		Expect(err).To(BeNil())
+		allCMs := &corev1.ConfigMapList{}
+		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+		Expect(len(allCMs.Items)).To(BeZero())
+	})
+
 	It("should perform config sync for Azure platform", func() {
 		infraResource := makeInfrastructureResource(configv1.AzurePlatformType)
 		Expect(cl.Create(ctx, infraResource)).To(Succeed())
