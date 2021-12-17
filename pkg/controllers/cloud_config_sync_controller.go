@@ -136,7 +136,7 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 		return false, fmt.Errorf("platformStatus is required")
 	}
 	switch platformStatus.Type {
-	case configv1.AWSPlatformType: // aws ccm does not use cloud-config at the moment
+	case configv1.AWSPlatformType, configv1.BareMetalPlatformType: // aws ccm does not use cloud-config at the moment
 		return false, nil
 	default:
 		return true, nil
