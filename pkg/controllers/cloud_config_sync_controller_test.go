@@ -247,9 +247,9 @@ var _ = Describe("Cloud config sync controller", func() {
 
 	It("config should be synced up if own cloud-config deleted or changed", func() {
 		syncedCloudConfigMap := &corev1.ConfigMap{}
-		Eventually(func() {
-			Expect(cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)).Should(Succeed())
-		}).Should(Succeed())
+		Eventually(func() error {
+			return cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+		}, timeout).Should(Succeed())
 
 		syncedCloudConfigMap.Data = map[string]string{"foo": "baz"}
 		Expect(cl.Update(ctx, syncedCloudConfigMap)).To(Succeed())
@@ -273,9 +273,9 @@ var _ = Describe("Cloud config sync controller", func() {
 
 	It("config should not be updated if source and target config content are identical", func() {
 		syncedCloudConfigMap := &corev1.ConfigMap{}
-		Eventually(func() {
-			Expect(cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)).Should(Succeed())
-		}).Should(Succeed())
+		Eventually(func() error {
+			return cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+		}, timeout).Should(Succeed())
 		initialCMresourceVersion := syncedCloudConfigMap.ResourceVersion
 
 		request := reconcile.Request{NamespacedName: client.ObjectKey{Name: "foo", Namespace: "bar"}}
@@ -312,11 +312,14 @@ var _ = Describe("Cloud config sync controller", func() {
 		}
 		Expect(cl.Update(ctx, changedManagedConfig)).Should(Succeed())
 
-		Eventually(func() {
+		Eventually(func() (bool, error) {
 			syncedCloudConfigMap := &corev1.ConfigMap{}
-			Expect(cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)).Should(Succeed())
-			Expect(len(syncedCloudConfigMap.Data)).Should(BeEquivalentTo(3))
-		}).Should(Succeed())
+			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+			if err != nil {
+				return false, err
+			}
+			return len(syncedCloudConfigMap.Data) == 3, nil
+		}).Should(BeTrue())
 	})
 })
 
