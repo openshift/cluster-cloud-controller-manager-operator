@@ -50,11 +50,8 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 
 	leaderElectionConfig = config.LeaderElectionConfiguration{
-		LeaderElect:   true,
-		LeaseDuration: util.LeaseDuration,
-		RenewDeadline: util.RenewDeadline,
-		RetryPeriod:   util.RetryPeriod,
-		ResourceName:  "cluster-cloud-controller-manager-leader",
+		LeaderElect:  true,
+		ResourceName: "cluster-cloud-controller-manager-leader",
 	}
 )
 
@@ -107,8 +104,16 @@ func main() {
 
 	ctrl.SetLogger(klogr.New().WithName("CCMOperator"))
 
+	restConfig := ctrl.GetConfigOrDie()
+	le := util.GetLeaderElectionDefaults(restConfig, configv1.LeaderElection{
+		Disable:       !leaderElectionConfig.LeaderElect,
+		RenewDeadline: leaderElectionConfig.RenewDeadline,
+		RetryPeriod:   leaderElectionConfig.RetryPeriod,
+		LeaseDuration: leaderElectionConfig.LeaseDuration,
+	})
+
 	syncPeriod := 10 * time.Minute
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Namespace:               *managedNamespace,
 		Scheme:                  scheme,
 		SyncPeriod:              &syncPeriod,
@@ -117,10 +122,10 @@ func main() {
 		HealthProbeBindAddress:  *healthAddr,
 		LeaderElectionNamespace: leaderElectionConfig.ResourceNamespace,
 		LeaderElection:          leaderElectionConfig.LeaderElect,
-		LeaseDuration:           &leaderElectionConfig.LeaseDuration.Duration,
 		LeaderElectionID:        leaderElectionConfig.ResourceName,
-		RetryPeriod:             &leaderElectionConfig.RetryPeriod.Duration,
-		RenewDeadline:           &leaderElectionConfig.RenewDeadline.Duration,
+		LeaseDuration:           &le.LeaseDuration.Duration,
+		RetryPeriod:             &le.RetryPeriod.Duration,
+		RenewDeadline:           &le.RenewDeadline.Duration,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

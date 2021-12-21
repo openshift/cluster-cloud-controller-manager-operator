@@ -80,8 +80,12 @@ func TestGetResources(t *testing.T) {
 	platformsMap := getPlatforms()
 	getResourcesThresholdMs := 5 * time.Millisecond
 
+	t.Log("disabling klog logging")
 	testingutils.TurnOffKlog()
-	defer testingutils.TurnOnKlog()
+	defer func() {
+		t.Log("enabling klog logging")
+		testingutils.TurnOnKlog()
+	}()
 
 	tc := []struct {
 		name                      string
