@@ -44,7 +44,16 @@ spec:
           --leader-elect-renew-deadline=107s \
           --leader-elect-retry-period=26s \
           --leader-elect-resource-namespace=openshift-cloud-controller-manager-operator \
-          "--images-json=/etc/cloud-controller-manager-config/images.json"
+          "--images-json=/etc/cloud-controller-manager-config/images.json" \
+          --metrics-bind-address=:9258 \
+          --health-addr=127.0.0.1:9259
+        ports:
+        - containerPort: 9258
+          name: metrics
+          protocol: TCP
+        - containerPort: 9259
+          name: healthz
+          protocol: TCP
         env:
         - name: RELEASE_VERSION
           value: "0.0.1-snapshot"
@@ -77,13 +86,9 @@ spec:
             --leader-elect-renew-deadline=107s \
             --leader-elect-retry-period=26s \
             --leader-elect-resource-namespace=openshift-cloud-controller-manager-operator \
-            --metrics-bind-address=:9258 \
-            --health-addr=127.0.0.1:9259
+            --health-addr=127.0.0.1:9260
         ports:
-        - containerPort: 9258
-          name: metrics
-          protocol: TCP
-        - containerPort: 9259
+        - containerPort: 9260
           name: healthz
           protocol: TCP
         resources:
