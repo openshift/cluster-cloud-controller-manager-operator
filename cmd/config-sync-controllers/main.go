@@ -67,12 +67,6 @@ func init() {
 func main() {
 	klog.InitFlags(nil)
 
-	metricsAddr := flag.String(
-		"metrics-bind-address",
-		":8080",
-		"Address for hosting metrics",
-	)
-
 	healthAddr := flag.String(
 		"health-addr",
 		":9440",
@@ -101,7 +95,7 @@ func main() {
 		Namespace:               *managedNamespace,
 		Scheme:                  scheme,
 		SyncPeriod:              &syncPeriod,
-		MetricsBindAddress:      *metricsAddr,
+		MetricsBindAddress:      "0", // we do not expose any metric at this point
 		HealthProbeBindAddress:  *healthAddr,
 		LeaderElectionNamespace: leaderElectionConfig.ResourceNamespace,
 		LeaderElection:          leaderElectionConfig.LeaderElect,
