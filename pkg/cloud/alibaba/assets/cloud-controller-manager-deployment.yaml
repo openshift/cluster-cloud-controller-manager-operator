@@ -69,7 +69,8 @@ spec:
               --cloud-config=/etc/alibaba/config/cloud-config.conf \
               --feature-gates=ServiceNodeExclusion=true \
               --configure-cloud-routes=false \
-              --allocate-node-cidrs=false
+              --allocate-node-cidrs=false \
+              --metrics-bind-addr=0
           image: quay.io/openshift/origin-alibaba-cloud-controller-manager
           livenessProbe:
             failureThreshold: 8
