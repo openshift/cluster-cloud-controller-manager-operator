@@ -6,6 +6,10 @@ spec:
     from:
       kind: DockerImage
       name: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
+  - name: alibaba-cloud-controller-manager
+    from:
+      kind: DockerImage
+      name: quay.io/openshift/origin-alibaba-cloud-controller-manager
   - name: aws-cloud-controller-manager
     from:
       kind: DockerImage
