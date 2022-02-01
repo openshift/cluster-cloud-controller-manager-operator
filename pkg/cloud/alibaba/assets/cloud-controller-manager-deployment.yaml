@@ -71,7 +71,7 @@ spec:
               --configure-cloud-routes=false \
               --allocate-node-cidrs=false \
               --metrics-bind-addr=0
-          image: quay.io/openshift/origin-alibaba-cloud-controller-manager
+          image: {{ .images.CloudControllerManager }}
           livenessProbe:
             failureThreshold: 8
             httpGet:
