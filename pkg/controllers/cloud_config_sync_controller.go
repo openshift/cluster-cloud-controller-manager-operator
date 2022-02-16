@@ -140,7 +140,8 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 		configv1.GCPPlatformType,
 		configv1.VSpherePlatformType,
 		configv1.AlibabaCloudPlatformType,
-		configv1.IBMCloudPlatformType:
+		configv1.IBMCloudPlatformType,
+		configv1.PowerVSPlatformType:
 		return true, nil
 	default:
 		return false, nil
