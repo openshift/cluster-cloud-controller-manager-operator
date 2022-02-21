@@ -193,6 +193,9 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&source.Kind{Type: &configv1.FeatureGate{}},
 			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
 			builder.WithPredicates(featureGatePredicates())).
+		Watches(&source.Kind{Type: &operatorv1.KubeControllerManager{}},
+			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
+			builder.WithPredicates(kcmPredicates())).
 		Watches(&source.Channel{Source: watcher.EventStream()}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
 
 	return build.Complete(r)

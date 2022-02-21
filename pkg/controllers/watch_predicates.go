@@ -2,6 +2,7 @@ package controllers
 
 import (
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,6 +56,20 @@ func featureGatePredicates() predicate.Funcs {
 		UpdateFunc:  func(e event.UpdateEvent) bool { return isFeatureGateCluster(e.ObjectNew) },
 		GenericFunc: func(e event.GenericEvent) bool { return isFeatureGateCluster(e.Object) },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return isFeatureGateCluster(e.Object) },
+	}
+}
+
+func kcmPredicates() predicate.Funcs {
+	isKCMCluster := func(obj runtime.Object) bool {
+		kcm, ok := obj.(*operatorv1.KubeControllerManager)
+		return ok && kcm.GetName() == kcmResourceName
+	}
+
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return isKCMCluster(e.Object) },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return isKCMCluster(e.ObjectNew) },
+		GenericFunc: func(e event.GenericEvent) bool { return isKCMCluster(e.Object) },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return isKCMCluster(e.Object) },
 	}
 }
 
