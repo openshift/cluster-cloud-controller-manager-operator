@@ -4,12 +4,12 @@ metadata:
   name: openstack-cloud-controller-manager
   namespace: openshift-cloud-controller-manager
   labels:
-    app: openstack-cloud-controller-manager
+    k8s-app: openstack-cloud-controller-manager
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: openstack-cloud-controller-manager
+      k8s-app: openstack-cloud-controller-manager
   strategy:
     type: Recreate
   template:
@@ -17,7 +17,7 @@ spec:
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
-        app: openstack-cloud-controller-manager
+        k8s-app: openstack-cloud-controller-manager
     spec:
       hostNetwork: true
       serviceAccount: cloud-controller-manager
@@ -30,7 +30,7 @@ spec:
           - topologyKey: "kubernetes.io/hostname"
             labelSelector:
               matchLabels:
-                app: openstack-cloud-controller-manager
+                k8s-app: openstack-cloud-controller-manager
       tolerations:
         - key: CriticalAddonsOnly
           operator: Exists

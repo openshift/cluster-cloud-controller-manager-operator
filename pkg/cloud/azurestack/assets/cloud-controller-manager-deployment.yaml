@@ -4,17 +4,17 @@ metadata:
   name: azure-cloud-controller-manager
   namespace: openshift-cloud-controller-manager
   labels:
-    app: azure-cloud-controller-manager
+    k8s-app: azure-cloud-controller-manager
 spec:
   selector:
     matchLabels:
-      app: azure-cloud-controller-manager
+      k8s-app: azure-cloud-controller-manager
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: azure-cloud-controller-manager
+        k8s-app: azure-cloud-controller-manager
     spec:
       hostNetwork: true
       serviceAccountName: cloud-controller-manager
@@ -27,7 +27,7 @@ spec:
             - topologyKey: "kubernetes.io/hostname"
               labelSelector:
                 matchLabels:
-                  app: azure-cloud-controller-manager
+                  k8s-app: azure-cloud-controller-manager
       tolerations:
         - effect: NoSchedule
           key: node-role.kubernetes.io/master

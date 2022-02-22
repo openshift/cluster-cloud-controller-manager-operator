@@ -4,12 +4,13 @@ metadata:
   name: azure-cloud-node-manager
   namespace: openshift-cloud-controller-manager
   labels:
+    k8s-app: azure-cloud-node-manager
     component: azure-cloud-node-manager
     kubernetes.io/cluster-service: "true"
 spec:
   selector:
     matchLabels:
-      app: azure-cloud-node-manager
+      k8s-app: azure-cloud-node-manager
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
@@ -17,7 +18,7 @@ spec:
   template:
     metadata:
       labels:
-        app: azure-cloud-node-manager
+        k8s-app: azure-cloud-node-manager
       annotations:
         cluster-autoscaler.kubernetes.io/daemonset-pod: "true"
     spec:

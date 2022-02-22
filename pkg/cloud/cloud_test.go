@@ -201,7 +201,7 @@ func TestGetResources(t *testing.T) {
 	}
 }
 
-func TestPodSpec(t *testing.T) {
+func TestRenderedResources(t *testing.T) {
 	/*
 		This test runs a number of different checks against the podSpecs produced by
 		the different platform resources.
@@ -477,4 +477,42 @@ func checkTrustedCAMounted(t *testing.T, podSpec corev1.PodSpec) {
 	for _, c := range podSpec.Containers {
 		assert.Contains(t, c.VolumeMounts, trustedCAVolumeMount, "Container VolumeMounts should contain trusted ca volume mount")
 	}
+}
+
+func TestDeploymentSelectorLabels(t *testing.T) {
+	/*
+		This test checks consistency between all Deployment pod template labels and selector labels
+	*/
+
+	platforms := getPlatforms()
+	for platformName, platform := range platforms {
+
+		t.Run(platformName, func(t *testing.T) {
+			resources, err := GetResources(platform.getOperatorConfig())
+			assert.NoError(t, err)
+
+			for _, resource := range resources {
+				switch obj := resource.(type) {
+				case *appsv1.Deployment:
+					checkDeployementSelectorLabels(t, obj)
+				case *appsv1.DaemonSet:
+					checkDaemonSetSelectorLabels(t, obj)
+				default:
+					// Nothing to check for non
+				}
+			}
+		})
+	}
+}
+
+func checkDeployementSelectorLabels(t *testing.T, deployment *appsv1.Deployment) {
+	assert.Contains(t, deployment.Labels, "k8s-app")
+	assert.Contains(t, deployment.Spec.Template.Labels, "k8s-app")
+	assert.Contains(t, deployment.Spec.Selector.MatchLabels, "k8s-app")
+}
+
+func checkDaemonSetSelectorLabels(t *testing.T, deployment *appsv1.DaemonSet) {
+	assert.Contains(t, deployment.Labels, "k8s-app")
+	assert.Contains(t, deployment.Spec.Template.Labels, "k8s-app")
+	assert.Contains(t, deployment.Spec.Selector.MatchLabels, "k8s-app")
 }
