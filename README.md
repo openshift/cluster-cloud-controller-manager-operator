@@ -1,16 +1,16 @@
 # Cluster Cloud Controller Manager Operator
 
-The Cluster Cloud Controller Manager operator(CCCMO) manages and updates the various [Cloud Controller Managers](https://kubernetes.io/docs/concepts/architecture/cloud-controller/) deployed on top of [OpenShift](https://openshift.io). The operator is based on the [Kubebuilder](https://kubebuilder.io/) framework and [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) libraries. It is installed via [Cluster Version Operator](https://github.com/openshift/cluster-version-operator) (CVO).
+The Cluster Cloud Controller Manager operator (CCCMO) manages and updates the various [Cloud Controller Managers](https://kubernetes.io/docs/concepts/architecture/cloud-controller/) deployed on top of [OpenShift](https://openshift.io). The operator is based on the [Kubebuilder](https://kubebuilder.io/) framework and [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) libraries. It is installed via [Cluster Version Operator](https://github.com/openshift/cluster-version-operator) (CVO).
 
 ## Operator Status and Supported Platforms
 
-Kubernetes is in the process of migrating its cloud controller functionality out of the Kubernetes core and into separate Cloud Controller Managers (see [KEP 2395](https://github.com/kubernetes/enhancements/tree/master/keps/sig-cloud-provider/2395-removing-in-tree-cloud-providers) for more information). As this process is an on-going effort, we will document the status and progress of this operator, as well as the supported platforms, until the operator has gone into general availability(GA) in OpenShift.
+Kubernetes is in the process of migrating its cloud controller functionality out of the Kubernetes core and into separate Cloud Controller Managers (see [KEP 2395](https://github.com/kubernetes/enhancements/tree/master/keps/sig-cloud-provider/2395-removing-in-tree-cloud-providers) for more information). As this process is an on-going effort, we will document the status and progress of this operator, as well as the supported platforms, until the operator has gone into general availability (GA) in OpenShift.
 
 ### Operator Status
 
 **Alpha**
 
-The operator is being actively developed, with features and testing be added on a regular basis. It is currently available for experimentation and testing but **should not** be used for production.
+The operator is being actively developed, with features and testing being added on a regular basis. It is currently available for experimentation and testing but **should not** be used for production.
 
 ### Supported Platforms
 
@@ -35,6 +35,7 @@ More detailed guide is in [#hacking-guide](./docs/dev/hacking-guide.md)
 ## Development
 
 **Prerequisites**
+
 * Go language 1.16+
 * GNU Make
 
@@ -56,7 +57,7 @@ After adding or updating dependencies in the `go.mod` file, run `make vendor` to
 
 ### Running Tests
 
-The CCCMO has multiple levels of testing: unit tests, and end to end (e2e) functionality tests. As a developer you should run the unit tests locally to ensure that your changes do not break the tests. Although running the e2e tests manually can be a rewarding experience, it is also complicated to configure and maintain. For these reasons it is often better to let the continuous integration systems run the e2e tests automatically for your on pull requests.
+The CCCMO has multiple levels of testing: unit tests, and end to end (e2e) functionality tests. As a developer you should run the unit tests locally to ensure that your changes do not break the tests. Although running the e2e tests manually can be a rewarding experience, it is also complicated to configure and maintain. For these reasons it is often better to let the continuous integration systems run the e2e tests automatically for you on pull requests.
 
 #### Local Unit Tests
 
