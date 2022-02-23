@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
@@ -709,6 +710,8 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
+		// two resources should report successful update, deployment and pdb
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 	})
 
@@ -768,6 +771,8 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
+		// two resources should report successful update, deployment and pdb
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
@@ -926,7 +931,7 @@ var _ = Describe("Apply resources should", func() {
 
 		// Checking that the label has been added and there are two items in the map
 		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
-		Expect(len(dep.Labels)).To(Equal(2))
+		Expect(len(dep.Labels)).To(Equal(3))
 		Expect(dep.Labels[labelName]).To(Equal(labelValue))
 
 		// Apply resources again
@@ -947,7 +952,7 @@ var _ = Describe("Apply resources should", func() {
 
 		// Checking that the new label is still there
 		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
-		Expect(len(dep.Labels)).To(Equal(2))
+		Expect(len(dep.Labels)).To(Equal(3))
 		Expect(dep.Labels[labelName]).To(Equal(labelValue))
 	})
 
@@ -975,13 +980,15 @@ var _ = Describe("Apply resources should", func() {
 		// Now the deployment has just one label "k8s-app: aws-cloud-controller-manager"
 		// Manually modifying the value
 		dep.Labels["k8s-app"] = "someValue"
+		dep.Labels[common.CloudControllerManagerProviderLabel] = "FOO"
 		err = reconciler.Update(context.TODO(), dep)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		// Checking that the label has been updated
 		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
-		Expect(len(dep.Labels)).To(Equal(1))
+		Expect(len(dep.Labels)).To(Equal(2))
 		Expect(dep.Labels["k8s-app"]).To(Equal("someValue"))
+		Expect(dep.Labels[common.CloudControllerManagerProviderLabel]).To(Equal("FOO"))
 
 		// Apply resources again
 		freshResources, err = cloud.GetResources(operatorConfig)
@@ -1001,8 +1008,9 @@ var _ = Describe("Apply resources should", func() {
 
 		// Checking that the label value has been reverted and there is only one item in the map
 		Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), dep)).To(Succeed())
-		Expect(len(dep.Labels)).To(Equal(1))
+		Expect(len(dep.Labels)).To(Equal(2))
 		Expect(dep.Labels["k8s-app"]).To(Equal("aws-cloud-controller-manager"))
+		Expect(dep.Labels[common.CloudControllerManagerProviderLabel]).To(Equal("AWS"))
 	})
 
 	AfterEach(func() {
