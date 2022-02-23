@@ -37,6 +37,14 @@ type OperatorConfig struct {
 	ClusterProxy       *configv1.Proxy
 }
 
+func (cfg *OperatorConfig) GetPlatformNameString() string {
+	var platformName string
+	if cfg.PlatformStatus != nil {
+		platformName = string(cfg.PlatformStatus.Type)
+	}
+	return platformName
+}
+
 // checkInfrastructureResource checks Infrastructure resource for platform status presence
 func checkInfrastructureResource(infra *configv1.Infrastructure) error {
 	if infra == nil || infra.Status.PlatformStatus == nil {
