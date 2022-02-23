@@ -31,6 +31,7 @@ type imagesReference struct {
 var templateValuesValidationMap = map[string]interface{}{
 	"images":               "required",
 	"enablePublicEndpoint": "required",
+	"cloudproviderName":    "required,type(string)",
 }
 
 type ibmAssets struct {
@@ -46,6 +47,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 	values := common.TemplateValues{
 		"images":               images,
 		"enablePublicEndpoint": fmt.Sprintf("%t", getEnablePublicEndpointValue(operatorConfig)),
+		"cloudproviderName":    operatorConfig.GetPlatformNameString(),
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {

@@ -3,6 +3,7 @@ apiVersion: apps/v1
 metadata:
   labels:
     k8s-app: alibaba-cloud-controller-manager
+    infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
   name: alibaba-cloud-controller-manager
   namespace: openshift-cloud-controller-manager
 spec:
@@ -10,12 +11,14 @@ spec:
   selector:
     matchLabels:
       k8s-app: alibaba-cloud-controller-manager
+      infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
         k8s-app: alibaba-cloud-controller-manager
+        infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
     spec:
       hostNetwork: true
       serviceAccountName: cloud-controller-manager
@@ -29,6 +32,7 @@ spec:
               labelSelector:
                 matchLabels:
                   k8s-app: alibaba-cloud-controller-manager
+                  infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
       tolerations:
         - effect: NoSchedule
           key: node-role.kubernetes.io/master

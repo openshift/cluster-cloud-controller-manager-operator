@@ -28,6 +28,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 					CloudControllerManagerAzure: "CloudControllerManagerAzure",
 					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
 				},
+				PlatformStatus: &configv1.PlatformStatus{Type: configv1.AzurePlatformType},
 			},
 			initErrMsg: "can not construct template values for azure assets: infrastructureName: non zero value required",
 		}, {
@@ -38,6 +39,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 					CloudControllerManagerAzure: "CloudControllerManagerAzure",
 					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
 				},
+				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AzurePlatformType},
 				InfrastructureName: "infra",
 			},
 		}, {
@@ -48,6 +50,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 					CloudControllerManagerAzure: "CloudControllerManagerAzure",
 					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
 				},
+				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AlibabaCloudPlatformType},
 				InfrastructureName: "infra",
 				ClusterProxy: &configv1.Proxy{
 					Status: configv1.ProxyStatus{

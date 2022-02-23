@@ -5,6 +5,7 @@ metadata:
   namespace: openshift-cloud-controller-manager
   labels:
     k8s-app: ibm-cloud-controller-manager
+    infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
 spec:
   replicas: 2
   strategy:
@@ -12,10 +13,12 @@ spec:
   selector:
     matchLabels:
       k8s-app: ibm-cloud-controller-manager
+      infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
   template:
     metadata:
       labels:
         k8s-app: ibm-cloud-controller-manager
+        infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
     spec:
       priorityClassName: system-cluster-critical
       hostNetwork: true
@@ -28,6 +31,7 @@ spec:
             labelSelector:
               matchLabels:
                 k8s-app: ibm-cloud-controller-manager
+                infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master

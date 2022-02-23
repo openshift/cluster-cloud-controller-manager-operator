@@ -36,6 +36,7 @@ var templateValuesValidationMap = map[string]interface{}{
 	"infrastructureName":         "required,type(string)",
 	"globalCredsSecretNamespace": "required,type(string)",
 	"globalCredsSecretName":      "required,type(string)",
+	"cloudproviderName":          "required,type(string)",
 }
 
 type vsphereAssets struct {
@@ -53,6 +54,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 		"infrastructureName":         operatorConfig.InfrastructureName,
 		"globalCredsSecretNamespace": operatorConfig.ManagedNamespace,
 		"globalCredsSecretName":      globalCredsSecretName,
+		"cloudproviderName":          operatorConfig.GetPlatformNameString(),
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
