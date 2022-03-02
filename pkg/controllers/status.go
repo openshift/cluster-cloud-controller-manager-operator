@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 
@@ -29,6 +30,11 @@ const (
 	clusterOperatorName        = "cloud-controller-manager"
 	operatorVersionKey         = "operator"
 	defaultManagementNamespace = "openshift-cloud-controller-manager-operator"
+)
+
+const (
+	releaseVersionEnvVariableName = "RELEASE_VERSION"
+	unknownVersionValue           = "unknown"
 )
 
 type ClusterOperatorStatusClient struct {
@@ -203,4 +209,14 @@ func (r *ClusterOperatorStatusClient) syncStatus(ctx context.Context, co *config
 	}
 
 	return r.Status().Update(ctx, co)
+}
+
+// GetReleaseVersion gets the release version string from the env
+func GetReleaseVersion() string {
+	releaseVersion := os.Getenv(releaseVersionEnvVariableName)
+	if len(releaseVersion) == 0 {
+		releaseVersion = unknownVersionValue
+		klog.Infof("%s environment variable is missing, defaulting to %q", releaseVersionEnvVariableName, unknownVersionValue)
+	}
+	return releaseVersion
 }
