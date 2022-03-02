@@ -56,9 +56,7 @@ var (
 )
 
 const (
-	defaultImagesLocation         = "/etc/cloud-controller-manager-config/images.json"
-	releaseVersionEnvVariableName = "RELEASE_VERSION"
-	unknownVersionValue           = "unknown"
+	defaultImagesLocation = "/etc/cloud-controller-manager-config/images.json"
 )
 
 func init() {
@@ -136,7 +134,7 @@ func main() {
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
 			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
-			ReleaseVersion:   getReleaseVersion(),
+			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
 		},
 		Scheme:     mgr.GetScheme(),
@@ -161,13 +159,4 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-func getReleaseVersion() string {
-	releaseVersion := os.Getenv(releaseVersionEnvVariableName)
-	if len(releaseVersion) == 0 {
-		releaseVersion = unknownVersionValue
-		klog.Infof("%s environment variable is missing, defaulting to %q", releaseVersionEnvVariableName, unknownVersionValue)
-	}
-	return releaseVersion
 }
