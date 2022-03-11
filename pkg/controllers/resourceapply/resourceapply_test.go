@@ -270,13 +270,8 @@ func TestApplyDeployment(t *testing.T) {
 			g.Expect(tt.expectedDeployment.Annotations[specHashAnnotation]).Should(BeEquivalentTo(updatedDeployment.Annotations[specHashAnnotation]))
 		})
 	}
-}
 
-func TestApplyDeploymentSelector(t *testing.T) {
-	cl, tearDownFn := setupEnvtest(t)
-	defer tearDownFn(t)
-
-	tests := []struct {
+	updateSelectorTests := []struct {
 		name               string
 		desiredDeployment  *appsv1.Deployment
 		expectedDeployment *appsv1.Deployment
@@ -326,7 +321,7 @@ func TestApplyDeploymentSelector(t *testing.T) {
 			expectError:        true,
 		},
 	}
-	for _, tt := range tests {
+	for _, tt := range updateSelectorTests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 			eventRecorder := record.NewFakeRecorder(1000)
@@ -523,6 +518,96 @@ func TestApplyDaemonSet(t *testing.T) {
 				t.Fatalf("Expected DaemonSet: %+v, got %+v", tt.expectedDaemonSet, updatedDaemonSet)
 			}
 			g.Expect(tt.expectedDaemonSet.Annotations[specHashAnnotation]).Should(BeEquivalentTo(updatedDaemonSet.Annotations[specHashAnnotation]))
+		})
+	}
+
+	updateSelectorTests := []struct {
+		name              string
+		desiredDaemonSet  *appsv1.DaemonSet
+		expectedDaemonSet *appsv1.DaemonSet
+
+		expectError      bool
+		expectedRecreate bool
+	}{
+		{
+			name: "the daemonset is recreated due to a change in match labels field",
+			desiredDaemonSet: func() *appsv1.DaemonSet {
+				w := workloadDaemonSet()
+				w.Spec.Selector = &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"bar": "baz",
+					},
+				}
+				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+				return w
+			}(),
+			expectedDaemonSet: func() *appsv1.DaemonSet {
+				w := workloadDaemonSet()
+				w.Spec.Selector = &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"bar": "baz",
+					},
+				}
+				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+				w.Annotations[specHashAnnotation] = "ba95dff6a88cc11a6cd80aa8a8d7a5e88793809ad27f9f8c5b7b66c39ce13ee4"
+				return w
+			}(),
+			expectedRecreate: true,
+		},
+
+		{
+			name: "resourceapply should report an error in case if resource is malformed",
+			desiredDaemonSet: func() *appsv1.DaemonSet {
+				w := workloadDaemonSet()
+				w.Spec.Selector = &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"bar": "baz",
+					},
+				}
+				w.Spec.Template.Labels = map[string]string{"fiz": "baz"}
+				return w
+			}(),
+			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			expectError:       true,
+		},
+	}
+	for _, tt := range updateSelectorTests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			eventRecorder := record.NewFakeRecorder(1000)
+			ctx := context.TODO()
+			defer cleanupResources(t, g, ctx, cl, &appsv1.DaemonSetList{})
+
+			actualDaemonSet := workloadDaemonSetWithDefaultSpecHash()
+			g.Expect(cl.Create(ctx, actualDaemonSet)).To(Succeed())
+			g.Expect(actualDaemonSet.UID).NotTo(BeNil())
+
+			_, err := applyDaemonSet(ctx, cl, eventRecorder, tt.desiredDaemonSet)
+			if tt.expectError {
+				g.Expect(err).To(HaveOccurred(), "expected error")
+			}
+			if !tt.expectError {
+				g.Expect(err).NotTo(HaveOccurred(), "expected no error")
+			}
+
+			updatedDaemonSet := &appsv1.DaemonSet{}
+			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(tt.desiredDaemonSet)
+			g.Expect(cl.Get(ctx, deploymentObjectKey, updatedDaemonSet)).To(Succeed())
+			if tt.expectedRecreate {
+				g.Expect(actualDaemonSet.UID).ShouldNot(BeEquivalentTo(updatedDaemonSet.UID))
+			}
+			if !tt.expectedRecreate {
+				g.Expect(actualDaemonSet.UID).Should(BeEquivalentTo(updatedDaemonSet.UID))
+			}
+
+			if !equality.Semantic.DeepDerivative(tt.expectedDaemonSet.Spec, updatedDaemonSet.Spec) {
+				t.Fatalf("Expected deployment: %+v, got %+v", tt.expectedDaemonSet, updatedDaemonSet)
+			}
+			g.Expect(tt.expectedDaemonSet.Annotations[specHashAnnotation]).To(BeEquivalentTo(updatedDaemonSet.Annotations[specHashAnnotation]))
+
+			dss := &appsv1.DaemonSetList{}
+			g.Expect(cl.List(ctx, dss)).To(Succeed())
+			g.Expect(len(dss.Items)).To(BeEquivalentTo(1))
 		})
 	}
 }

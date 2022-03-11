@@ -676,6 +676,7 @@ var _ = Describe("Apply resources should", func() {
 		}
 
 		recorder = record.NewFakeRecorder(32)
+		recorder.IncludeObject = true
 		reconciler = &CloudOperatorReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:   cl,
@@ -758,7 +759,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), objects)
 		Expect(err).Should(HaveOccurred())
 		Expect(updated).To(BeFalse())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Update failed")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Create failed")))
 	})
 
 	It("Expect no update when resources are applied twice", func() {
