@@ -8,9 +8,11 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/pointer"
@@ -58,6 +60,10 @@ func cleanupResources(t *testing.T, g *WithT, ctx context.Context, cl client.Cli
 			deleteResouce(g, &obj)
 		}
 	case *appsv1.DaemonSetList:
+		for _, obj := range typedList.Items {
+			deleteResouce(g, &obj)
+		}
+	case *policyv1.PodDisruptionBudgetList:
 		for _, obj := range typedList.Items {
 			deleteResouce(g, &obj)
 		}
@@ -655,4 +661,96 @@ func workloadDaemonSetWithDefaultSpecHash() *appsv1.DaemonSet {
 	w := workloadDaemonSet()
 	w.Annotations[specHashAnnotation] = "eaeff6ac704fb141d5085803b5b3cc12067ef98c9f2ba8c1052df81faa53299c"
 	return w
+}
+
+func TestApplyPDB(t *testing.T) {
+	cl, tearDownFn := setupEnvtest(t)
+	defer tearDownFn(t)
+
+	tests := []struct {
+		name     string
+		existing *policyv1.PodDisruptionBudget
+		input    *policyv1.PodDisruptionBudget
+
+		expectedModified bool
+	}{
+		{
+			name:             "create",
+			input:            podDisruptionBudget(),
+			expectedModified: true,
+		},
+		{
+			name: "skip on extra label",
+			existing: func() *policyv1.PodDisruptionBudget {
+				pdb := podDisruptionBudget()
+				pdb.Labels = map[string]string{"bar": "baz"}
+				return pdb
+			}(),
+			input: podDisruptionBudget(),
+
+			expectedModified: false,
+		},
+		{
+			name: "update on missing label",
+			existing: func() *policyv1.PodDisruptionBudget {
+				pdb := podDisruptionBudget()
+				pdb.Labels = map[string]string{"bar": "baz"}
+				return pdb
+			}(),
+			input: func() *policyv1.PodDisruptionBudget {
+				pdb := podDisruptionBudget()
+				pdb.Labels = map[string]string{"new": "merge"}
+				return pdb
+			}(),
+
+			expectedModified: true,
+		},
+		{
+			name:     "update on mismatch data",
+			existing: podDisruptionBudget(),
+			input: func() *policyv1.PodDisruptionBudget {
+				pdb := podDisruptionBudget()
+				minAvailable := intstr.FromInt(3)
+				pdb.Spec.MinAvailable = &minAvailable
+				return pdb
+			}(),
+
+			expectedModified: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			recorder := record.NewFakeRecorder(1000)
+			ctx := context.TODO()
+			defer cleanupResources(t, g, ctx, cl, &policyv1.PodDisruptionBudgetList{})
+
+			if tt.existing != nil {
+				g.Expect(cl.Create(context.TODO(), tt.existing)).To(Succeed())
+			}
+			actualModified, err := applyPodDisruptionBudget(context.TODO(), cl, recorder, tt.input)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(tt.expectedModified).To(BeEquivalentTo(actualModified), "Resource was modified")
+		})
+	}
+}
+
+func podDisruptionBudget() *policyv1.PodDisruptionBudget {
+	minAvailable := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: "policy/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pdbName",
+			Namespace: "default",
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MinAvailable: &minAvailable,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"foo": "bar"},
+			},
+		},
+	}
 }

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"reflect"
 
+	"k8s.io/apimachinery/pkg/api/equality"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -287,15 +289,10 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 
 func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *policyv1.PodDisruptionBudget) (bool, error) {
 	required := requiredOriginal.DeepCopy()
-	err := SetSpecHashAnnotation(&required.ObjectMeta, required.Spec)
-	if err != nil {
-		return false, err
-	}
 
 	existing := &policyv1.PodDisruptionBudget{}
-	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
-		required.Annotations[generationAnnotation] = "1"
 		err = client.Create(ctx, required)
 		if err != nil {
 			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
@@ -312,21 +309,16 @@ func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, r
 	modified := resourcemerge.BoolPtr(false)
 	existingCopy := existing.DeepCopy()
 
-	expectedGeneration := ""
-	if _, ok := existingCopy.Annotations[generationAnnotation]; ok {
-		expectedGeneration = existingCopy.Annotations[generationAnnotation]
-	}
-
 	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, required.ObjectMeta)
-	if !*modified && expectedGeneration == fmt.Sprintf("%x", existingCopy.GetGeneration()) {
+	contentSame := equality.Semantic.DeepEqual(existingCopy.Spec, required.Spec)
+
+	if !*modified && contentSame {
 		return false, nil
 	}
 
 	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
 	toWrite := existingCopy // shallow copy so the code reads easier
 	toWrite.Spec = *required.Spec.DeepCopy()
-
-	toWrite.Annotations[generationAnnotation] = fmt.Sprintf("%x", existingCopy.GetGeneration()+1)
 
 	err = client.Update(ctx, toWrite)
 	if err != nil {

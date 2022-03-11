@@ -78,7 +78,7 @@ func GetResources(operatorConfig config.OperatorConfig) ([]client.Object, error)
 	substitutedObjects := common.SubstituteCommonPartsFromConfig(operatorConfig, renderedObjects)
 	commonResources, err := common.GetCommonResources(operatorConfig)
 	if err != nil {
-		klog.Errorf("can not create common resources, such as pdb: %v", err)
+		klog.Errorf("can not create common resources %v", err)
 		return nil, err
 	}
 	substitutedObjects = append(substitutedObjects, commonResources...)
