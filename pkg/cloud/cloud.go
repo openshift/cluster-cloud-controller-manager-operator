@@ -18,6 +18,45 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere"
 )
 
+// cloudConfigTransformer function transforms the source config map using the input infrastructure.config.openshift.io object.
+// only the data and binaryData field of the output ConfigMap will be respected by consumer of the transformer.
+type cloudConfigTransformer func(source string, infra *configv1.Infrastructure) (string, error)
+
+// GetCloudConfigTransformer returns the function that should be used to transform
+// the cloud configuration config map
+func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudConfigTransformer, error) {
+	switch platformStatus.Type {
+	case configv1.AlibabaCloudPlatformType:
+		return common.NoOpTransformer, nil
+	case configv1.AWSPlatformType:
+		// We intentionally return nil rather than NoOpTransformer since we
+		// want to handle this differently in the caller.
+		// FIXME: We need to implement a transformer for this. Currently we're
+		// relying on CCO to do the heavy lifting for us.
+		return nil, nil
+	case configv1.AzurePlatformType:
+		// We intentionally return nil rather than NoOpTransformer since we
+		// want to handle this differently in the caller.
+		// FIXME: We need to implement a transformer for this. Currently we're
+		// relying on CCO to do the heavy lifting for us.
+		return nil, nil
+	case configv1.GCPPlatformType:
+		return common.NoOpTransformer, nil
+	case configv1.IBMCloudPlatformType:
+		return common.NoOpTransformer, nil
+// TODO: Enable this when we turn on syncing for OpenStack
+//	case configv1.OpenStackPlatformType:
+//		return openstack.CloudConfigTransformer, nil
+	case configv1.PowerVSPlatformType:
+		//Power VS platform uses ibm cloud provider
+		return common.NoOpTransformer, nil
+	case configv1.VSpherePlatformType:
+		return common.NoOpTransformer, nil
+	default:
+		return nil, newPlatformNotFoundError(platformStatus.Type)
+	}
+}
+
 // GetResources selectively returns a list of resources required for
 // provisioning CCM instance in the cluster for the given OperatorConfig.
 //

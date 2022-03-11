@@ -16,6 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 )
 
 const (
@@ -60,17 +62,49 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	// Use kube-cloud-config from openshift-config-managed namespace as default source.
-	// If it is not exists try to use cloud-config reference from infra resource.
-	// https://github.com/openshift/library-go/blob/master/pkg/operator/configobserver/cloudprovider/observe_cloudprovider.go#L82
-	defaultSourceCMObjectKey := client.ObjectKey{
-		Name: managedCloudConfigMapName, Namespace: OpenshiftManagedConfigNamespace,
+	cloudConfigTransformerFn, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
+	if err != nil {
+		klog.Errorf("unable to get cloud config transformer function; unsupported platform")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, err
 	}
-	sourceCM := &corev1.ConfigMap{}
-	if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); errors.IsNotFound(err) {
-		klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
 
-		openshiftUnmanagedCMKey := client.ObjectKey{Name: infra.Spec.CloudConfig.Name, Namespace: OpenshiftConfigNamespace}
+	sourceCM := &corev1.ConfigMap{}
+	managedConfigFound := false
+
+	// NOTE: We know that there is some transformation logic in place in the
+	// Cluster Config Operator (CCO) for AWS and Azure. We have not implemented
+	// this logic here yet so we've intentionally chosen to lookup up config
+	// from the (CCO-) managed namespace **only for these cloud platforms**
+	// TODO: Drop this once we implement the AWS and Azure transformers here in
+	// CCCMO, allowing us to drop this kinda-sorta reliance on CCO stuff. We
+	// may also wish to merge the use of cloudConfigTransformerFn into the
+	// prepareSourceConfigMap helper function
+	if cloudConfigTransformerFn == nil {
+		defaultSourceCMObjectKey := client.ObjectKey{
+			Name:      managedCloudConfigMapName,
+			Namespace: OpenshiftManagedConfigNamespace,
+		}
+		if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err == nil {
+			managedConfigFound = true
+		} else if errors.IsNotFound(err) {
+			klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
+		} else if err != nil {
+			klog.Errorf("unable to get managed cloud-config for sync")
+			if err := r.setDegradedCondition(ctx); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+			}
+			return ctrl.Result{}, err
+		}
+	}
+
+	if !managedConfigFound {
+		openshiftUnmanagedCMKey := client.ObjectKey{
+			Name:      infra.Spec.CloudConfig.Name,
+			Namespace: OpenshiftConfigNamespace,
+		}
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); err != nil {
 			klog.Errorf("unable to get cloud-config for sync")
 			if err := r.setDegradedCondition(ctx); err != nil {
@@ -78,19 +112,28 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 			return ctrl.Result{}, err
 		}
-		sourceCM, err = r.prepareSourceConfigMap(sourceCM, infra)
+	}
+
+	sourceCM, err = r.prepareSourceConfigMap(sourceCM, infra)
+	if err != nil {
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, err
+	}
+
+	if cloudConfigTransformerFn != nil {
+		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
+		// contain any key that overlaps with those found in sourceCM.Data and
+		// we're not expecting users to put their data in the former.
+		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra)
 		if err != nil {
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 			}
 			return ctrl.Result{}, err
 		}
-	} else if err != nil {
-		klog.Errorf("unable to get managed cloud-config for sync")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		sourceCM.Data[defaultConfigKey] = output
 	}
 
 	targetCM := &corev1.ConfigMap{}
@@ -108,6 +151,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// Note that the source config map is actually a *transformed* source config map
 	if r.isCloudConfigEqual(sourceCM, targetCM) {
 		klog.Infof("source and target cloud-config content are equal, no sync needed")
 		if err := r.setAvailableCondition(ctx); err != nil {
