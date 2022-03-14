@@ -1,10 +1,14 @@
 package openstack
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 
 	"github.com/asaskevich/govalidator"
+	"k8s.io/klog/v2"
+	configv1 "github.com/openshift/api/config/v1"
+	ini "gopkg.in/ini.v1"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -79,4 +83,71 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 	}
 
 	return assets, nil
+}
+
+// CloudConfigTransformer implements the cloudConfigTransformer. It takes
+// the user-provided, legacy cloud provider-compatible configuration and
+// modifies it to be compatible with the external cloud provider. It returns
+// an error if the platform is not OpenStackPlatformType or if any errors are
+// encountered while attempting to rework the configuration.
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure) (string, error) {
+	if infra.Status.PlatformStatus == nil ||
+		infra.Status.PlatformStatus.Type != configv1.OpenStackPlatformType {
+		return "", fmt.Errorf("invalid platform, expected to be %s", configv1.OpenStackPlatformType)
+	}
+
+	cfg, err := ini.Load([]byte(source))
+	if err != nil {
+		return "", fmt.Errorf("failed to read the cloud.conf: %w", err)
+	}
+
+	global, _ := cfg.GetSection("Global")
+	if global != nil {
+		klog.Infof("[Global] section found; dropping any legacy settings...")
+		// Remove the legacy keys, once we ensure they're not overridden
+		for key, value := range map[string]string{
+			"secret-name":      "openstack-credentials",
+			"secret-namespace": "kube-system",
+			"kubeconfig-path":  "",
+		} {
+			if global.Key(key).String() != value {
+				return "", fmt.Errorf("'[Global] %s' is set to a non-default value", key)
+			}
+			global.DeleteKey(key)
+		}
+	} else {
+		// Section doesn't exist, ergo no validation to concern ourselves with.
+		// This probably isn't common but at least handling this allows us to
+		// recover gracefully
+		global, err = cfg.NewSection("Global")
+		if err != nil {
+			return "", fmt.Errorf("failed to modify the provided configuration: %w", err)
+		}
+	}
+
+	for key, value := range map[string]string{
+		"use-clouds":  "true",
+		"clouds-file": "/etc/openstack/secret/clouds.yaml",
+		"cloud":       "openstack",
+	} {
+		_, err = global.NewKey(key, value)
+		if err != nil {
+			return "", fmt.Errorf("failed to modify the provided configuration: %w", err)
+		}
+	}
+
+	blockStorage, _ := cfg.GetSection("BlockStorage")
+	if blockStorage != nil {
+		klog.Infof("[BlockStorage] section found; dropping section...")
+		cfg.DeleteSection("BlockStorage")
+	}
+
+	var buf bytes.Buffer
+
+	_, err = cfg.WriteTo(&buf)
+	if err != nil {
+		return "", fmt.Errorf("failed to modify the provided configuration: %w", err)
+	}
+
+	return buf.String(), nil
 }
