@@ -8,14 +8,14 @@ import (
 	"fmt"
 	"reflect"
 
-	"k8s.io/apimachinery/pkg/api/equality"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	coreclientv1 "sigs.k8s.io/controller-runtime/pkg/client"
@@ -143,7 +143,7 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
 			return false, err
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully updated")
+		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
 		return true, nil
 	}
 	if err != nil {
@@ -171,6 +171,7 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 		needRecreate = true
 	}
 	if needRecreate {
+		klog.Infof("Deployment need to be recreated with new parameters")
 		// This check need for break a recursion in case if resource deletion was stuck during deletion
 		if existing.DeletionTimestamp != nil {
 			return false, fmt.Errorf("resource was already marked for deletion, returning")
@@ -183,15 +184,14 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 		requiredCopy := required.DeepCopy()
 		requiredCopy.Name = fmt.Sprintf("%s-dry-run", requiredCopy.Name)
 		dryRunOpts := &coreclientv1.CreateOptions{DryRun: []string{metav1.DryRunAll}}
-		err = client.Create(ctx, requiredCopy, dryRunOpts)
-		if err != nil {
+		if err := client.Create(ctx, requiredCopy, dryRunOpts); err != nil {
 			recorder.Event(existing, corev1.EventTypeWarning, "New resource validation failed", err.Error())
-			return false, err
+			return false, fmt.Errorf("new resource validation prior to old resource deletion failed: %v", err)
 		}
-		err = client.Delete(ctx, existing)
-		if err != nil && !apierrors.IsNotFound(err) {
+
+		if err := client.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
 			recorder.Event(existing, corev1.EventTypeWarning, "Deletion failed", err.Error())
-			return false, err
+			return false, fmt.Errorf("old resource deletion failed: %v", err)
 		}
 		return applyDeployment(ctx, client, recorder, required)
 	}
@@ -255,6 +255,7 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 		needRecreate = true
 	}
 	if needRecreate {
+		klog.Infof("DaemonSet need to be recreated with new parameters")
 		// This check need for break a recursion in case if resource was stuck during deletion
 		if existing.DeletionTimestamp != nil {
 			return false, fmt.Errorf("resource was already marked for deletion, returning")
@@ -267,15 +268,14 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 		requiredCopy := required.DeepCopy()
 		requiredCopy.Name = fmt.Sprintf("%s-dry-run", requiredCopy.Name)
 		dryRunOpts := &coreclientv1.CreateOptions{DryRun: []string{metav1.DryRunAll}}
-		err = client.Create(ctx, requiredCopy, dryRunOpts)
-		if err != nil {
+		if err := client.Create(ctx, requiredCopy, dryRunOpts); err != nil {
 			recorder.Event(existing, corev1.EventTypeWarning, "New resource validation failed", err.Error())
-			return false, err
+			return false, fmt.Errorf("new resource validation prior to old resource deletion failed: %v", err)
 		}
-		err = client.Delete(ctx, existing)
-		if err != nil && !apierrors.IsNotFound(err) {
+
+		if err := client.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
 			recorder.Event(existing, corev1.EventTypeWarning, "Deletion failed", err.Error())
-			return false, err
+			return false, fmt.Errorf("old resource deletion failed: %v", err)
 		}
 		return applyDaemonSet(ctx, client, recorder, required)
 	}
@@ -306,7 +306,7 @@ func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, r
 			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
 			return false, err
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully updated")
+		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
 		return true, nil
 	}
 	if err != nil {
