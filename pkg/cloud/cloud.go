@@ -44,9 +44,8 @@ func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudCo
 		return common.NoOpTransformer, nil
 	case configv1.IBMCloudPlatformType:
 		return common.NoOpTransformer, nil
-// TODO: Enable this when we turn on syncing for OpenStack
-//	case configv1.OpenStackPlatformType:
-//		return openstack.CloudConfigTransformer, nil
+	case configv1.OpenStackPlatformType:
+		return openstack.CloudConfigTransformer, nil
 	case configv1.PowerVSPlatformType:
 		//Power VS platform uses ibm cloud provider
 		return common.NoOpTransformer, nil
