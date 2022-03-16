@@ -59,8 +59,6 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 		return alibaba.NewProviderAssets, nil
 	case configv1.AWSPlatformType:
 		return aws.NewProviderAssets, nil
-	case configv1.OpenStackPlatformType:
-		return openstack.NewProviderAssets, nil
 	case configv1.AzurePlatformType:
 		if isAzureStackHub(platformStatus) {
 			return azurestack.NewProviderAssets, nil
@@ -70,6 +68,8 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 		return gcp.NewProviderAssets, nil
 	case configv1.IBMCloudPlatformType:
 		return ibm.NewProviderAssets, nil
+	case configv1.OpenStackPlatformType:
+		return openstack.NewProviderAssets, nil
 	case configv1.PowerVSPlatformType:
 		//Power VS platform uses ibm cloud provider
 		return ibm.NewProviderAssets, nil
