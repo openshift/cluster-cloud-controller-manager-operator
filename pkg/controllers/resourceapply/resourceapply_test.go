@@ -44,10 +44,16 @@ func cleanupResources(t *testing.T, g *WithT, ctx context.Context, cl client.Cli
 	g.Expect(cl.List(ctx, listObject)).To(Succeed())
 	deleteResouce := func(g *WithT, obj client.Object) {
 		key := client.ObjectKeyFromObject(obj)
-		g.Expect(cl.Delete(ctx, obj)).To(Succeed())
+		obj.SetFinalizers([]string{})
+		g.Expect(cl.Update(ctx, obj)).To(Succeed())
+		err := cl.Delete(ctx, obj)
+		if apierrors.IsNotFound(err) {
+			return
+		}
+		g.Expect(err).ToNot(HaveOccurred())
 		g.Eventually(
 			apierrors.IsNotFound(cl.Get(ctx, key, obj)),
-		).Should(BeTrue())
+		).Should(BeTrue(), "Can not cleanup resources")
 	}
 
 	switch typedList := listObject.(type) {
@@ -281,12 +287,16 @@ func TestApplyDeployment(t *testing.T) {
 		name               string
 		desiredDeployment  *appsv1.Deployment
 		expectedDeployment *appsv1.Deployment
+		actualDeployment   *appsv1.Deployment
 
 		expectError      bool
+		errorMsg         string
 		expectedRecreate bool
 	}{
 		{
-			name: "the deployment is recreated due to a change in match labels field",
+			name:             "the deployment is recreated due to a change in match labels field",
+			actualDeployment: workloadDeploymentWithDefaultSpecHash(),
+
 			desiredDeployment: func() *appsv1.Deployment {
 				w := workloadDeployment()
 				w.Spec.Selector = &metav1.LabelSelector{
@@ -312,7 +322,9 @@ func TestApplyDeployment(t *testing.T) {
 		},
 
 		{
-			name: "resourceapply should report an error in case if resource is malformed",
+			name:             "resourceapply should report an error in case if resource is malformed",
+			actualDeployment: workloadDeploymentWithDefaultSpecHash(),
+
 			desiredDeployment: func() *appsv1.Deployment {
 				w := workloadDeployment()
 				w.Spec.Selector = &metav1.LabelSelector{
@@ -324,6 +336,30 @@ func TestApplyDeployment(t *testing.T) {
 				return w
 			}(),
 			expectedDeployment: workloadDeploymentWithDefaultSpecHash(),
+			errorMsg:           "`selector` does not match template `labels`",
+			expectError:        true,
+		},
+
+		{
+			name: "resourceapply should report an error in case if resource deletion stucked",
+			actualDeployment: func() *appsv1.Deployment {
+				d := workloadDeploymentWithDefaultSpecHash()
+				d.Finalizers = []string{"foo.bar/baz"}
+				return d
+			}(),
+
+			desiredDeployment: func() *appsv1.Deployment {
+				w := workloadDeployment()
+				w.Spec.Selector = &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"bar": "baz",
+					},
+				}
+				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+				return w
+			}(),
+			expectedDeployment: workloadDeploymentWithDefaultSpecHash(),
+			errorMsg:           "resource was already marked for deletion, returning",
 			expectError:        true,
 		},
 	}
@@ -334,13 +370,14 @@ func TestApplyDeployment(t *testing.T) {
 			ctx := context.TODO()
 			defer cleanupResources(t, g, ctx, cl, &appsv1.DeploymentList{})
 
-			actualDeployment := workloadDeploymentWithDefaultSpecHash()
-			g.Expect(cl.Create(ctx, actualDeployment)).To(Succeed())
-			g.Expect(actualDeployment.UID).NotTo(BeNil())
+			g.Expect(cl.Create(ctx, tt.actualDeployment)).To(Succeed())
+			g.Expect(tt.actualDeployment.UID).NotTo(BeNil())
 
 			_, err := applyDeployment(ctx, cl, eventRecorder, tt.desiredDeployment)
 			if tt.expectError {
 				g.Expect(err).To(HaveOccurred(), "expected error")
+				g.Expect(tt.errorMsg).ToNot(BeEmpty())
+				g.Expect(err.Error()).To(ContainSubstring(tt.errorMsg))
 			}
 			if !tt.expectError {
 				g.Expect(err).NotTo(HaveOccurred(), "expected no error")
@@ -350,10 +387,10 @@ func TestApplyDeployment(t *testing.T) {
 			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(tt.desiredDeployment)
 			g.Expect(cl.Get(ctx, deploymentObjectKey, updatedDeployment)).To(Succeed())
 			if tt.expectedRecreate {
-				g.Expect(actualDeployment.UID).ShouldNot(BeEquivalentTo(updatedDeployment.UID))
+				g.Expect(tt.actualDeployment.UID).ShouldNot(BeEquivalentTo(updatedDeployment.UID))
 			}
 			if !tt.expectedRecreate {
-				g.Expect(actualDeployment.UID).Should(BeEquivalentTo(updatedDeployment.UID))
+				g.Expect(tt.actualDeployment.UID).Should(BeEquivalentTo(updatedDeployment.UID))
 			}
 
 			if !equality.Semantic.DeepDerivative(tt.expectedDeployment.Spec, updatedDeployment.Spec) {
@@ -529,14 +566,17 @@ func TestApplyDaemonSet(t *testing.T) {
 
 	updateSelectorTests := []struct {
 		name              string
+		actualDaemonSet   *appsv1.DaemonSet
 		desiredDaemonSet  *appsv1.DaemonSet
 		expectedDaemonSet *appsv1.DaemonSet
 
+		errorMsg         string
 		expectError      bool
 		expectedRecreate bool
 	}{
 		{
-			name: "the daemonset is recreated due to a change in match labels field",
+			name:            "the daemonset is recreated due to a change in match labels field",
+			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
 			desiredDaemonSet: func() *appsv1.DaemonSet {
 				w := workloadDaemonSet()
 				w.Spec.Selector = &metav1.LabelSelector{
@@ -562,7 +602,8 @@ func TestApplyDaemonSet(t *testing.T) {
 		},
 
 		{
-			name: "resourceapply should report an error in case if resource is malformed",
+			name:            "resourceapply should report an error in case if resource is malformed",
+			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
 			desiredDaemonSet: func() *appsv1.DaemonSet {
 				w := workloadDaemonSet()
 				w.Spec.Selector = &metav1.LabelSelector{
@@ -574,6 +615,29 @@ func TestApplyDaemonSet(t *testing.T) {
 				return w
 			}(),
 			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			errorMsg:          "`selector` does not match template `labels`",
+			expectError:       true,
+		},
+
+		{
+			name: "resourceapply should report an error in case if resource deletion stucked",
+			actualDaemonSet: func() *appsv1.DaemonSet {
+				ds := workloadDaemonSetWithDefaultSpecHash()
+				ds.Finalizers = []string{"foo.bar/baz"}
+				return ds
+			}(),
+			desiredDaemonSet: func() *appsv1.DaemonSet {
+				w := workloadDaemonSet()
+				w.Spec.Selector = &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"bar": "baz",
+					},
+				}
+				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+				return w
+			}(),
+			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			errorMsg:          "resource was already marked for deletion, returning",
 			expectError:       true,
 		},
 	}
@@ -584,13 +648,14 @@ func TestApplyDaemonSet(t *testing.T) {
 			ctx := context.TODO()
 			defer cleanupResources(t, g, ctx, cl, &appsv1.DaemonSetList{})
 
-			actualDaemonSet := workloadDaemonSetWithDefaultSpecHash()
-			g.Expect(cl.Create(ctx, actualDaemonSet)).To(Succeed())
-			g.Expect(actualDaemonSet.UID).NotTo(BeNil())
+			g.Expect(cl.Create(ctx, tt.actualDaemonSet)).To(Succeed())
+			g.Expect(tt.actualDaemonSet.UID).NotTo(BeNil())
 
 			_, err := applyDaemonSet(ctx, cl, eventRecorder, tt.desiredDaemonSet)
 			if tt.expectError {
 				g.Expect(err).To(HaveOccurred(), "expected error")
+				g.Expect(tt.errorMsg).NotTo(BeEmpty())
+				g.Expect(err.Error()).To(ContainSubstring(tt.errorMsg))
 			}
 			if !tt.expectError {
 				g.Expect(err).NotTo(HaveOccurred(), "expected no error")
@@ -600,10 +665,10 @@ func TestApplyDaemonSet(t *testing.T) {
 			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(tt.desiredDaemonSet)
 			g.Expect(cl.Get(ctx, deploymentObjectKey, updatedDaemonSet)).To(Succeed())
 			if tt.expectedRecreate {
-				g.Expect(actualDaemonSet.UID).ShouldNot(BeEquivalentTo(updatedDaemonSet.UID))
+				g.Expect(tt.actualDaemonSet.UID).ShouldNot(BeEquivalentTo(updatedDaemonSet.UID))
 			}
 			if !tt.expectedRecreate {
-				g.Expect(actualDaemonSet.UID).Should(BeEquivalentTo(updatedDaemonSet.UID))
+				g.Expect(tt.actualDaemonSet.UID).Should(BeEquivalentTo(updatedDaemonSet.UID))
 			}
 
 			if !equality.Semantic.DeepDerivative(tt.expectedDaemonSet.Spec, updatedDaemonSet.Spec) {

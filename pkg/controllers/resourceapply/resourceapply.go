@@ -171,6 +171,10 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 		needRecreate = true
 	}
 	if needRecreate {
+		// This check need for break a recursion in case if resource deletion was stuck during deletion
+		if existing.DeletionTimestamp != nil {
+			return false, fmt.Errorf("resource was already marked for deletion, returning")
+		}
 		recorder.Event(
 			existing, corev1.EventTypeNormal,
 			"Delete existing deployment", "Delete existing deployment to recreate it with new parameters",
@@ -251,6 +255,10 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 		needRecreate = true
 	}
 	if needRecreate {
+		// This check need for break a recursion in case if resource was stuck during deletion
+		if existing.DeletionTimestamp != nil {
+			return false, fmt.Errorf("resource was already marked for deletion, returning")
+		}
 		recorder.Event(
 			existing, corev1.EventTypeNormal,
 			"Delete existing daemonset", "Delete existing daemonset to recreate it with new parameters",
