@@ -138,8 +138,7 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		required.Annotations[generationAnnotation] = "1"
-		err := client.Create(ctx, required)
-		if err != nil {
+		if err := client.Create(ctx, required); err != nil {
 			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
 			return false, err
 		}
@@ -172,10 +171,6 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 	}
 	if needRecreate {
 		klog.Infof("Deployment need to be recreated with new parameters")
-		// This check need for break a recursion in case if resource deletion was stuck during deletion
-		if existing.DeletionTimestamp != nil {
-			return false, fmt.Errorf("resource was already marked for deletion, returning")
-		}
 		recorder.Event(
 			existing, corev1.EventTypeNormal,
 			"Delete existing deployment", "Delete existing deployment to recreate it with new parameters",
@@ -193,7 +188,14 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 			recorder.Event(existing, corev1.EventTypeWarning, "Deletion failed", err.Error())
 			return false, fmt.Errorf("old resource deletion failed: %v", err)
 		}
-		return applyDeployment(ctx, client, recorder, required)
+
+		required.Annotations[generationAnnotation] = "1"
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			return false, err
+		}
+		recorder.Event(required, corev1.EventTypeNormal, "Recreated successfully", "Resource was successfully recreated")
+		return true, nil
 	}
 
 	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
@@ -202,8 +204,7 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 
 	toWrite.Annotations[generationAnnotation] = fmt.Sprintf("%x", existingCopy.GetGeneration()+1)
 
-	err = client.Update(ctx, toWrite)
-	if err != nil {
+	if err := client.Update(ctx, toWrite); err != nil {
 		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
 		return false, err
 	}
@@ -222,8 +223,7 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		required.Annotations[generationAnnotation] = "1"
-		err = client.Create(ctx, required)
-		if err != nil {
+		if err := client.Create(ctx, required); err != nil {
 			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
 			return false, err
 		}
@@ -256,10 +256,6 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 	}
 	if needRecreate {
 		klog.Infof("DaemonSet need to be recreated with new parameters")
-		// This check need for break a recursion in case if resource was stuck during deletion
-		if existing.DeletionTimestamp != nil {
-			return false, fmt.Errorf("resource was already marked for deletion, returning")
-		}
 		recorder.Event(
 			existing, corev1.EventTypeNormal,
 			"Delete existing daemonset", "Delete existing daemonset to recreate it with new parameters",
@@ -277,7 +273,14 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 			recorder.Event(existing, corev1.EventTypeWarning, "Deletion failed", err.Error())
 			return false, fmt.Errorf("old resource deletion failed: %v", err)
 		}
-		return applyDaemonSet(ctx, client, recorder, required)
+
+		required.Annotations[generationAnnotation] = "1"
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			return false, err
+		}
+		recorder.Event(required, corev1.EventTypeNormal, "Recreated successfully", "Resource was successfully recreated")
+		return true, nil
 	}
 
 	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
@@ -286,8 +289,7 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 
 	toWrite.Annotations[generationAnnotation] = fmt.Sprintf("%x", existingCopy.GetGeneration()+1)
 
-	err = client.Update(ctx, toWrite)
-	if err != nil {
+	if err := client.Update(ctx, toWrite); err != nil {
 		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
 		return false, err
 	}

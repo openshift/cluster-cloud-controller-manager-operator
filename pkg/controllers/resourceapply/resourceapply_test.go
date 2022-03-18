@@ -359,7 +359,7 @@ func TestApplyDeployment(t *testing.T) {
 				return w
 			}(),
 			expectedDeployment: workloadDeploymentWithDefaultSpecHash(),
-			errorMsg:           "resource was already marked for deletion, returning",
+			errorMsg:           "object is being deleted: deployments.apps \"apiserver\" already exists",
 			expectError:        true,
 		},
 	}
@@ -637,7 +637,7 @@ func TestApplyDaemonSet(t *testing.T) {
 				return w
 			}(),
 			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
-			errorMsg:          "resource was already marked for deletion, returning",
+			errorMsg:          "object is being deleted: daemonsets.apps \"apiserver\" already exists",
 			expectError:       true,
 		},
 	}
