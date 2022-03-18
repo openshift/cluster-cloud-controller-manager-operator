@@ -15,7 +15,7 @@ The operator is being actively developed, with features and testing be added on 
 ### Supported Platforms
 
 | Platform                                                             | Included in Operator | Tested in CI  |
-| -------------------------------------------------------------------- | -------------------- | ------------  |
+|----------------------------------------------------------------------|----------------------| ------------  |
 | [AWS](https://github.com/openshift/cloud-provider-aws)               | Yes                  | Yes           |
 | [Azure](https://github.com/openshift/cloud-provider-azure)           | Yes                  | Yes           |
 | [GCP](https://github.com/openshift/cloud-provider-gcp)               | Yes                  | Yes           |
@@ -23,6 +23,7 @@ The operator is being actively developed, with features and testing be added on 
 | [vSphere](https://github.com/openshift/cloud-provider-vsphere)       | No                   |               |
 | [IBM](https://github.com/openshift/cloud-provider-ibm)               | Yes                  |               |
 | [Alibaba](https://github.com/openshift/cloud-provider-alibaba-cloud) | No                   |               |
+| [Power VS](https://github.com/openshift/cloud-provider-powervs)      | Yes                  |               |
 
 ## Deploying and Running CCCMO
 
