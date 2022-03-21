@@ -5,7 +5,6 @@ import (
 
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/stretchr/testify/assert"
 	ini "gopkg.in/ini.v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -20,14 +19,14 @@ const (
 func TestResourcesRenderingSmoke(t *testing.T) {
 
 	tc := []struct {
-		name       string
-		config     config.OperatorConfig
-		initErrMsg string
+		name   string
+		config config.OperatorConfig
+		errMsg string
 	}{
 		{
-			name:       "Empty config",
-			config:     config.OperatorConfig{},
-			initErrMsg: "openstack: missed images in config: CloudControllerManager: non zero value required",
+			name:   "Empty config",
+			config: config.OperatorConfig{},
+			errMsg: "openstack: missed images in config: CloudControllerManager: non zero value required",
 		}, {
 			name: "Minimal allowed config",
 			config: config.OperatorConfig{
@@ -40,16 +39,17 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
 			assets, err := NewProviderAssets(tc.config)
-			if tc.initErrMsg != "" {
-				assert.EqualError(t, err, tc.initErrMsg)
+			if tc.errMsg != "" {
+				g.Expect(err).Should(MatchError(tc.errMsg))
 				return
 			} else {
-				assert.NoError(t, err)
+				g.Expect(err).ToNot(HaveOccurred())
 			}
 
 			resources := assets.GetRenderedResources()
-			assert.Len(t, resources, 2)
+			g.Expect(resources).Should(HaveLen(2))
 		})
 	}
 }
