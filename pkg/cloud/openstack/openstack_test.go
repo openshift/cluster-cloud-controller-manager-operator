@@ -49,7 +49,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 			}
 
 			resources := assets.GetRenderedResources()
-			g.Expect(resources).Should(HaveLen(2))
+			g.Expect(resources).Should(HaveLen(1))
 		})
 	}
 }

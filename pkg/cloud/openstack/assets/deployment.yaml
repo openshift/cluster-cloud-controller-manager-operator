@@ -86,7 +86,7 @@ spec:
             - name: secret-occm
               mountPath: /etc/openstack/secret
               readOnly: true
-            - name: config-occm
+            - name: cloud-config
               mountPath: /etc/openstack/config
               readOnly: true
             - name: trusted-ca
@@ -109,9 +109,9 @@ spec:
             items:
               - key: ca-bundle.crt
                 path: tls-ca-bundle.pem
-        - name: config-occm
+        - name: cloud-config
           configMap:
-            name: openstack-cloud-controller-manager-config
+            name: cloud-conf
             items:
               - key: cloud.conf
                 path: cloud.conf

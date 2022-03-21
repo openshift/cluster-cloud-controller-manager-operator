@@ -10,7 +10,6 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	ini "gopkg.in/ini.v1"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
@@ -24,7 +23,6 @@ var (
 	assetsFs embed.FS
 
 	templates = []common.TemplateSource{
-		{ReferenceObject: &v1.ConfigMap{}, EmbedFsPath: "assets/config.yaml"},
 		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/deployment.yaml"},
 	}
 )
