@@ -590,7 +590,7 @@ func TestSelectorLabels(t *testing.T) {
 				case *appsv1.DaemonSet:
 					checkDaemonSetSelectorLabels(t, obj, platform.platformStatus.Type)
 				default:
-					// Nothing to check for non
+					// Nothing to check for
 				}
 			}
 		})
@@ -623,4 +623,47 @@ func checkDaemonSetSelectorLabels(t *testing.T, ds *appsv1.DaemonSet, platformTy
 	assert.Equal(t, string(platformType), ds.Labels[common.CloudNodeManagerCloudProviderLabel])
 	assert.Equal(t, string(platformType), ds.Spec.Template.Labels[common.CloudNodeManagerCloudProviderLabel])
 	assert.Equal(t, string(platformType), ds.Spec.Selector.MatchLabels[common.CloudNodeManagerCloudProviderLabel])
+}
+
+func TestReplicas(t *testing.T) {
+	platforms := getPlatforms()
+	for platformName, platform := range platforms {
+
+		t.Run(platformName, func(t *testing.T) {
+			resources, err := GetResources(platform.getOperatorConfig())
+			assert.NoError(t, err)
+
+			for _, resource := range resources {
+				switch obj := resource.(type) {
+				case *appsv1.Deployment:
+					assert.Equal(t, derefReplicas(obj.Spec.Replicas), 2)
+				default:
+					// Nothing to check for
+				}
+			}
+		})
+
+		t.Run(fmt.Sprintf("%s single node", platformName), func(t *testing.T) {
+			cfg := platform.getOperatorConfig()
+			cfg.IsSingleReplica = true
+			resources, err := GetResources(cfg)
+			assert.NoError(t, err)
+
+			for _, resource := range resources {
+				switch obj := resource.(type) {
+				case *appsv1.Deployment:
+					assert.Equal(t, derefReplicas(obj.Spec.Replicas), 1)
+				default:
+					// Nothing to check for
+				}
+			}
+		})
+	}
+}
+
+func derefReplicas(num *int32) int {
+	if num != nil {
+		return int(*num)
+	}
+	return 1
 }
