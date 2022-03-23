@@ -192,7 +192,7 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 		required.Annotations[generationAnnotation] = "1"
 		if err := client.Create(ctx, required); err != nil {
 			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
-			return false, err
+			return false, fmt.Errorf("deployment recreation failed: %v", err)
 		}
 		recorder.Event(required, corev1.EventTypeNormal, "Recreated successfully", "Resource was successfully recreated")
 		return true, nil
@@ -277,7 +277,7 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 		required.Annotations[generationAnnotation] = "1"
 		if err := client.Create(ctx, required); err != nil {
 			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
-			return false, err
+			return false, fmt.Errorf("ds recreation failed: %v", err)
 		}
 		recorder.Event(required, corev1.EventTypeNormal, "Recreated successfully", "Resource was successfully recreated")
 		return true, nil
@@ -303,17 +303,16 @@ func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, r
 	existing := &policyv1.PodDisruptionBudget{}
 	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
-		err = client.Create(ctx, required)
-		if err != nil {
+		if err := client.Create(ctx, required); err != nil {
 			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
-			return false, err
+			return false, fmt.Errorf("pdb creation failed: %v", err)
 		}
 		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
 		return true, nil
 	}
 	if err != nil {
 		recorder.Event(required, corev1.EventTypeWarning, "Failed to get resource for update", err.Error())
-		return false, err
+		return false, fmt.Errorf("failed to get pdb for update: %v", err)
 	}
 
 	modified := resourcemerge.BoolPtr(false)
@@ -330,8 +329,7 @@ func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, r
 	toWrite := existingCopy // shallow copy so the code reads easier
 	toWrite.Spec = *required.Spec.DeepCopy()
 
-	err = client.Update(ctx, toWrite)
-	if err != nil {
+	if err := client.Update(ctx, toWrite); err != nil {
 		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
 		return false, err
 	}
