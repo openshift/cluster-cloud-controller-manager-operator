@@ -3,14 +3,11 @@
 set -o errexit
 set -o pipefail
 
-source ./hack/go-get-tool.sh
-
 REPO_ROOT=$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")
 
-
 function runGoimports() {
-  local GOIMPORTS_PATH=$LOCAL_BINARIES_PATH/goimports
-  go-get-tool "$GOIMPORTS_PATH" golang.org/x/tools/cmd/goimports
+  local GOIMPORTS_PATH=$REPO_ROOT/bin/goimports
+  GOBIN="$REPO_ROOT"/bin go install -mod=readonly golang.org/x/tools/cmd/goimports@latest
 
   local LOCAL_PACKAGE="github.com/openshift/cluster-cloud-controller-manager-operator"
   local GOIMPORTS_ARGS=("-local $LOCAL_PACKAGE -w $REPO_ROOT/cmd $REPO_ROOT/pkg")
