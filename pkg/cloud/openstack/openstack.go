@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/asaskevich/govalidator"
-	"k8s.io/klog/v2"
 	configv1 "github.com/openshift/api/config/v1"
 	ini "gopkg.in/ini.v1"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
