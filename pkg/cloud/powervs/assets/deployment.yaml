@@ -1,21 +1,21 @@
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: ibm-cloud-controller-manager
+  name: powervs-cloud-controller-manager
   namespace: openshift-cloud-controller-manager
   labels:
-    k8s-app: ibm-cloud-controller-manager
+    k8s-app: powervs-cloud-controller-manager
 spec:
   replicas: 2
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      k8s-app: ibm-cloud-controller-manager
+      k8s-app: powervs-cloud-controller-manager
   template:
     metadata:
       labels:
-        k8s-app: ibm-cloud-controller-manager
+        k8s-app: powervs-cloud-controller-manager
     spec:
       priorityClassName: system-cluster-critical
       hostNetwork: true
@@ -27,7 +27,7 @@ spec:
           - topologyKey: "kubernetes.io/hostname"
             labelSelector:
               matchLabels:
-                k8s-app: ibm-cloud-controller-manager
+                k8s-app: powervs-cloud-controller-manager
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
