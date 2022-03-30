@@ -105,8 +105,8 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                      "OpenStack resources returned as expected",
 		testPlatform:              platformsMap[string(configv1.OpenStackPlatformType)],
-		expectedResourceCount:     2,
-		expectedResourcesKindName: []string{"ConfigMap/openstack-cloud-controller-manager-config", "Deployment/openstack-cloud-controller-manager"},
+		expectedResourceCount:     1,
+		expectedResourcesKindName: []string{"Deployment/openstack-cloud-controller-manager"},
 	}, {
 		name:                      "GCP resources returned as expected",
 		testPlatform:              platformsMap[string(configv1.GCPPlatformType)],
