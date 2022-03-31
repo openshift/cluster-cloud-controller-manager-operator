@@ -52,6 +52,7 @@ func (tp *testPlatform) getOperatorConfig() config.OperatorConfig {
 			CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			CloudControllerManagerVSphere:   "registry.ci.openshift.org/openshift:vsphere-cloud-controller-manager",
+			CloudControllerManagerPowerVS:   "quay.io/openshift/origin-powervs-cloud-controller-manager",
 		},
 		PlatformStatus:     tp.platformStatus,
 		InfrastructureName: "my-cool-cluster-777",
@@ -70,6 +71,7 @@ func getPlatforms() testPlatformsMap {
 		string(configv1.VSpherePlatformType):      {getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
 		string(configv1.OvirtPlatformType):        {getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
 		string(configv1.IBMCloudPlatformType):     {getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
+		string(configv1.PowerVSPlatformType):      {getDummyPlatformStatus(configv1.PowerVSPlatformType, false)},
 		string(configv1.LibvirtPlatformType):      {getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
 		string(configv1.KubevirtPlatformType):     {getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
 		string(configv1.BareMetalPlatformType):    {getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
@@ -127,19 +129,17 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "OpenStack resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.OpenStackPlatformType)],
-		expectedResourceCount: 3,
+		expectedResourceCount: 2,
 		expectedResourcesKindName: []string{
-			"ConfigMap/openstack-cloud-controller-manager-config",
 			"Deployment/openstack-cloud-controller-manager",
 			"PodDisruptionBudget/openstack-cloud-controller-manager",
 		},
 	}, {
 		name:                  "OpenStack resources returned as expected with signle node cluster",
 		testPlatform:          platformsMap[string(configv1.OpenStackPlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 1,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
-			"ConfigMap/openstack-cloud-controller-manager-config",
 			"Deployment/openstack-cloud-controller-manager",
 		},
 	}, {
@@ -223,6 +223,21 @@ func TestGetResources(t *testing.T) {
 		expectedResourceCount:     1,
 		singleReplica:             true,
 		expectedResourcesKindName: []string{"Deployment/ibm-cloud-controller-manager"},
+	}, {
+		name:                  "PowerVS resources",
+		testPlatform:          platformsMap[string(configv1.PowerVSPlatformType)],
+		expectedResourceCount: 2,
+		singleReplica:         false,
+		expectedResourcesKindName: []string{
+			"Deployment/powervs-cloud-controller-manager",
+			"PodDisruptionBudget/powervs-cloud-controller-manager",
+		},
+	}, {
+		name:                      "PowerVS resources with single node cluster",
+		testPlatform:              platformsMap[string(configv1.PowerVSPlatformType)],
+		expectedResourceCount:     1,
+		singleReplica:             true,
+		expectedResourcesKindName: []string{"Deployment/powervs-cloud-controller-manager"},
 	}, {
 		name:         "Libvirt resources are empty",
 		testPlatform: platformsMap[string(configv1.LibvirtPlatformType)],
