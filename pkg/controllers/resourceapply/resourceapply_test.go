@@ -78,9 +78,17 @@ func cleanupResources(t *testing.T, g *WithT, ctx context.Context, cl client.Cli
 	}
 }
 
+func createNamespace(g *WithT, ctx context.Context, cl client.Client) string {
+	ns := &corev1.Namespace{}
+	ns.SetGenerateName("resource-apply-test-")
+	g.Expect(cl.Create(ctx, ns)).To(Succeed())
+	return ns.GetName()
+}
+
 func TestApplyConfigMap(t *testing.T) {
 	cl, tearDownFn := setupEnvtest(t)
 	defer tearDownFn(t)
+	namespace := createNamespace(NewWithT(t), context.TODO(), cl)
 
 	tests := []struct {
 		name     string
@@ -92,7 +100,7 @@ func TestApplyConfigMap(t *testing.T) {
 		{
 			name: "create",
 			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo"},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo"},
 			},
 
 			expectedModified: true,
@@ -100,10 +108,10 @@ func TestApplyConfigMap(t *testing.T) {
 		{
 			name: "skip on extra label",
 			existing: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
 			},
 			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo"},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo"},
 			},
 
 			expectedModified: false,
@@ -111,10 +119,10 @@ func TestApplyConfigMap(t *testing.T) {
 		{
 			name: "update on missing label",
 			existing: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
 			},
 			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo", Labels: map[string]string{"new": "merge"}},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"new": "merge"}},
 			},
 
 			expectedModified: true,
@@ -122,10 +130,10 @@ func TestApplyConfigMap(t *testing.T) {
 		{
 			name: "update on mismatch data",
 			existing: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
 			},
 			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo"},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo"},
 				Data: map[string]string{
 					"configmap": "value",
 				},
@@ -136,13 +144,13 @@ func TestApplyConfigMap(t *testing.T) {
 		{
 			name: "update on mismatch binary data",
 			existing: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
 				Data: map[string]string{
 					"configmap": "value",
 				},
 			},
 			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "foo"},
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo"},
 				Data: map[string]string{
 					"configmap": "value",
 				},
@@ -162,9 +170,9 @@ func TestApplyConfigMap(t *testing.T) {
 			defer cleanupResources(t, g, ctx, cl, &corev1.ConfigMapList{})
 
 			if test.existing != nil {
-				g.Expect(cl.Create(context.TODO(), test.existing)).To(Succeed())
+				g.Expect(cl.Create(ctx, test.existing)).To(Succeed())
 			}
-			actualModified, err := applyConfigMap(context.TODO(), cl, record.NewFakeRecorder(1000), test.input)
+			actualModified, err := applyConfigMap(ctx, cl, record.NewFakeRecorder(1000), test.input)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(test.expectedModified).To(BeEquivalentTo(actualModified), "Resource was modified")
 		})
@@ -174,6 +182,7 @@ func TestApplyConfigMap(t *testing.T) {
 func TestApplyDeployment(t *testing.T) {
 	cl, tearDownFn := setupEnvtest(t)
 	defer tearDownFn(t)
+	namespace := createNamespace(NewWithT(t), context.TODO(), cl)
 
 	tests := []struct {
 		name              string
@@ -186,28 +195,28 @@ func TestApplyDeployment(t *testing.T) {
 	}{
 		{
 			name:               "the deployment is created because it doesn't exist",
-			desiredDeployment:  workloadDeployment(),
-			expectedDeployment: workloadDeploymentWithDefaultSpecHash(),
+			desiredDeployment:  workloadDeployment(namespace),
+			expectedDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 			expectedUpdate:     true,
 		},
 
 		{
 			name:               "the deployment already exists and it's up to date",
-			desiredDeployment:  workloadDeployment(),
-			actualDeployment:   workloadDeploymentWithDefaultSpecHash(),
-			expectedDeployment: workloadDeploymentWithDefaultSpecHash(),
+			desiredDeployment:  workloadDeployment(namespace),
+			actualDeployment:   workloadDeploymentWithDefaultSpecHash(namespace),
+			expectedDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 		},
 
 		{
 			name: "the deployment is updated due to a change in the spec",
 			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment()
+				w := workloadDeployment(namespace)
 				w.Spec.Template.Finalizers = []string{"newFinalizer"}
 				return w
 			}(),
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(),
+			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 			expectedDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment()
+				w := workloadDeployment(namespace)
 				w.Annotations["operator.openshift.io/spec-hash"] = "3595383676891d94b068a1b3cfedc7e1e77f86f49ae53a30757b4f7f5cd4b36a"
 				w.Spec.Template.Finalizers = []string{"newFinalizer"}
 				return w
@@ -218,13 +227,13 @@ func TestApplyDeployment(t *testing.T) {
 		{
 			name: "the deployment is updated due to a change in Labels field",
 			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment()
+				w := workloadDeployment(namespace)
 				w.Labels["newLabel"] = "newValue"
 				return w
 			}(),
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(),
+			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 			expectedDeployment: func() *appsv1.Deployment {
-				w := workloadDeploymentWithDefaultSpecHash()
+				w := workloadDeploymentWithDefaultSpecHash(namespace)
 				w.Labels["newLabel"] = "newValue"
 				return w
 			}(),
@@ -234,13 +243,13 @@ func TestApplyDeployment(t *testing.T) {
 		{
 			name: "the deployment is updated due to a change in Annotations field",
 			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment()
+				w := workloadDeployment(namespace)
 				w.Annotations["newAnnotation"] = "newValue"
 				return w
 			}(),
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(),
+			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 			expectedDeployment: func() *appsv1.Deployment {
-				w := workloadDeploymentWithDefaultSpecHash()
+				w := workloadDeploymentWithDefaultSpecHash(namespace)
 				w.Annotations["newAnnotation"] = "newValue"
 				return w
 			}(),
@@ -295,10 +304,10 @@ func TestApplyDeployment(t *testing.T) {
 	}{
 		{
 			name:             "the deployment is recreated due to a change in match labels field",
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(),
+			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 
 			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment()
+				w := workloadDeployment(namespace)
 				w.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"bar": "baz",
@@ -308,7 +317,7 @@ func TestApplyDeployment(t *testing.T) {
 				return w
 			}(),
 			expectedDeployment: func() *appsv1.Deployment {
-				w := workloadDeploymentWithDefaultSpecHash()
+				w := workloadDeploymentWithDefaultSpecHash(namespace)
 				w.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"bar": "baz",
@@ -323,10 +332,10 @@ func TestApplyDeployment(t *testing.T) {
 
 		{
 			name:             "resourceapply should report an error in case if resource is malformed",
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(),
+			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 
 			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment()
+				w := workloadDeployment(namespace)
 				w.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"bar": "baz",
@@ -335,7 +344,7 @@ func TestApplyDeployment(t *testing.T) {
 				w.Spec.Template.Labels = map[string]string{"fiz": "baz"}
 				return w
 			}(),
-			expectedDeployment: workloadDeploymentWithDefaultSpecHash(),
+			expectedDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 			errorMsg:           "`selector` does not match template `labels`",
 			expectError:        true,
 		},
@@ -343,13 +352,13 @@ func TestApplyDeployment(t *testing.T) {
 		{
 			name: "resourceapply should report an error in case if resource deletion stucked",
 			actualDeployment: func() *appsv1.Deployment {
-				d := workloadDeploymentWithDefaultSpecHash()
+				d := workloadDeploymentWithDefaultSpecHash(namespace)
 				d.Finalizers = []string{"foo.bar/baz"}
 				return d
 			}(),
 
 			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment()
+				w := workloadDeployment(namespace)
 				w.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"bar": "baz",
@@ -358,7 +367,7 @@ func TestApplyDeployment(t *testing.T) {
 				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
 				return w
 			}(),
-			expectedDeployment: workloadDeploymentWithDefaultSpecHash(),
+			expectedDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 			errorMsg:           "object is being deleted: deployments.apps \"apiserver\" already exists",
 			expectError:        true,
 		},
@@ -405,7 +414,7 @@ func TestApplyDeployment(t *testing.T) {
 	}
 }
 
-func workloadDeployment() *appsv1.Deployment {
+func workloadDeployment(namespace string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
@@ -413,7 +422,7 @@ func workloadDeployment() *appsv1.Deployment {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "apiserver",
-			Namespace: "default",
+			Namespace: namespace,
 			Labels:    map[string]string{},
 			Annotations: map[string]string{
 				generationAnnotation: "1",
@@ -447,8 +456,8 @@ func workloadDeployment() *appsv1.Deployment {
 	}
 }
 
-func workloadDeploymentWithDefaultSpecHash() *appsv1.Deployment {
-	w := workloadDeployment()
+func workloadDeploymentWithDefaultSpecHash(namespace string) *appsv1.Deployment {
+	w := workloadDeployment(namespace)
 	w.Annotations[specHashAnnotation] = "259870a8d6f8fca4ded383158594ac91935b0225acabe8e16670b6f6a395f68d"
 	return w
 }
@@ -456,6 +465,7 @@ func workloadDeploymentWithDefaultSpecHash() *appsv1.Deployment {
 func TestApplyDaemonSet(t *testing.T) {
 	cl, tearDownFn := setupEnvtest(t)
 	defer tearDownFn(t)
+	namespace := createNamespace(NewWithT(t), context.TODO(), cl)
 
 	tests := []struct {
 		name             string
@@ -468,28 +478,28 @@ func TestApplyDaemonSet(t *testing.T) {
 	}{
 		{
 			name:              "the daemonset is created because it doesn't exist",
-			desiredDaemonSet:  workloadDaemonSet(),
-			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			desiredDaemonSet:  workloadDaemonSet(namespace),
+			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			expectedUpdate:    true,
 		},
 
 		{
 			name:              "the daemonset already exists and it's up to date",
-			desiredDaemonSet:  workloadDaemonSet(),
-			actualDaemonSet:   workloadDaemonSetWithDefaultSpecHash(),
-			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			desiredDaemonSet:  workloadDaemonSet(namespace),
+			actualDaemonSet:   workloadDaemonSetWithDefaultSpecHash(namespace),
+			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 		},
 
 		{
 			name: "the daemonset is updated due to a change in the spec",
 			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet()
+				w := workloadDaemonSet(namespace)
 				w.Spec.Template.Finalizers = []string{"newFinalizer"}
 				return w
 			}(),
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			expectedDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet()
+				w := workloadDaemonSet(namespace)
 				w.Annotations["operator.openshift.io/spec-hash"] = "42ed5653bc5ded7dc099b924ede011e43140c675302d1da42a6b645771d242a0"
 				w.Spec.Template.Finalizers = []string{"newFinalizer"}
 				return w
@@ -500,13 +510,13 @@ func TestApplyDaemonSet(t *testing.T) {
 		{
 			name: "the daemonset is updated due to a change in Labels field",
 			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet()
+				w := workloadDaemonSet(namespace)
 				w.Labels["newLabel"] = "newValue"
 				return w
 			}(),
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			expectedDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSetWithDefaultSpecHash()
+				w := workloadDaemonSetWithDefaultSpecHash(namespace)
 				w.Labels["newLabel"] = "newValue"
 				return w
 			}(),
@@ -516,13 +526,13 @@ func TestApplyDaemonSet(t *testing.T) {
 		{
 			name: "the daemonset is updated due to a change in Annotations field",
 			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet()
+				w := workloadDaemonSet(namespace)
 				w.Annotations["newAnnotation"] = "newValue"
 				return w
 			}(),
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			expectedDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSetWithDefaultSpecHash()
+				w := workloadDaemonSetWithDefaultSpecHash(namespace)
 				w.Annotations["newAnnotation"] = "newValue"
 				return w
 			}(),
@@ -576,9 +586,9 @@ func TestApplyDaemonSet(t *testing.T) {
 	}{
 		{
 			name:            "the daemonset is recreated due to a change in match labels field",
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet()
+				w := workloadDaemonSet(namespace)
 				w.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"bar": "baz",
@@ -588,7 +598,7 @@ func TestApplyDaemonSet(t *testing.T) {
 				return w
 			}(),
 			expectedDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet()
+				w := workloadDaemonSet(namespace)
 				w.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"bar": "baz",
@@ -603,9 +613,9 @@ func TestApplyDaemonSet(t *testing.T) {
 
 		{
 			name:            "resourceapply should report an error in case if resource is malformed",
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet()
+				w := workloadDaemonSet(namespace)
 				w.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"bar": "baz",
@@ -614,7 +624,7 @@ func TestApplyDaemonSet(t *testing.T) {
 				w.Spec.Template.Labels = map[string]string{"fiz": "baz"}
 				return w
 			}(),
-			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			errorMsg:          "`selector` does not match template `labels`",
 			expectError:       true,
 		},
@@ -622,12 +632,12 @@ func TestApplyDaemonSet(t *testing.T) {
 		{
 			name: "resourceapply should report an error in case if resource deletion stucked",
 			actualDaemonSet: func() *appsv1.DaemonSet {
-				ds := workloadDaemonSetWithDefaultSpecHash()
+				ds := workloadDaemonSetWithDefaultSpecHash(namespace)
 				ds.Finalizers = []string{"foo.bar/baz"}
 				return ds
 			}(),
 			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet()
+				w := workloadDaemonSet(namespace)
 				w.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"bar": "baz",
@@ -636,7 +646,7 @@ func TestApplyDaemonSet(t *testing.T) {
 				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
 				return w
 			}(),
-			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(),
+			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			errorMsg:          "object is being deleted: daemonsets.apps \"apiserver\" already exists",
 			expectError:       true,
 		},
@@ -683,7 +693,7 @@ func TestApplyDaemonSet(t *testing.T) {
 	}
 }
 
-func workloadDaemonSet() *appsv1.DaemonSet {
+func workloadDaemonSet(namespace string) *appsv1.DaemonSet {
 	return &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "DaemonSet",
@@ -691,7 +701,7 @@ func workloadDaemonSet() *appsv1.DaemonSet {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "apiserver",
-			Namespace: "default",
+			Namespace: namespace,
 			Labels:    map[string]string{},
 			Annotations: map[string]string{
 				generationAnnotation: "1",
@@ -722,8 +732,8 @@ func workloadDaemonSet() *appsv1.DaemonSet {
 	}
 }
 
-func workloadDaemonSetWithDefaultSpecHash() *appsv1.DaemonSet {
-	w := workloadDaemonSet()
+func workloadDaemonSetWithDefaultSpecHash(namespace string) *appsv1.DaemonSet {
+	w := workloadDaemonSet(namespace)
 	w.Annotations[specHashAnnotation] = "eaeff6ac704fb141d5085803b5b3cc12067ef98c9f2ba8c1052df81faa53299c"
 	return w
 }
@@ -731,6 +741,7 @@ func workloadDaemonSetWithDefaultSpecHash() *appsv1.DaemonSet {
 func TestApplyPDB(t *testing.T) {
 	cl, tearDownFn := setupEnvtest(t)
 	defer tearDownFn(t)
+	namespace := createNamespace(NewWithT(t), context.TODO(), cl)
 
 	tests := []struct {
 		name     string
@@ -741,29 +752,29 @@ func TestApplyPDB(t *testing.T) {
 	}{
 		{
 			name:             "create",
-			input:            podDisruptionBudget(),
+			input:            podDisruptionBudget(namespace),
 			expectedModified: true,
 		},
 		{
 			name: "skip on extra label",
 			existing: func() *policyv1.PodDisruptionBudget {
-				pdb := podDisruptionBudget()
+				pdb := podDisruptionBudget(namespace)
 				pdb.Labels = map[string]string{"bar": "baz"}
 				return pdb
 			}(),
-			input: podDisruptionBudget(),
+			input: podDisruptionBudget(namespace),
 
 			expectedModified: false,
 		},
 		{
 			name: "update on missing label",
 			existing: func() *policyv1.PodDisruptionBudget {
-				pdb := podDisruptionBudget()
+				pdb := podDisruptionBudget(namespace)
 				pdb.Labels = map[string]string{"bar": "baz"}
 				return pdb
 			}(),
 			input: func() *policyv1.PodDisruptionBudget {
-				pdb := podDisruptionBudget()
+				pdb := podDisruptionBudget(namespace)
 				pdb.Labels = map[string]string{"new": "merge"}
 				return pdb
 			}(),
@@ -772,9 +783,9 @@ func TestApplyPDB(t *testing.T) {
 		},
 		{
 			name:     "update on mismatch data",
-			existing: podDisruptionBudget(),
+			existing: podDisruptionBudget(namespace),
 			input: func() *policyv1.PodDisruptionBudget {
-				pdb := podDisruptionBudget()
+				pdb := podDisruptionBudget(namespace)
 				minAvailable := intstr.FromInt(3)
 				pdb.Spec.MinAvailable = &minAvailable
 				return pdb
@@ -800,7 +811,7 @@ func TestApplyPDB(t *testing.T) {
 	}
 }
 
-func podDisruptionBudget() *policyv1.PodDisruptionBudget {
+func podDisruptionBudget(namespace string) *policyv1.PodDisruptionBudget {
 	minAvailable := intstr.FromInt(1)
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
@@ -809,7 +820,7 @@ func podDisruptionBudget() *policyv1.PodDisruptionBudget {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "pdbName",
-			Namespace: "default",
+			Namespace: namespace,
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			MinAvailable: &minAvailable,
