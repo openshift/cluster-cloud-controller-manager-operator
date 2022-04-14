@@ -31,6 +31,12 @@ func toClusterOperator(client.Object) []reconcile.Request {
 	}}
 }
 
+func toManagedConfigMap(client.Object) []reconcile.Request {
+	return []reconcile.Request{{
+		NamespacedName: client.ObjectKey{Name: syncedCloudConfigMapName, Namespace: DefaultManagedNamespace},
+	}}
+}
+
 func infrastructurePredicates() predicate.Funcs {
 	isInfrastructureCluster := func(obj runtime.Object) bool {
 		infra, ok := obj.(*configv1.Infrastructure)

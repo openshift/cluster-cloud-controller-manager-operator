@@ -6,6 +6,6 @@ import (
 
 // NoOpTransformer implements the cloudConfigTransformer. It makes no changes
 // to the source configuration and simply returns it as-is.
-func NoOpTransformer(source string, infra *configv1.Infrastructure) (string, error) {
+func NoOpTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
 	return source, nil
 }
