@@ -63,7 +63,7 @@ spec:
             --v=1 \
             --cloud-config=$(CLOUD_CONFIG) \
             --cloud-provider=openstack \
-            --use-service-account-credentials=true \
+            --use-service-account-credentials=false \
             --configure-cloud-routes=false \
             --bind-address=127.0.0.1 \
             --leader-elect=true \

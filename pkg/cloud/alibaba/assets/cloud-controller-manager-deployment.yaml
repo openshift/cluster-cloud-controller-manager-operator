@@ -65,7 +65,7 @@ spec:
               --leader-elect-retry-period=26s \
               --leader-elect-resource-namespace=openshift-cloud-controller-manager \
               --cloud-provider=alicloud \
-              --use-service-account-credentials=true \
+              --use-service-account-credentials=false \
               --cloud-config=/etc/alibaba/config/cloud-config.conf \
               --feature-gates=ServiceNodeExclusion=true \
               --configure-cloud-routes=false \

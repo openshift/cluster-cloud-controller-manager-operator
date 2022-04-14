@@ -81,7 +81,7 @@ spec:
                 --cloud-provider=gce \
                 --controllers=*,-nodeipam \
                 --configure-cloud-routes=false \
-                --use-service-account-credentials=true \
+                --use-service-account-credentials=false \
                 --bind-address=127.0.0.1 \
                 --cluster-name=$(OCP_INFRASTRUCTURE_NAME) \
                 --leader-elect=true \

@@ -73,7 +73,7 @@ spec:
             exec /bin/ibm-cloud-controller-manager \
             --port=0 \
             --bind-address=$(POD_IP_ADDRESS) \
-            --use-service-account-credentials=true \
+            --use-service-account-credentials=false \
             --configure-cloud-routes=false \
             --cloud-provider=ibm \
             --cloud-config=/etc/ibm/cloud.conf \

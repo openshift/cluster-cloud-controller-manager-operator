@@ -32,7 +32,7 @@ spec:
           fi
           exec /bin/aws-cloud-controller-manager \
           --cloud-provider=aws \
-          --use-service-account-credentials=true \
+          --use-service-account-credentials=false \
           --configure-cloud-routes=false \
           --leader-elect=true \
           --leader-elect-lease-duration=137s \
