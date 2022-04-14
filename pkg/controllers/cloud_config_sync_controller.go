@@ -47,6 +47,15 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	network := &configv1.Network{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "cluster"}, network); err != nil {
+		klog.Errorf("Network resource not found")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, err
+	}
+
 	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus)
 	if err != nil {
 		if err := r.setDegradedCondition(ctx); err != nil {
@@ -126,7 +135,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
 		// we're not expecting users to put their data in the former.
-		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra)
+		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network)
 		if err != nil {
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
