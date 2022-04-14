@@ -33,6 +33,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 				ImagesReference: config.ImagesReference{
 					CloudControllerManagerOpenStack: "CloudControllerManagerOpenstack",
 				},
+				PlatformStatus: &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
 			},
 		},
 	}

@@ -4,18 +4,21 @@ metadata:
   name: vsphere-cloud-controller-manager
   namespace: openshift-cloud-controller-manager
   labels:
-    app: vsphere-cloud-controller-manager
+    k8s-app: vsphere-cloud-controller-manager
+    infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: vsphere-cloud-controller-manager
+      k8s-app: vsphere-cloud-controller-manager
+      infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: vsphere-cloud-controller-manager
+        k8s-app: vsphere-cloud-controller-manager
+        infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
     spec:
       hostNetwork: true
       serviceAccountName: cloud-controller-manager
@@ -28,7 +31,8 @@ spec:
             - topologyKey: "kubernetes.io/hostname"
               labelSelector:
                 matchLabels:
-                  app: vsphere-cloud-controller-manager
+                  k8s-app: vsphere-cloud-controller-manager
+                  infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
       tolerations:
         - effect: NoSchedule
           key: node-role.kubernetes.io/master

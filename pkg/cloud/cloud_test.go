@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
+
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
@@ -50,6 +52,7 @@ func (tp *testPlatform) getOperatorConfig() config.OperatorConfig {
 			CloudControllerManagerIBM:       "registry.ci.openshift.org/openshift:ibm-cloud-controller-manager",
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			CloudControllerManagerVSphere:   "registry.ci.openshift.org/openshift:vsphere-cloud-controller-manager",
+			CloudControllerManagerPowerVS:   "quay.io/openshift/origin-powervs-cloud-controller-manager",
 		},
 		PlatformStatus:     tp.platformStatus,
 		InfrastructureName: "my-cool-cluster-777",
@@ -68,6 +71,7 @@ func getPlatforms() testPlatformsMap {
 		string(configv1.VSpherePlatformType):      {getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
 		string(configv1.OvirtPlatformType):        {getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
 		string(configv1.IBMCloudPlatformType):     {getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
+		string(configv1.PowerVSPlatformType):      {getDummyPlatformStatus(configv1.PowerVSPlatformType, false)},
 		string(configv1.LibvirtPlatformType):      {getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
 		string(configv1.KubevirtPlatformType):     {getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
 		string(configv1.BareMetalPlatformType):    {getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
@@ -91,50 +95,149 @@ func TestGetResources(t *testing.T) {
 		name                      string
 		testPlatform              testPlatform
 		expectedResourceCount     int
+		singleReplica             bool
 		expectedResourcesKindName []string
 	}{{
-		name:                      "Alibaba resources returned as expected",
+		name:                  "Alibaba resources returned as expected",
+		testPlatform:          platformsMap[string(configv1.AlibabaCloudPlatformType)],
+		singleReplica:         false,
+		expectedResourceCount: 2,
+		expectedResourcesKindName: []string{
+			"Deployment/alibaba-cloud-controller-manager",
+			"PodDisruptionBudget/alibabacloud-cloud-controller-manager",
+		},
+	}, {
+		name:                      "Alibaba resources returned as expected with single node cluster",
 		testPlatform:              platformsMap[string(configv1.AlibabaCloudPlatformType)],
 		expectedResourceCount:     1,
+		singleReplica:             true,
 		expectedResourcesKindName: []string{"Deployment/alibaba-cloud-controller-manager"},
 	}, {
-		name:                      "AWS resources returned as expected",
+		name:                  "AWS resources returned as expected",
+		testPlatform:          platformsMap[string(configv1.AWSPlatformType)],
+		expectedResourceCount: 2,
+		expectedResourcesKindName: []string{
+			"Deployment/aws-cloud-controller-manager",
+			"PodDisruptionBudget/aws-cloud-controller-manager",
+		},
+	}, {
+		name:                      "AWS resources returned as expected with single node cluster",
 		testPlatform:              platformsMap[string(configv1.AWSPlatformType)],
 		expectedResourceCount:     1,
+		singleReplica:             true,
 		expectedResourcesKindName: []string{"Deployment/aws-cloud-controller-manager"},
 	}, {
-		name:                      "OpenStack resources returned as expected",
-		testPlatform:              platformsMap[string(configv1.OpenStackPlatformType)],
-		expectedResourceCount:     1,
-		expectedResourcesKindName: []string{"Deployment/openstack-cloud-controller-manager"},
+		name:                  "OpenStack resources returned as expected",
+		testPlatform:          platformsMap[string(configv1.OpenStackPlatformType)],
+		expectedResourceCount: 2,
+		expectedResourcesKindName: []string{
+			"Deployment/openstack-cloud-controller-manager",
+			"PodDisruptionBudget/openstack-cloud-controller-manager",
+		},
 	}, {
-		name:                      "GCP resources returned as expected",
+		name:                  "OpenStack resources returned as expected with signle node cluster",
+		testPlatform:          platformsMap[string(configv1.OpenStackPlatformType)],
+		expectedResourceCount: 1,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/openstack-cloud-controller-manager",
+		},
+	}, {
+		name:                  "GCP resources returned as expected",
+		testPlatform:          platformsMap[string(configv1.GCPPlatformType)],
+		expectedResourceCount: 2,
+		expectedResourcesKindName: []string{
+			"Deployment/gcp-cloud-controller-manager",
+			"PodDisruptionBudget/gcp-cloud-controller-manager",
+		},
+	}, {
+		name:                      "GCP resources returned as expected with single node cluster",
 		testPlatform:              platformsMap[string(configv1.GCPPlatformType)],
 		expectedResourceCount:     1,
+		singleReplica:             true,
 		expectedResourcesKindName: []string{"Deployment/gcp-cloud-controller-manager"},
 	}, {
-		name:                      "Azure resources returned as expected",
-		testPlatform:              platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount:     2,
-		expectedResourcesKindName: []string{"Deployment/azure-cloud-controller-manager", "DaemonSet/azure-cloud-node-manager"},
+		name:                  "Azure resources returned as expected",
+		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
+		expectedResourceCount: 3,
+		expectedResourcesKindName: []string{
+			"Deployment/azure-cloud-controller-manager",
+			"DaemonSet/azure-cloud-node-manager",
+			"PodDisruptionBudget/azure-cloud-controller-manager",
+		},
 	}, {
-		name:                      "Azure Stack resources returned as expected",
-		testPlatform:              platformsMap["AzureStackHub"],
-		expectedResourceCount:     2,
-		expectedResourcesKindName: []string{"Deployment/azure-cloud-controller-manager", "DaemonSet/azure-cloud-node-manager"},
+		name:                  "Azure resources returned as expected with single node cluster",
+		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
+		expectedResourceCount: 2,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/azure-cloud-controller-manager",
+			"DaemonSet/azure-cloud-node-manager",
+		},
 	}, {
-		name:                      "VSphere resources returned as expected",
+		name:                  "Azure Stack resources returned as expected",
+		testPlatform:          platformsMap["AzureStackHub"],
+		expectedResourceCount: 3,
+		expectedResourcesKindName: []string{
+			"Deployment/azure-cloud-controller-manager",
+			"DaemonSet/azure-cloud-node-manager",
+			"PodDisruptionBudget/azure-cloud-controller-manager",
+		},
+	}, {
+		name:                  "Azure Stack resources returned as expected with single node",
+		testPlatform:          platformsMap["AzureStackHub"],
+		expectedResourceCount: 2,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/azure-cloud-controller-manager",
+			"DaemonSet/azure-cloud-node-manager",
+		},
+	}, {
+		name:                  "VSphere resources returned as expected",
+		testPlatform:          platformsMap[string(configv1.VSpherePlatformType)],
+		expectedResourceCount: 2,
+		expectedResourcesKindName: []string{
+			"Deployment/vsphere-cloud-controller-manager",
+			"PodDisruptionBudget/vsphere-cloud-controller-manager",
+		},
+	}, {
+		name:                      "VSphere resources returned as expected with single node",
 		testPlatform:              platformsMap[string(configv1.VSpherePlatformType)],
 		expectedResourceCount:     1,
+		singleReplica:             true,
 		expectedResourcesKindName: []string{"Deployment/vsphere-cloud-controller-manager"},
 	}, {
 		name:         "OVirt resources are empty, as the platform is not yet supported",
 		testPlatform: platformsMap[string(configv1.OvirtPlatformType)],
 	}, {
-		name:                      "IBMCloud resources are empty, as the platform is not yet supported",
+		name:                  "IBMCloud resources",
+		testPlatform:          platformsMap[string(configv1.IBMCloudPlatformType)],
+		expectedResourceCount: 2,
+		expectedResourcesKindName: []string{
+			"Deployment/ibm-cloud-controller-manager",
+			"PodDisruptionBudget/ibmcloud-cloud-controller-manager",
+		},
+	}, {
+		name:                      "IBMCloud resources with single node cluster",
 		testPlatform:              platformsMap[string(configv1.IBMCloudPlatformType)],
 		expectedResourceCount:     1,
+		singleReplica:             true,
 		expectedResourcesKindName: []string{"Deployment/ibm-cloud-controller-manager"},
+	}, {
+		name:                  "PowerVS resources",
+		testPlatform:          platformsMap[string(configv1.PowerVSPlatformType)],
+		expectedResourceCount: 2,
+		singleReplica:         false,
+		expectedResourcesKindName: []string{
+			"Deployment/powervs-cloud-controller-manager",
+			"PodDisruptionBudget/powervs-cloud-controller-manager",
+		},
+	}, {
+		name:                      "PowerVS resources with single node cluster",
+		testPlatform:              platformsMap[string(configv1.PowerVSPlatformType)],
+		expectedResourceCount:     1,
+		singleReplica:             true,
+		expectedResourcesKindName: []string{"Deployment/powervs-cloud-controller-manager"},
 	}, {
 		name:         "Libvirt resources are empty",
 		testPlatform: platformsMap[string(configv1.LibvirtPlatformType)],
@@ -151,12 +254,14 @@ func TestGetResources(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			resources, err := GetResources(tc.testPlatform.getOperatorConfig())
+			operatorConfig := tc.testPlatform.getOperatorConfig()
+			operatorConfig.IsSingleReplica = tc.singleReplica
+			resources, err := GetResources(operatorConfig)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tc.expectedResourceCount, len(resources))
 
-			otherResourcesArray, err := GetResources(tc.testPlatform.getOperatorConfig())
+			otherResourcesArray, err := GetResources(operatorConfig)
 			assert.NoError(t, err)
 			assert.EqualValues(t, otherResourcesArray, resources)
 
@@ -173,7 +278,7 @@ func TestGetResources(t *testing.T) {
 			// Edit and repeat procedure to ensure modification in place is not present
 			if len(resources) > 0 {
 				resources[0].SetName("different")
-				newResources, err := GetResources(tc.testPlatform.getOperatorConfig())
+				newResources, err := GetResources(operatorConfig)
 				assert.NoError(t, err)
 
 				assert.Equal(t, len(otherResourcesArray), len(newResources))
@@ -184,9 +289,11 @@ func TestGetResources(t *testing.T) {
 
 		if !testing.Short() {
 			t.Run(fmt.Sprintf("Benchmark: %s", tc.name), func(t *testing.T) {
+				operatorConfig := tc.testPlatform.getOperatorConfig()
+				operatorConfig.IsSingleReplica = tc.singleReplica
 				benchResulst := testing.Benchmark(func(b *testing.B) {
 					for i := 0; i < b.N; i++ {
-						_, err := GetResources(tc.testPlatform.getOperatorConfig())
+						_, err := GetResources(operatorConfig)
 						assert.NoError(t, err)
 					}
 				})
@@ -201,7 +308,7 @@ func TestGetResources(t *testing.T) {
 	}
 }
 
-func TestPodSpec(t *testing.T) {
+func TestRenderedResources(t *testing.T) {
 	/*
 		This test runs a number of different checks against the podSpecs produced by
 		the different platform resources.
@@ -477,4 +584,101 @@ func checkTrustedCAMounted(t *testing.T, podSpec corev1.PodSpec) {
 	for _, c := range podSpec.Containers {
 		assert.Contains(t, c.VolumeMounts, trustedCAVolumeMount, "Container VolumeMounts should contain trusted ca volume mount")
 	}
+}
+
+func TestSelectorLabels(t *testing.T) {
+	/*
+		This test checks consistency between all Deployment pod template labels and selector labels
+	*/
+
+	platforms := getPlatforms()
+	for platformName, platform := range platforms {
+
+		t.Run(platformName, func(t *testing.T) {
+			resources, err := GetResources(platform.getOperatorConfig())
+			assert.NoError(t, err)
+
+			for _, resource := range resources {
+				switch obj := resource.(type) {
+				case *appsv1.Deployment:
+					checkDeployementSelectorLabels(t, obj, platform.platformStatus.Type)
+				case *appsv1.DaemonSet:
+					checkDaemonSetSelectorLabels(t, obj, platform.platformStatus.Type)
+				default:
+					// Nothing to check for
+				}
+			}
+		})
+	}
+}
+
+func checkDeployementSelectorLabels(t *testing.T, deployment *appsv1.Deployment, platformType configv1.PlatformType) {
+	assert.Contains(t, deployment.Labels, "k8s-app")
+	assert.Contains(t, deployment.Spec.Template.Labels, "k8s-app")
+	assert.Contains(t, deployment.Spec.Selector.MatchLabels, "k8s-app")
+
+	assert.Contains(t, deployment.Labels, common.CloudControllerManagerProviderLabel)
+	assert.Contains(t, deployment.Spec.Template.Labels, common.CloudControllerManagerProviderLabel)
+	assert.Contains(t, deployment.Spec.Selector.MatchLabels, common.CloudControllerManagerProviderLabel)
+
+	assert.Equal(t, string(platformType), deployment.Labels[common.CloudControllerManagerProviderLabel])
+	assert.Equal(t, string(platformType), deployment.Spec.Template.Labels[common.CloudControllerManagerProviderLabel])
+	assert.Equal(t, string(platformType), deployment.Spec.Selector.MatchLabels[common.CloudControllerManagerProviderLabel])
+}
+
+func checkDaemonSetSelectorLabels(t *testing.T, ds *appsv1.DaemonSet, platformType configv1.PlatformType) {
+	assert.Contains(t, ds.Labels, "k8s-app")
+	assert.Contains(t, ds.Spec.Template.Labels, "k8s-app")
+	assert.Contains(t, ds.Spec.Selector.MatchLabels, "k8s-app")
+
+	assert.Contains(t, ds.Labels, common.CloudNodeManagerCloudProviderLabel)
+	assert.Contains(t, ds.Spec.Template.Labels, common.CloudNodeManagerCloudProviderLabel)
+	assert.Contains(t, ds.Spec.Selector.MatchLabels, common.CloudNodeManagerCloudProviderLabel)
+
+	assert.Equal(t, string(platformType), ds.Labels[common.CloudNodeManagerCloudProviderLabel])
+	assert.Equal(t, string(platformType), ds.Spec.Template.Labels[common.CloudNodeManagerCloudProviderLabel])
+	assert.Equal(t, string(platformType), ds.Spec.Selector.MatchLabels[common.CloudNodeManagerCloudProviderLabel])
+}
+
+func TestReplicas(t *testing.T) {
+	platforms := getPlatforms()
+	for platformName, platform := range platforms {
+
+		t.Run(platformName, func(t *testing.T) {
+			resources, err := GetResources(platform.getOperatorConfig())
+			assert.NoError(t, err)
+
+			for _, resource := range resources {
+				switch obj := resource.(type) {
+				case *appsv1.Deployment:
+					assert.Equal(t, derefReplicas(obj.Spec.Replicas), 2)
+				default:
+					// Nothing to check for
+				}
+			}
+		})
+
+		t.Run(fmt.Sprintf("%s single node", platformName), func(t *testing.T) {
+			cfg := platform.getOperatorConfig()
+			cfg.IsSingleReplica = true
+			resources, err := GetResources(cfg)
+			assert.NoError(t, err)
+
+			for _, resource := range resources {
+				switch obj := resource.(type) {
+				case *appsv1.Deployment:
+					assert.Equal(t, derefReplicas(obj.Spec.Replicas), 1)
+				default:
+					// Nothing to check for
+				}
+			}
+		})
+	}
+}
+
+func derefReplicas(num *int32) int {
+	if num != nil {
+		return int(*num)
+	}
+	return 1
 }

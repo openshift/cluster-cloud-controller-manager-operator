@@ -6,12 +6,16 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	coreclientv1 "sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,6 +56,8 @@ func ApplyResource(ctx context.Context, client coreclientv1.Client, recorder rec
 		return applyDaemonSet(ctx, client, recorder, t)
 	case *corev1.ConfigMap:
 		return applyConfigMap(ctx, client, recorder, t)
+	case *policyv1.PodDisruptionBudget:
+		return applyPodDisruptionBudget(ctx, client, recorder, t)
 	default:
 		return false, fmt.Errorf("unhandled type %T", resource)
 	}
@@ -132,16 +138,15 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		required.Annotations[generationAnnotation] = "1"
-		err := client.Create(ctx, required)
-		if err != nil {
-			recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
 			return false, err
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
 		return true, nil
 	}
 	if err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, "Failed to get resource for update", err.Error())
 		return false, err
 	}
 
@@ -158,14 +163,48 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 		return false, nil
 	}
 
+	// Check if deployment recreation needed
+	// Currently it is necessary if pod selector was changed
+	needRecreate := false
+	if !reflect.DeepEqual(existingCopy.Spec.Selector, required.Spec.Selector) {
+		needRecreate = true
+	}
+	if needRecreate {
+		klog.Infof("Deployment need to be recreated with new parameters")
+		recorder.Event(
+			existing, corev1.EventTypeNormal,
+			"Delete existing deployment", "Delete existing deployment to recreate it with new parameters",
+		)
+		// Perform dry run creation in order to validate deployment before deleting existing one
+		requiredCopy := required.DeepCopy()
+		requiredCopy.Name = fmt.Sprintf("%s-dry-run", requiredCopy.Name)
+		dryRunOpts := &coreclientv1.CreateOptions{DryRun: []string{metav1.DryRunAll}}
+		if err := client.Create(ctx, requiredCopy, dryRunOpts); err != nil {
+			recorder.Event(existing, corev1.EventTypeWarning, "New resource validation failed", err.Error())
+			return false, fmt.Errorf("new resource validation prior to old resource deletion failed: %v", err)
+		}
+
+		if err := client.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+			recorder.Event(existing, corev1.EventTypeWarning, "Deletion failed", err.Error())
+			return false, fmt.Errorf("old resource deletion failed: %v", err)
+		}
+
+		required.Annotations[generationAnnotation] = "1"
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			return false, fmt.Errorf("deployment recreation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, "Recreated successfully", "Resource was successfully recreated")
+		return true, nil
+	}
+
 	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
 	toWrite := existingCopy // shallow copy so the code reads easier
 	toWrite.Spec = *required.Spec.DeepCopy()
 
 	toWrite.Annotations[generationAnnotation] = fmt.Sprintf("%x", existingCopy.GetGeneration()+1)
 
-	err = client.Update(ctx, toWrite)
-	if err != nil {
+	if err := client.Update(ctx, toWrite); err != nil {
 		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
 		return false, err
 	}
@@ -184,16 +223,15 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		required.Annotations[generationAnnotation] = "1"
-		err = client.Create(ctx, required)
-		if err != nil {
-			recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
 			return false, err
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
 		return true, nil
 	}
 	if err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, "Failed to get resource for update", err.Error())
 		return false, err
 	}
 
@@ -210,14 +248,88 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 		return false, nil
 	}
 
+	// Check if ds recreation needed
+	// Currently it is necessary if pod selector was changed
+	needRecreate := false
+	if !reflect.DeepEqual(existingCopy.Spec.Selector, required.Spec.Selector) {
+		needRecreate = true
+	}
+	if needRecreate {
+		klog.Infof("DaemonSet need to be recreated with new parameters")
+		recorder.Event(
+			existing, corev1.EventTypeNormal,
+			"Delete existing daemonset", "Delete existing daemonset to recreate it with new parameters",
+		)
+		// Perform dry run creation in order to validate ds before deleting existing one
+		requiredCopy := required.DeepCopy()
+		requiredCopy.Name = fmt.Sprintf("%s-dry-run", requiredCopy.Name)
+		dryRunOpts := &coreclientv1.CreateOptions{DryRun: []string{metav1.DryRunAll}}
+		if err := client.Create(ctx, requiredCopy, dryRunOpts); err != nil {
+			recorder.Event(existing, corev1.EventTypeWarning, "New resource validation failed", err.Error())
+			return false, fmt.Errorf("new resource validation prior to old resource deletion failed: %v", err)
+		}
+
+		if err := client.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+			recorder.Event(existing, corev1.EventTypeWarning, "Deletion failed", err.Error())
+			return false, fmt.Errorf("old resource deletion failed: %v", err)
+		}
+
+		required.Annotations[generationAnnotation] = "1"
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			return false, fmt.Errorf("ds recreation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, "Recreated successfully", "Resource was successfully recreated")
+		return true, nil
+	}
+
 	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
 	toWrite := existingCopy // shallow copy so the code reads easier
 	toWrite.Spec = *required.Spec.DeepCopy()
 
 	toWrite.Annotations[generationAnnotation] = fmt.Sprintf("%x", existingCopy.GetGeneration()+1)
 
-	err = client.Update(ctx, toWrite)
+	if err := client.Update(ctx, toWrite); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		return false, err
+	}
+	recorder.Event(required, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+	return true, nil
+}
+
+func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *policyv1.PodDisruptionBudget) (bool, error) {
+	required := requiredOriginal.DeepCopy()
+
+	existing := &policyv1.PodDisruptionBudget{}
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	if apierrors.IsNotFound(err) {
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			return false, fmt.Errorf("pdb creation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
+		return true, nil
+	}
 	if err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, "Failed to get resource for update", err.Error())
+		return false, fmt.Errorf("failed to get pdb for update: %v", err)
+	}
+
+	modified := resourcemerge.BoolPtr(false)
+	existingCopy := existing.DeepCopy()
+
+	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, required.ObjectMeta)
+	contentSame := equality.Semantic.DeepEqual(existingCopy.Spec, required.Spec)
+
+	if !*modified && contentSame {
+		return false, nil
+	}
+
+	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
+	toWrite := existingCopy // shallow copy so the code reads easier
+	toWrite.Spec = *required.Spec.DeepCopy()
+
+	if err := client.Update(ctx, toWrite); err != nil {
 		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
 		return false, err
 	}

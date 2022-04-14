@@ -28,7 +28,8 @@ type imagesReference struct {
 }
 
 var templateValuesValidationMap = map[string]interface{}{
-	"images": "required",
+	"images":            "required",
+	"cloudproviderName": "required,type(string)",
 }
 
 type awsAssets struct {
@@ -40,9 +41,10 @@ func (a *awsAssets) GetRenderedResources() []client.Object {
 	return a.renderedResources
 }
 
-func getTemplateValues(images *imagesReference) (common.TemplateValues, error) {
+func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
 	values := common.TemplateValues{
-		"images": images,
+		"images":            images,
+		"cloudproviderName": operatorConfig.GetPlatformNameString(),
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
@@ -66,7 +68,7 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 	if err != nil {
 		return nil, err
 	}
-	templateValues, err := getTemplateValues(images)
+	templateValues, err := getTemplateValues(images, config)
 	if err != nil {
 		return nil, err
 	}

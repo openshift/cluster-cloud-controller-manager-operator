@@ -76,6 +76,12 @@ func GetResources(operatorConfig config.OperatorConfig) ([]client.Object, error)
 	}
 	renderedObjects := assets.GetRenderedResources()
 	substitutedObjects := common.SubstituteCommonPartsFromConfig(operatorConfig, renderedObjects)
+	commonResources, err := common.GetCommonResources(operatorConfig)
+	if err != nil {
+		klog.Errorf("can not create common resources %v", err)
+		return nil, err
+	}
+	substitutedObjects = append(substitutedObjects, commonResources...)
 	return substitutedObjects, nil
 }
 

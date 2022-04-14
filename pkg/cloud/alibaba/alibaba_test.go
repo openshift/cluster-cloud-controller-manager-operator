@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	configv1 "github.com/openshift/api/config/v1"
+
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
@@ -25,6 +27,7 @@ func TestGetResources(t *testing.T) {
 				ImagesReference: config.ImagesReference{
 					CloudControllerManagerAlibaba: "CloudControllerManagerAlibaba",
 				},
+				PlatformStatus: &configv1.PlatformStatus{Type: configv1.AlibabaCloudPlatformType},
 			},
 		},
 	}

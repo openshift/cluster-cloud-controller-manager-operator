@@ -3,6 +3,8 @@ package gcp
 import (
 	"testing"
 
+	configv1 "github.com/openshift/api/config/v1"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -26,6 +28,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 				ImagesReference: config.ImagesReference{
 					CloudControllerManagerGCP: "CloudControllerManagerGCP",
 				},
+				PlatformStatus: &configv1.PlatformStatus{Type: configv1.GCPPlatformType},
 			},
 			initErrMsg: "can not construct template values for gcp assets: infrastructureName: non zero value required",
 		}, {
@@ -35,6 +38,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 				ImagesReference: config.ImagesReference{
 					CloudControllerManagerGCP: "CloudControllerManagerGCP",
 				},
+				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.GCPPlatformType},
 				InfrastructureName: "infra",
 			},
 		},

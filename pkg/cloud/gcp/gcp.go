@@ -29,6 +29,7 @@ type imagesReference struct {
 var templateValuesValidationMap = map[string]interface{}{
 	"images":             "required",
 	"infrastructureName": "required,type(string)",
+	"cloudproviderName":  "required,type(string)",
 }
 
 type GCPAssets struct {
@@ -44,6 +45,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 	values := common.TemplateValues{
 		"images":             images,
 		"infrastructureName": operatorConfig.InfrastructureName,
+		"cloudproviderName":  operatorConfig.GetPlatformNameString(),
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
