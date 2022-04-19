@@ -103,22 +103,6 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - serviceaccounts
-  verbs:
-  - create
-  - get
-  - list
-  - watch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts/token
-  verbs:
-  - create
-- apiGroups:
-  - ""
-  resources:
   - endpoints
   verbs:
   - create
