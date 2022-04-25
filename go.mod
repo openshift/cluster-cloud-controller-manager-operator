@@ -9,8 +9,8 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
-	github.com/openshift/api v0.0.0-20211209135129-c58d9f695577
-	github.com/openshift/library-go v0.0.0-20211220195323-eca2c467c492
+	github.com/openshift/api v0.0.0-20220315184754-d7c10d0b647e
+	github.com/openshift/library-go v0.0.0-20220425105615-5e6227194fbe
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
@@ -25,3 +25,5 @@ require (
 	sigs.k8s.io/controller-runtime v0.11.0
 	sigs.k8s.io/yaml v1.3.0
 )
+
+replace github.com/openshift/library-go => github.com/shiftstack/library-go v0.0.0-20220425131106-ce052bd4e4e4
