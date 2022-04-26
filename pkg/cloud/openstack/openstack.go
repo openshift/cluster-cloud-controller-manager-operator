@@ -125,12 +125,13 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure) (stri
 		}
 	}
 
-	for key, value := range map[string]string{
-		"use-clouds":  "true",
-		"clouds-file": "/etc/openstack/secret/clouds.yaml",
-		"cloud":       "openstack",
+	// Use a slice to preserve keys order
+	for _, o := range []struct{ k, v string }{
+		{"use-clouds", "true"},
+		{"clouds-file", "/etc/openstack/secret/clouds.yaml"},
+		{"cloud", "openstack"},
 	} {
-		_, err = global.NewKey(key, value)
+		_, err = global.NewKey(o.k, o.v)
 		if err != nil {
 			return "", fmt.Errorf("failed to modify the provided configuration: %w", err)
 		}

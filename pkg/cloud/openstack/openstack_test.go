@@ -1,11 +1,11 @@
 package openstack
 
 import (
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
-	ini "gopkg.in/ini.v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -132,39 +132,18 @@ ignore-volume-az = true
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
-			output, err := CloudConfigTransformer(tc.source, tc.infra)
+			actual, err := CloudConfigTransformer(tc.source, tc.infra)
 			if tc.errMsg != "" {
 				g.Expect(err).Should(MatchError(tc.errMsg))
 				return
 			} else {
-				g.Expect(err).ToNot(HaveOccurred())
-				// The output is unsorted so we must reload and reparse the
-				// strings
-				expected, err := ini.Load([]byte(`[Global]
+				expected := `[Global]
 use-clouds  = true
 clouds-file = /etc/openstack/secret/clouds.yaml
-cloud       = openstack`))
-				g.Expect(err).ToNot(HaveOccurred())
-				actual, err := ini.Load([]byte(output))
-				g.Expect(err).ToNot(HaveOccurred())
+cloud       = openstack`
+				actual := strings.TrimSpace(actual)
+				g.Expect(actual).Should(Equal(expected))
 
-				// Because things aren't sorted, we need to manually iterate
-				// over sections and keys
-				g.Expect(expected.SectionStrings()).Should(ConsistOf(actual.SectionStrings()))
-				for _, sectionName := range expected.SectionStrings() {
-					expectedSection, err := expected.GetSection(sectionName)
-					g.Expect(err).ToNot(HaveOccurred())
-					actualSection, err := actual.GetSection(sectionName)
-					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(expectedSection.KeyStrings()).Should(ConsistOf(actualSection.KeyStrings()))
-					for _, keyName := range expectedSection.KeyStrings() {
-						expectedKey, err := expectedSection.GetKey(keyName)
-						g.Expect(err).ToNot(HaveOccurred())
-						actualKey, err := actualSection.GetKey(keyName)
-						g.Expect(err).ToNot(HaveOccurred())
-						g.Expect(expectedKey.String()).Should(Equal(actualKey.String()))
-					}
-				}
 			}
 		})
 	}
