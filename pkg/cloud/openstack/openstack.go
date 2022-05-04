@@ -7,6 +7,7 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	ini "gopkg.in/ini.v1"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/klog/v2"
@@ -57,6 +58,53 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 	return values, nil
 }
 
+// createLoadBalancerSection creates a loadBalancer section populated with
+// the use-octavia key and depending on the network type also the enabled key.
+// It returns any error that happens.
+func createLoadBalancerSection(cfg *ini.File, network *configv1.Network) error {
+	loadBalancer, err := cfg.NewSection("LoadBalancer")
+	if err != nil {
+		return fmt.Errorf("failed to modify the provided configuration: %w", err)
+	}
+	_, err = loadBalancer.NewKey("use-octavia", "true")
+	if err != nil {
+		return fmt.Errorf("failed to modify the provided configuration: %w", err)
+	}
+	if network.Spec.NetworkType == string(operatorv1.NetworkTypeKuryr) {
+		_, err = loadBalancer.NewKey("enabled", "false")
+		if err != nil {
+			return fmt.Errorf("failed to modify the provided configuration: %w", err)
+		}
+	}
+	return nil
+}
+
+// updateLoadBalancerSection updates the loadBalancer section with the use-octavia key
+// and and depending on the network type also the enabled key. It returns any error that happens.
+func updateLoadBalancerSection(loadBalancer *ini.Section, network *configv1.Network) error {
+	useOctaviaKey, err := loadBalancer.GetKey("use-octavia")
+	if err != nil {
+		_, err = loadBalancer.NewKey("use-octavia", "true")
+		if err != nil {
+			return fmt.Errorf("failed to modify the provided configuration: %w", err)
+		}
+	} else {
+		useOctaviaKey.SetValue("true")
+	}
+	if network.Spec.NetworkType == string(operatorv1.NetworkTypeKuryr) {
+		enabledKey, err := loadBalancer.GetKey("enabled")
+		if err != nil {
+			_, err = loadBalancer.NewKey("enabled", "false")
+			if err != nil {
+				return fmt.Errorf("failed to modify the provided configuration: %w", err)
+			}
+		} else {
+			enabledKey.SetValue("false")
+		}
+	}
+	return nil
+}
+
 func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets, error) {
 	images := &imagesReference{
 		CloudControllerManager: config.ImagesReference.CloudControllerManagerOpenStack,
@@ -90,7 +138,7 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 // modifies it to be compatible with the external cloud provider. It returns
 // an error if the platform is not OpenStackPlatformType or if any errors are
 // encountered while attempting to rework the configuration.
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
 	if infra.Status.PlatformStatus == nil ||
 		infra.Status.PlatformStatus.Type != configv1.OpenStackPlatformType {
 		return "", fmt.Errorf("invalid platform, expected to be %s", configv1.OpenStackPlatformType)
@@ -141,6 +189,17 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure) (stri
 	if blockStorage != nil {
 		klog.Infof("[BlockStorage] section found; dropping section...")
 		cfg.DeleteSection("BlockStorage")
+	}
+
+	loadBalancer, _ := cfg.GetSection("LoadBalancer")
+	if loadBalancer == nil {
+		if err = createLoadBalancerSection(cfg, network); err != nil {
+			return "", fmt.Errorf("could not create load balancer section: %w", err)
+		}
+	} else {
+		if err = updateLoadBalancerSection(loadBalancer, network); err != nil {
+			return "", fmt.Errorf("could not update load balancer section: %w", err)
+		}
 	}
 
 	var buf bytes.Buffer

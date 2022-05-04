@@ -6,6 +6,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,6 +37,17 @@ func makeInfrastructureResource(platform configv1.PlatformType) *configv1.Infras
 			PlatformSpec: configv1.PlatformSpec{
 				Type: platform,
 			},
+		},
+	}
+}
+
+func makeNetworkResource() *configv1.Network {
+	return &configv1.Network{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+		Spec: configv1.NetworkSpec{
+			NetworkType: string(operatorv1.NetworkTypeOpenShiftSDN),
 		},
 	}
 }
@@ -161,6 +173,10 @@ var _ = Describe("Cloud config sync controller", func() {
 		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
 		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
 
+		By("Creating network resource")
+		networkResource := makeNetworkResource()
+		Expect(cl.Create(ctx, networkResource)).To(Succeed())
+
 		By("Creating needed ConfigMaps")
 		infraCloudConfig = makeInfraCloudConfig()
 		managedCloudConfig = makeManagedCloudConfig()
@@ -217,6 +233,14 @@ var _ = Describe("Cloud config sync controller", func() {
 		Eventually(
 			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)),
 		).Should(BeTrue())
+
+		networkResource := makeNetworkResource()
+		Expect(cl.Delete(ctx, networkResource)).To(Succeed())
+
+		Eventually(func() bool {
+			err := cl.Get(ctx, client.ObjectKeyFromObject(networkResource), networkResource)
+			return apierrors.IsNotFound(err)
+		}).Should(BeTrue(), "Expected not found error")
 	})
 
 	It("config should be synced up after first reconcile", func() {
@@ -340,6 +364,9 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		}
 
 		Expect(cl.Create(ctx, makeInfraCloudConfig())).To(Succeed())
+		networkResource := makeNetworkResource()
+		Expect(cl.Create(ctx, networkResource)).To(Succeed())
+
 	})
 
 	It("reconcile should fail if no infra resource found", func() {
@@ -416,6 +443,14 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		Eventually(
 			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)),
 		).Should(BeTrue())
+
+		networkResource := makeNetworkResource()
+		Expect(cl.Delete(ctx, networkResource)).To(Succeed())
+
+		Eventually(func() bool {
+			err := cl.Get(ctx, client.ObjectKeyFromObject(networkResource), networkResource)
+			return apierrors.IsNotFound(err)
+		}).Should(BeTrue(), "Expected not found error")
 
 		allCMs := &corev1.ConfigMapList{}
 		Expect(cl.List(ctx, allCMs)).To(Succeed())

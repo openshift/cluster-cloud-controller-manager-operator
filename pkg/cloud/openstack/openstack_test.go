@@ -6,6 +6,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -77,45 +78,65 @@ func makeInfrastructureResource(platform configv1.PlatformType) *configv1.Infras
 	}
 }
 
+func makeNetworkResource(network operatorv1.NetworkType) *configv1.Network {
+	return &configv1.Network{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+		Status: configv1.NetworkStatus{
+			NetworkType: string(network),
+		},
+		Spec: configv1.NetworkSpec{
+			NetworkType: string(network),
+		},
+	}
+}
+
 func TestCloudConfigTransformer(t *testing.T) {
 
 	tc := []struct {
-		name   string
-		source string
-		infra  *configv1.Infrastructure
-		errMsg string
+		name    string
+		source  string
+		infra   *configv1.Infrastructure
+		errMsg  string
+		network *configv1.Network
 	}{
 		{
-			name:   "Invalid platform",
-			source: "",
-			infra:  makeInfrastructureResource(configv1.AWSPlatformType),
-			errMsg: "invalid platform, expected to be OpenStack",
+			name:    "Invalid platform",
+			source:  "",
+			infra:   makeInfrastructureResource(configv1.AWSPlatformType),
+			errMsg:  "invalid platform, expected to be OpenStack",
+			network: makeNetworkResource(operatorv1.NetworkTypeOpenShiftSDN),
 		}, {
 			name: "Config with unsupported secret-namespace override",
 			source: `[Global]
 secret-namespace = foo
 secret-name = openstack-credentials`,
-			infra:  makeInfrastructureResource(configv1.OpenStackPlatformType),
-			errMsg: "'[Global] secret-namespace' is set to a non-default value",
+			infra:   makeInfrastructureResource(configv1.OpenStackPlatformType),
+			errMsg:  "'[Global] secret-namespace' is set to a non-default value",
+			network: makeNetworkResource(operatorv1.NetworkTypeOpenShiftSDN),
 		}, {
 			name: "Config with unsupported secret-name override",
 			source: `[Global]
 secret-namespace = kube-system
 secret-name = foo`,
-			infra:  makeInfrastructureResource(configv1.OpenStackPlatformType),
-			errMsg: "'[Global] secret-name' is set to a non-default value",
+			infra:   makeInfrastructureResource(configv1.OpenStackPlatformType),
+			errMsg:  "'[Global] secret-name' is set to a non-default value",
+			network: makeNetworkResource(operatorv1.NetworkTypeOpenShiftSDN),
 		}, {
 			name: "Config with unsupported kubeconfig-path override",
 			source: `[Global]
 secret-namespace = kube-system
 secret-name = openstack-credentials
 kubeconfig-path = https://foo`,
-			infra:  makeInfrastructureResource(configv1.OpenStackPlatformType),
-			errMsg: "'[Global] kubeconfig-path' is set to a non-default value",
+			infra:   makeInfrastructureResource(configv1.OpenStackPlatformType),
+			errMsg:  "'[Global] kubeconfig-path' is set to a non-default value",
+			network: makeNetworkResource(operatorv1.NetworkTypeOpenShiftSDN),
 		}, {
-			name:   "Empty config",
-			source: "",
-			infra:  makeInfrastructureResource(configv1.OpenStackPlatformType),
+			name:    "Empty config",
+			source:  "",
+			infra:   makeInfrastructureResource(configv1.OpenStackPlatformType),
+			network: makeNetworkResource(operatorv1.NetworkTypeOpenShiftSDN),
 		}, {
 			name: "Non-empty config",
 			source: `[Global]
@@ -125,14 +146,30 @@ secret-namespace = kube-system
 [BlockStorage]
 ignore-volume-az = true
 `,
-			infra: makeInfrastructureResource(configv1.OpenStackPlatformType),
+			infra:   makeInfrastructureResource(configv1.OpenStackPlatformType),
+			network: makeNetworkResource(operatorv1.NetworkTypeOpenShiftSDN),
+		},
+		{
+			name: "Non-empty config",
+			source: `[Global]
+secret-name = openstack-credentials
+secret-namespace = kube-system
+
+[BlockStorage]
+ignore-volume-az = true
+
+[LoadBalancer]
+use-octavia = false
+`,
+			infra:   makeInfrastructureResource(configv1.OpenStackPlatformType),
+			network: makeNetworkResource(operatorv1.NetworkTypeKuryr),
 		},
 	}
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
-			actual, err := CloudConfigTransformer(tc.source, tc.infra)
+			actual, err := CloudConfigTransformer(tc.source, tc.infra, tc.network)
 			if tc.errMsg != "" {
 				g.Expect(err).Should(MatchError(tc.errMsg))
 				return
@@ -140,10 +177,22 @@ ignore-volume-az = true
 				expected := `[Global]
 use-clouds  = true
 clouds-file = /etc/openstack/secret/clouds.yaml
-cloud       = openstack`
+cloud       = openstack
+
+[LoadBalancer]
+use-octavia = true`
+				if tc.network.Status.NetworkType == string(operatorv1.NetworkTypeKuryr) {
+					expected = `[Global]
+use-clouds  = true
+clouds-file = /etc/openstack/secret/clouds.yaml
+cloud       = openstack
+
+[LoadBalancer]
+use-octavia = true
+enabled     = false`
+				}
 				actual := strings.TrimSpace(actual)
 				g.Expect(actual).Should(Equal(expected))
-
 			}
 		})
 	}

@@ -36,13 +36,21 @@ type CloudConfigReconciler struct {
 }
 
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	klog.Infof("%s emitted event, syncing cloud-conf ConfigMap", req)
+	klog.Infof("Syncing cloud-conf ConfigMap")
 
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
 		klog.Errorf("infrastructure resource not found")
 		if err := r.setDegradedCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, err
+	}
+
+	network := &configv1.Network{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "cluster"}, network); err != nil {
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller when getting cluster Network object: %v", err)
 		}
 		return ctrl.Result{}, err
 	}
@@ -126,7 +134,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
 		// we're not expecting users to put their data in the former.
-		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra)
+		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network)
 		if err != nil {
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
@@ -251,8 +259,12 @@ func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Watches(
 			&source.Kind{Type: &configv1.Infrastructure{}},
-			&handler.EnqueueRequestForObject{},
+			handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
 			builder.WithPredicates(infrastructurePredicates()),
+		).
+		Watches(
+			&source.Kind{Type: &configv1.Network{}},
+			handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
 		)
 
 	return build.Complete(r)
