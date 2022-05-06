@@ -75,7 +75,6 @@ spec:
               source /etc/kubernetes/apiserver-url.env
             fi
             exec /bin/ibm-cloud-controller-manager \
-            --port=0 \
             --bind-address=$(POD_IP_ADDRESS) \
             --use-service-account-credentials=true \
             --configure-cloud-routes=false \
