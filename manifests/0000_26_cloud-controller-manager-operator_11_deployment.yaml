@@ -118,9 +118,6 @@ spec:
         operator: "Exists"
         effect: "NoExecute"
         tolerationSeconds: 120
-      - key: "node.cloudprovider.kubernetes.io/uninitialized"
-        operator: "Exists"
-        effect: "NoSchedule"
         # CNI relies on CCM to fill in IP information on Node objects.
         # Therefore we must schedule before the CNI can mark the Node as ready.
       - key: "node.kubernetes.io/not-ready"
