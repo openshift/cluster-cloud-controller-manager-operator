@@ -338,6 +338,11 @@ func TestRenderedResources(t *testing.T) {
 				checkLeaderElection(t, podSpec)
 				checkCloudControllerManagerFlags(t, podSpec)
 				checkTrustedCAMounted(t, podSpec)
+				if platform.platformStatus.Type != configv1.VSpherePlatformType {
+					// we don't use service account credentials on vSphere as its CCM behavior
+					// is different from the in-tree cloud provider.
+					checkUseServiceAccountCredentials(t, podSpec)
+				}
 			}
 		})
 	}
@@ -583,6 +588,24 @@ func checkTrustedCAMounted(t *testing.T, podSpec corev1.PodSpec) {
 	assert.Contains(t, podSpec.Volumes, trustedCAVolume, "PodSpec %s volumes should contain trusted-ca volume")
 	for _, c := range podSpec.Containers {
 		assert.Contains(t, c.VolumeMounts, trustedCAVolumeMount, "Container VolumeMounts should contain trusted ca volume mount")
+	}
+}
+
+func checkUseServiceAccountCredentials(t *testing.T, podSpec corev1.PodSpec) {
+	const (
+		useServiceAccountCredentials = "--use-service-account-credentials=true"
+	)
+
+	for _, container := range podSpec.Containers {
+		if container.Name != "cloud-controller-manager" {
+			// Only the cloud-controller-manager container needs leader election
+			continue
+		}
+
+		command := container.Command
+		assert.Len(t, command, 3, "Container Command should have 3 elements")
+
+		assert.Contains(t, command[2], useServiceAccountCredentials, "Container Command third (%q) element should contain flag %q", command[2], useServiceAccountCredentials)
 	}
 }
 
