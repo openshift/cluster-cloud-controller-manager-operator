@@ -675,6 +675,7 @@ var _ = Describe("Apply resources should", func() {
 		}
 
 		recorder = record.NewFakeRecorder(32)
+		recorder.IncludeObject = true
 		reconciler = &CloudOperatorReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:   cl,
@@ -709,7 +710,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 	})
 
 	It("Expect update when deployment generation have changed", func() {
@@ -730,7 +731,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		dep.Spec.Replicas = pointer.Int32Ptr(20)
 
@@ -755,7 +756,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), objects)
 		Expect(err).Should(HaveOccurred())
 		Expect(updated).To(BeFalse())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Update failed")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Create failed")))
 	})
 
 	It("Expect no update when resources are applied twice", func() {
@@ -768,7 +769,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -794,7 +795,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		// Manually changing the port number
 		ports := []corev1.ContainerPort{
@@ -854,7 +855,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		// Manually adding another port
 		newPort := corev1.ContainerPort{
@@ -917,7 +918,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		// Manually inserting a new label
 		dep.Labels[labelName] = labelValue
@@ -970,7 +971,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		// Now the deployment has just one label "k8s-app: aws-cloud-controller-manager"
 		// Manually modifying the value
