@@ -381,16 +381,38 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		Expect(err.Error()).Should(BeEquivalentTo("platformStatus is required"))
 	})
 
-	It("should skip config sync for AWS platform", func() {
+	It("should skip config sync for AWS platform if there is no reference in infra resource", func() {
 		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+		infraResource.Spec.CloudConfig.Name = ""
 		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
 		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
 		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
 		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 		Expect(err).To(BeNil())
+
 		allCMs := &corev1.ConfigMapList{}
 		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+
 		Expect(len(allCMs.Items)).To(BeZero())
+	})
+
+	It("should perform config sync for AWS platform if there is a reference in infra resource", func() {
+		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+		Expect(err).To(BeNil())
+
+		allCMs := &corev1.ConfigMapList{}
+		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+
+		Expect(len(allCMs.Items)).NotTo(BeZero())
+		Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
 	})
 
 	It("should skip config sync for BareMetal platform", func() {

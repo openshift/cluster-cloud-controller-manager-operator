@@ -55,7 +55,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus)
+	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus, infra.Spec.CloudConfig)
 	if err != nil {
 		if err := r.setDegradedCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
@@ -183,7 +183,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1.PlatformStatus) (bool, error) {
+func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1.PlatformStatus, infraCloudConfigRef configv1.ConfigMapFileReference) (bool, error) {
 	if platformStatus == nil {
 		return false, fmt.Errorf("platformStatus is required")
 	}
@@ -196,6 +196,9 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 		configv1.PowerVSPlatformType,
 		configv1.OpenStackPlatformType:
 		return true, nil
+	case configv1.AWSPlatformType:
+		// Some of AWS regions might require to sync a cloud-config, in such case reference in infra resource will be presented
+		return infraCloudConfigRef.Name != "", nil
 	default:
 		return false, nil
 	}
