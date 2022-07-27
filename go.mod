@@ -8,7 +8,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.18.1
 	github.com/openshift/api v0.0.0-20220525145417-ee5b62754c68
-	github.com/openshift/library-go v0.0.0-20220512194226-3c66b317b110
+	github.com/openshift/library-go v0.0.0-20220727134723-6802b30e83ba
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
@@ -23,8 +23,6 @@ require (
 	sigs.k8s.io/controller-runtime v0.12.1
 	sigs.k8s.io/yaml v1.3.0
 )
-
-replace github.com/openshift/library-go => github.com/JoelSpeed/library-go v0.0.0-20220726100516-3431d9d80fd1
 
 require (
 	cloud.google.com/go v0.81.0 // indirect
