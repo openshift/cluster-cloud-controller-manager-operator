@@ -7,7 +7,7 @@ require (
 	github.com/go-logr/logr v1.2.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.18.1
-	github.com/openshift/api v0.0.0-20220511093956-b017c00b66b6
+	github.com/openshift/api v0.0.0-20220525145417-ee5b62754c68
 	github.com/openshift/library-go v0.0.0-20220512194226-3c66b317b110
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/pflag v1.0.5
@@ -23,6 +23,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.12.1
 	sigs.k8s.io/yaml v1.3.0
 )
+
+replace github.com/openshift/library-go => github.com/JoelSpeed/library-go v0.0.0-20220726100516-3431d9d80fd1
 
 require (
 	cloud.google.com/go v0.81.0 // indirect
@@ -61,7 +63,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/openshift/client-go v0.0.0-20220504114320-6aec01bb0754 // indirect
+	github.com/openshift/client-go v0.0.0-20220525160904-9e1acff93e4a // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.12.1 // indirect
