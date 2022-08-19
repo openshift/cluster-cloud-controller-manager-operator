@@ -53,6 +53,7 @@ func (tp *testPlatform) getOperatorConfig() config.OperatorConfig {
 			CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			CloudControllerManagerVSphere:   "registry.ci.openshift.org/openshift:vsphere-cloud-controller-manager",
 			CloudControllerManagerPowerVS:   "quay.io/openshift/origin-powervs-cloud-controller-manager",
+			CloudControllerManagerNutanix:   "quay.io/openshift/origin-nutanix-cloud-controller-manager",
 		},
 		PlatformStatus:     tp.platformStatus,
 		InfrastructureName: "my-cool-cluster-777",

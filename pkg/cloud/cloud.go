@@ -14,6 +14,7 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azurestack"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/gcp"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/ibm"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/nutanix"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/openstack"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/powervs"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere"
@@ -53,6 +54,8 @@ func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudCo
 		return common.NoOpTransformer, nil
 	case configv1.VSpherePlatformType:
 		return vsphere.CloudConfigTransformer, nil
+	case configv1.NutanixPlatformType:
+		return common.NoOpTransformer, nil
 	default:
 		return nil, newPlatformNotFoundError(platformStatus.Type)
 	}
@@ -120,6 +123,8 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 		return powervs.NewProviderAssets, nil
 	case configv1.VSpherePlatformType:
 		return vsphere.NewProviderAssets, nil
+	case configv1.NutanixPlatformType:
+		return nutanix.NewProviderAssets, nil
 	default:
 		return nil, newPlatformNotFoundError(platformStatus.Type)
 	}
