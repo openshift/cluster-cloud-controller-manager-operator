@@ -3,7 +3,7 @@
 IMG ?= controller:latest
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.22
+ENVTEST_K8S_VERSION = 1.25
 
 # Tools' pinned versions
 CONTROLLER_GEN_VERSION = v0.8.0
