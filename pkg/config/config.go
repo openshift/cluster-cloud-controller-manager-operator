@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -60,7 +60,7 @@ func checkInfrastructureResource(infra *configv1.Infrastructure) error {
 // getImagesFromJSONFile is used in operator to read the content of mounted ConfigMap
 // containing images for substitution in templates
 func getImagesFromJSONFile(filePath string) (ImagesReference, error) {
-	data, err := ioutil.ReadFile(filepath.Clean(filePath))
+	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return ImagesReference{}, err
 	}

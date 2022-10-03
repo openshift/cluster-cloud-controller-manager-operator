@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -79,7 +78,7 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 func readCloudConfig(path string) (map[string]interface{}, error) {
 	var data map[string]interface{}
 
-	rawData, err := ioutil.ReadFile(path)
+	rawData, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +101,7 @@ func prepareCloudConfig(cloudConfig map[string]interface{}, clientId string, cli
 }
 
 func writeCloudConfig(path string, preparedConfig []byte) error {
-	if err := ioutil.WriteFile(path, preparedConfig, 0644); err != nil {
+	if err := os.WriteFile(path, preparedConfig, 0644); err != nil {
 		return err
 	}
 	return nil

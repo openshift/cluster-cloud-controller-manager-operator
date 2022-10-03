@@ -1,7 +1,6 @@
 package config
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -84,7 +83,7 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			path := "./not_found"
 			if tc.path != "" {
-				file, err := ioutil.TempFile(os.TempDir(), tc.path)
+				file, err := os.CreateTemp(os.TempDir(), tc.path)
 				path = file.Name()
 				assert.NoError(t, err)
 				defer file.Close()
@@ -265,7 +264,7 @@ func TestComposeConfig(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
-			file, err := ioutil.TempFile(os.TempDir(), "images")
+			file, err := os.CreateTemp(os.TempDir(), "images")
 			path := file.Name()
 			assert.NoError(t, err)
 			defer file.Close()

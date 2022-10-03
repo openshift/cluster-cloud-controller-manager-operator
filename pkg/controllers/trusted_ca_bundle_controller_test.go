@@ -3,7 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -33,7 +33,7 @@ const (
 )
 
 func makeValidUserCAConfigMap(pemPath string) (*corev1.ConfigMap, error) {
-	testTrustBundle, err := ioutil.ReadFile(pemPath)
+	testTrustBundle, err := os.ReadFile(pemPath)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +212,7 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		Expect(len(certs)).Should(BeEquivalentTo(3))
 		Expect(certs[0].Issuer.Organization[0]).Should(BeEquivalentTo("Amazon"))
 
-		msCA, err := ioutil.ReadFile(additionalMsCAPemPath)
+		msCA, err := os.ReadFile(additionalMsCAPemPath)
 		Expect(err).To(Succeed())
 		additionalCAConfigMap.Data = map[string]string{additionalCAConfigMapKey: string(msCA)}
 		Expect(cl.Update(ctx, additionalCAConfigMap)).To(Succeed())
@@ -240,7 +240,7 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 	It("ca bundle from cloud config should be added if it differs from proxy one", func() {
 		Eventually(checkMergedTrustedCAConfig(3, "Amazon")).Should(Succeed())
 
-		msCA, err := ioutil.ReadFile(additionalMsCAPemPath)
+		msCA, err := os.ReadFile(additionalMsCAPemPath)
 		Expect(err).To(Succeed())
 		syncedCloudConfigConfigMap.Data = map[string]string{cloudProviderConfigCABundleConfigMapKey: string(msCA)}
 		Expect(cl.Update(ctx, syncedCloudConfigConfigMap)).To(Succeed())
@@ -251,7 +251,7 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 	It("ca bundle from cloud config should not be added if it is the same as proxy one", func() {
 		Eventually(checkMergedTrustedCAConfig(3, "Amazon")).Should(Succeed())
 
-		awsCA, err := ioutil.ReadFile(additionalAmazonCAPemPath)
+		awsCA, err := os.ReadFile(additionalAmazonCAPemPath)
 		Expect(err).To(Succeed())
 		syncedCloudConfigConfigMap.Data = map[string]string{cloudProviderConfigCABundleConfigMapKey: string(awsCA)}
 		Expect(cl.Update(ctx, syncedCloudConfigConfigMap)).To(Succeed())
@@ -260,7 +260,7 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 	})
 
 	It("proxy ca should still be added to merged bundle in case if cloud-config contains broken one", func() {
-		awsCA, err := ioutil.ReadFile(systemCAInvalid)
+		awsCA, err := os.ReadFile(systemCAInvalid)
 		Expect(err).To(Succeed())
 		syncedCloudConfigConfigMap.Data = map[string]string{cloudProviderConfigCABundleConfigMapKey: string(awsCA)}
 		Expect(cl.Update(ctx, syncedCloudConfigConfigMap)).To(Succeed())
@@ -272,7 +272,7 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		additionalCAConfigMap.Data = map[string]string{additionalCAConfigMapKey: "kekekeke"}
 		Expect(cl.Update(ctx, additionalCAConfigMap)).To(Succeed())
 
-		msCA, err := ioutil.ReadFile(additionalMsCAPemPath)
+		msCA, err := os.ReadFile(additionalMsCAPemPath)
 		Expect(err).To(Succeed())
 		syncedCloudConfigConfigMap.Data = map[string]string{cloudProviderConfigCABundleConfigMapKey: string(msCA)}
 		Expect(cl.Update(ctx, syncedCloudConfigConfigMap)).To(Succeed())
