@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -246,7 +246,7 @@ func (r *TrustedCABundleReconciler) getTrustBundlePath() string {
 }
 
 func (r *TrustedCABundleReconciler) getSystemTrustBundle() ([]byte, error) {
-	bundleData, err := ioutil.ReadFile(r.getTrustBundlePath())
+	bundleData, err := os.ReadFile(r.getTrustBundlePath())
 	if err != nil {
 		return nil, err
 	}

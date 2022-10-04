@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -28,15 +27,15 @@ func executeCommandC(root *cobra.Command, args ...string) (c *cobra.Command, out
 }
 
 func Test_mergeCloudConfig(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "cccmo-azure-creds-injector")
+	tmpDir, err := os.MkdirTemp("", "cccmo-azure-creds-injector")
 	require.NoError(t, err)
 	defer os.Remove(tmpDir)
 
-	inputFile, err := ioutil.TempFile(tmpDir, "dummy-config")
+	inputFile, err := os.CreateTemp(tmpDir, "dummy-config")
 	require.NoError(t, err)
 	defer os.Remove(inputFile.Name())
 
-	outputFile, err := ioutil.TempFile(tmpDir, "dummy-config-merged")
+	outputFile, err := os.CreateTemp(tmpDir, "dummy-config-merged")
 	require.NoError(t, err)
 	defer os.Remove(outputFile.Name())
 
@@ -48,7 +47,7 @@ func Test_mergeCloudConfig(t *testing.T) {
 	}
 
 	cleanupInputFile := func(path string) {
-		err := ioutil.WriteFile(inputFile.Name(), []byte(""), 0644)
+		err := os.WriteFile(inputFile.Name(), []byte(""), 0644)
 		require.NoError(t, err, "Cannot cleanup input file")
 	}
 
@@ -130,7 +129,7 @@ func Test_mergeCloudConfig(t *testing.T) {
 			defer cleanupEnv(tc.envVars)
 
 			if tc.fileContent != "" {
-				err = ioutil.WriteFile(inputFile.Name(), []byte(tc.fileContent), 0644)
+				err = os.WriteFile(inputFile.Name(), []byte(tc.fileContent), 0644)
 				require.NoError(t, err)
 				defer cleanupInputFile(inputFile.Name())
 			}
@@ -143,7 +142,7 @@ func Test_mergeCloudConfig(t *testing.T) {
 			}
 
 			if tc.expectedContent != "" {
-				fileContent, err := ioutil.ReadFile(outputFile.Name())
+				fileContent, err := os.ReadFile(outputFile.Name())
 				require.NoError(t, err, "Cannot read output file")
 				stringFileContent := string(fileContent)
 				assert.Equal(t, tc.expectedContent, stringFileContent)

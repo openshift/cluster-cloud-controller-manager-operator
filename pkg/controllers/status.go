@@ -198,7 +198,7 @@ func (r *ClusterOperatorStatusClient) relatedObjects() []configv1.ObjectReferenc
 	}
 }
 
-//syncStatus applies the new condition to the ClusterOperator object.
+// syncStatus applies the new condition to the ClusterOperator object.
 func (r *ClusterOperatorStatusClient) syncStatus(ctx context.Context, co *configv1.ClusterOperator, conds []configv1.ClusterOperatorStatusCondition) error {
 	for _, c := range conds {
 		v1helpers.SetStatusCondition(&co.Status.Conditions, c)
