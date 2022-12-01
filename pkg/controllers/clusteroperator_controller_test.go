@@ -736,7 +736,7 @@ var _ = Describe("Apply resources should", func() {
 		Expect(updated).To(BeTrue())
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
-		dep.Spec.Replicas = pointer.Int32Ptr(20)
+		dep.Spec.Replicas = pointer.Int32(20)
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
