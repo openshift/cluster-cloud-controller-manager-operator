@@ -52,7 +52,7 @@ func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudCo
 		//Power VS platform uses ibm cloud provider
 		return common.NoOpTransformer, nil
 	case configv1.VSpherePlatformType:
-		return common.NoOpTransformer, nil
+		return vsphere.CloudConfigTransformer, nil
 	default:
 		return nil, newPlatformNotFoundError(platformStatus.Type)
 	}
