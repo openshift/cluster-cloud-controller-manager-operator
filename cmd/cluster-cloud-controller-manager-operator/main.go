@@ -41,6 +41,7 @@ import (
 	operatorv1 "github.com/openshift/api/operator/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/restmapper"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 	// +kubebuilder:scaffold:imports
 )
@@ -112,11 +113,17 @@ func main() {
 
 	syncPeriod := 10 * time.Minute
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
-		Namespace:               *managedNamespace,
-		Scheme:                  scheme,
-		SyncPeriod:              &syncPeriod,
-		MetricsBindAddress:      *metricsAddr,
-		Port:                    9443,
+		Namespace:          *managedNamespace,
+		Scheme:             scheme,
+		SyncPeriod:         &syncPeriod,
+		MetricsBindAddress: *metricsAddr,
+		Port:               9443,
+		MapperProvider: restmapper.NewPartialRestMapperProvider(
+			restmapper.Or(
+				restmapper.KubernetesCoreGroup, restmapper.KubernetesAppsGroup, restmapper.KubernetesPolicyGroup,
+				restmapper.OpenshiftOperatorGroup, restmapper.OpenshiftConfigGroup,
+			),
+		),
 		HealthProbeBindAddress:  *healthAddr,
 		LeaderElectionNamespace: leaderElectionConfig.ResourceNamespace,
 		LeaderElection:          leaderElectionConfig.LeaderElect,
