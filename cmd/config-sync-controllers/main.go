@@ -41,6 +41,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/restmapper"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 	// +kubebuilder:scaffold:imports
 )
@@ -98,11 +99,18 @@ func main() {
 		*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace,
 	})
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
-		Namespace:               *managedNamespace,
-		Scheme:                  scheme,
-		SyncPeriod:              &syncPeriod,
-		MetricsBindAddress:      "0", // we do not expose any metric at this point
-		HealthProbeBindAddress:  *healthAddr,
+		Namespace:              *managedNamespace,
+		Scheme:                 scheme,
+		SyncPeriod:             &syncPeriod,
+		MetricsBindAddress:     "0", // we do not expose any metric at this point
+		HealthProbeBindAddress: *healthAddr,
+		MapperProvider: restmapper.NewPartialRestMapperProvider(
+			restmapper.Or(
+				restmapper.KubernetesCoreGroup,
+				restmapper.OpenshiftOperatorGroup,
+				restmapper.OpenshiftConfigGroup,
+			),
+		),
 		LeaderElectionNamespace: leaderElectionConfig.ResourceNamespace,
 		LeaderElection:          leaderElectionConfig.LeaderElect,
 		LeaderElectionID:        leaderElectionConfig.ResourceName,
