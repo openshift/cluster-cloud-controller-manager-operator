@@ -99,18 +99,12 @@ func main() {
 		*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace,
 	})
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
-		Namespace:              *managedNamespace,
-		Scheme:                 scheme,
-		SyncPeriod:             &syncPeriod,
-		MetricsBindAddress:     "0", // we do not expose any metric at this point
-		HealthProbeBindAddress: *healthAddr,
-		MapperProvider: restmapper.NewPartialRestMapperProvider(
-			restmapper.Or(
-				restmapper.KubernetesCoreGroup,
-				restmapper.OpenshiftOperatorGroup,
-				restmapper.OpenshiftConfigGroup,
-			),
-		),
+		Namespace:               *managedNamespace,
+		Scheme:                  scheme,
+		SyncPeriod:              &syncPeriod,
+		MetricsBindAddress:      "0", // we do not expose any metric at this point
+		HealthProbeBindAddress:  *healthAddr,
+		MapperProvider:          restmapper.NewLazyRESTMapper,
 		LeaderElectionNamespace: leaderElectionConfig.ResourceNamespace,
 		LeaderElection:          leaderElectionConfig.LeaderElect,
 		LeaderElectionID:        leaderElectionConfig.ResourceName,

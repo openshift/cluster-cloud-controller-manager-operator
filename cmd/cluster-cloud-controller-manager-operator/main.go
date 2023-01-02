@@ -113,17 +113,12 @@ func main() {
 
 	syncPeriod := 10 * time.Minute
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
-		Namespace:          *managedNamespace,
-		Scheme:             scheme,
-		SyncPeriod:         &syncPeriod,
-		MetricsBindAddress: *metricsAddr,
-		Port:               9443,
-		MapperProvider: restmapper.NewPartialRestMapperProvider(
-			restmapper.Or(
-				restmapper.KubernetesCoreGroup, restmapper.KubernetesAppsGroup, restmapper.KubernetesPolicyGroup,
-				restmapper.OpenshiftOperatorGroup, restmapper.OpenshiftConfigGroup,
-			),
-		),
+		Namespace:               *managedNamespace,
+		Scheme:                  scheme,
+		SyncPeriod:              &syncPeriod,
+		MetricsBindAddress:      *metricsAddr,
+		Port:                    9443,
+		MapperProvider:          restmapper.NewLazyRESTMapper,
 		HealthProbeBindAddress:  *healthAddr,
 		LeaderElectionNamespace: leaderElectionConfig.ResourceNamespace,
 		LeaderElection:          leaderElectionConfig.LeaderElect,
