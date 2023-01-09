@@ -27,6 +27,8 @@ require (
 	sigs.k8s.io/yaml v1.3.0
 )
 
+replace github.com/openshift/library-go => github.com/JoelSpeed/library-go v0.0.0-20230109105426-a2230524c08e
+
 require (
 	4d63.com/gochecknoglobals v0.1.0 // indirect
 	cloud.google.com/go/compute v1.6.1 // indirect
