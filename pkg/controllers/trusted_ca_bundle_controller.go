@@ -51,7 +51,7 @@ func isSpecTrustedCASet(proxyConfig *configv1.ProxySpec) bool {
 }
 
 func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	klog.Infof("%s emitted event, syncing %s ConfigMap", req, trustedCAConfigMapName)
+	klog.V(1).Infof("%s emitted event, syncing %s ConfigMap", req, trustedCAConfigMapName)
 
 	proxyConfig := &configv1.Proxy{}
 	if err := r.Get(ctx, types.NamespacedName{Name: proxyResourceName}, proxyConfig); err != nil {
@@ -78,7 +78,7 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 		}
 
-		klog.Infof("changed config map %s is not a proxy trusted ca, skipping", req)
+		klog.V(1).Infof("changed config map %s is not a proxy trusted ca, skipping", req)
 		return reconcile.Result{}, nil
 	}
 
@@ -313,7 +313,7 @@ func (r *TrustedCABundleReconciler) setAvailableCondition(ctx context.Context) e
 	}
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
-	klog.Info("Trusted CA Bundle Controller is available")
+	klog.V(1).Info("Trusted CA Bundle Controller is available")
 	return r.syncStatus(ctx, co, conds)
 }
 
