@@ -36,7 +36,7 @@ type CloudConfigReconciler struct {
 }
 
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	klog.Infof("Syncing cloud-conf ConfigMap")
+	klog.V(1).Infof("Syncing cloud-conf ConfigMap")
 
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
@@ -161,7 +161,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Note that the source config map is actually a *transformed* source config map
 	if r.isCloudConfigEqual(sourceCM, targetCM) {
-		klog.Infof("source and target cloud-config content are equal, no sync needed")
+		klog.V(1).Infof("source and target cloud-config content are equal, no sync needed")
 		if err := r.setAvailableCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 		}
@@ -287,7 +287,7 @@ func (r *CloudConfigReconciler) setAvailableCondition(ctx context.Context) error
 	}
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
-	klog.Info("Cloud Config Controller is available")
+	klog.V(1).Info("Cloud Config Controller is available")
 	return r.syncStatus(ctx, co, conds)
 }
 
