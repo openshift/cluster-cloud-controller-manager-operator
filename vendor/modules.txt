@@ -525,7 +525,7 @@ github.com/openshift/client-go/config/applyconfigurations/config/v1
 github.com/openshift/client-go/config/applyconfigurations/internal
 github.com/openshift/client-go/config/clientset/versioned/scheme
 github.com/openshift/client-go/config/clientset/versioned/typed/config/v1
-# github.com/openshift/library-go v0.0.0-20220920133651-093893cf326b
+# github.com/openshift/library-go v0.0.0-20220920133651-093893cf326b => github.com/JoelSpeed/library-go v0.0.0-20230109105426-a2230524c08e
 ## explicit; go 1.18
 github.com/openshift/library-go/pkg/cloudprovider
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
@@ -1363,3 +1363,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.3.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml
+# github.com/openshift/library-go => github.com/JoelSpeed/library-go v0.0.0-20230109105426-a2230524c08e

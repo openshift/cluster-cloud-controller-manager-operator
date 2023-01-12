@@ -84,6 +84,8 @@ github.com/Djarvur/go-err113 v0.0.0-20210108212216-aea10b59be24 h1:sHglBQTwgx+rW
 github.com/Djarvur/go-err113 v0.0.0-20210108212216-aea10b59be24/go.mod h1:4UJr5HIiMZrwgkSPdsjy2uOQExX/WEILpIrO9UPGuXs=
 github.com/GaijinEntertainment/go-exhaustruct/v2 v2.3.0 h1:+r1rSv4gvYn0wmRjC8X7IAzX8QezqtFV9m0MUHFJgts=
 github.com/GaijinEntertainment/go-exhaustruct/v2 v2.3.0/go.mod h1:b3g59n2Y+T5xmcxJL+UEG2f8cQploZm1mR/v6BW0mU0=
+github.com/JoelSpeed/library-go v0.0.0-20230109105426-a2230524c08e h1:4yxWd38o6duoO3vAyYFpvpEReaBavDfTSO78+hSVF7M=
+github.com/JoelSpeed/library-go v0.0.0-20230109105426-a2230524c08e/go.mod h1:KPBAXGaq7pPmA+1wUVtKr5Axg3R68IomWDkzaOxIhxM=
 github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3QEww=
 github.com/Masterminds/semver v1.5.0/go.mod h1:MB6lktGJrhw8PrUyiEoblNEGEQ+RzHPF078ddwwvV3Y=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
@@ -519,8 +521,6 @@ github.com/openshift/api v0.0.0-20220921125526-1866ef90edbf h1:Bohu/gUxpyuTjQx2m
 github.com/openshift/api v0.0.0-20220921125526-1866ef90edbf/go.mod h1:HJAEIh4gLXPDdWxgCbvmJjzd9QIxyPZJtPU0u2W4vH4=
 github.com/openshift/client-go v0.0.0-20220831193253-4950ae70c8ea h1:7JbjIzWt3Q75ErY1PAZ+gCA+bErI6HSlpffHFmMMzqM=
 github.com/openshift/client-go v0.0.0-20220831193253-4950ae70c8ea/go.mod h1:+J8DqZC60acCdpYkwVy/KH4cudgWiFZRNOBeghCzdGA=
-github.com/openshift/library-go v0.0.0-20220920133651-093893cf326b h1:LWwB7uN91G/JsMnZFd0+q6ZzAXlB4/oUOfpZWA585gw=
-github.com/openshift/library-go v0.0.0-20220920133651-093893cf326b/go.mod h1:KPBAXGaq7pPmA+1wUVtKr5Axg3R68IomWDkzaOxIhxM=
 github.com/otiai10/copy v1.2.0 h1:HvG945u96iNadPoG2/Ja2+AUJeW5YuFQMixq9yirC+k=
 github.com/otiai10/copy v1.2.0/go.mod h1:rrF5dJ5F0t/EWSYODDu4j9/vEeYHMkc8jt0zJChqQWw=
 github.com/otiai10/curr v0.0.0-20150429015615-9b4961190c95/go.mod h1:9qAhocn7zKJG+0mI8eUu6xqkFDYS2kb2saOteoSB3cE=
