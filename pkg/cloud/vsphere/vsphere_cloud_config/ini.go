@@ -8,8 +8,21 @@ import (
 	ini "gopkg.in/gcfg.v1"
 )
 
-// GlobalINI are global values
-type GlobalINI struct {
+// This file contains type definition and conversion method for vsphere-cloud-provider INI config format
+// Original code was taken from the vsphere-cloud-provider repository and copied here with as little changes as possible
+// List of changes between type definition here and in the upstream:
+// 	- Related structures collected into a single file, in cloud-provider-vsphere it split across two different modules
+//  - 'TenantRef', `IPFamilyPriority` and `SecretRef` fields was removed,
+//     since these fields are not exposed and not intended to come from the config
+//  - `createConfig` method was altered for the `cpiConfigINI`
+//  - since INI related types are not intended to be used outside of this module, their definitions were made private
+//
+// Sources:
+//  - https://github.com/kubernetes/cloud-provider-vsphere/blob/release-1.25/pkg/cloudprovider/vsphere/config/types_ini_legacy.go
+//  - https://github.com/kubernetes/cloud-provider-vsphere/blob/release-1.25/pkg/common/config/types_ini_legacy.go
+
+// globalINI are global values
+type globalINI struct {
 	// vCenter username.
 	User string `gcfg:"user"`
 	// vCenter password in clear text.
@@ -52,9 +65,9 @@ type GlobalINI struct {
 	IPFamily string `gcfg:"ip-family"`
 }
 
-// VirtualCenterConfigINI contains information used to access a remote vCenter
+// virtualCenterConfigINI contains information used to access a remote vCenter
 // endpoint.
-type VirtualCenterConfigINI struct {
+type virtualCenterConfigINI struct {
 	// vCenter username.
 	User string `gcfg:"user"`
 	// vCenter password in clear text.
@@ -87,26 +100,26 @@ type VirtualCenterConfigINI struct {
 	IPFamily string `gcfg:"ip-family"`
 }
 
-// LabelsINI tags categories and tags which correspond to "built-in node labels: zones and region"
-type LabelsINI struct {
+// labelsINI tags categories and tags which correspond to "built-in node labels: zones and region"
+type labelsINI struct {
 	Zone   string `gcfg:"zone"`
 	Region string `gcfg:"region"`
 }
 
-// CommonConfigINI is used to read and store information from the cloud configuration file
-type CommonConfigINI struct {
+// commonConfigINI is used to read and store information from the cloud configuration file
+type commonConfigINI struct {
 	// Global values...
-	Global GlobalINI
+	Global globalINI
 
 	// Virtual Center configurations
-	VirtualCenter map[string]*VirtualCenterConfigINI
+	VirtualCenter map[string]*virtualCenterConfigINI
 
 	// Tag categories and tags which correspond to "built-in node labels: zones and region"
-	Labels LabelsINI
+	Labels labelsINI
 }
 
-// NodesINI captures internal/external networks
-type NodesINI struct {
+// nodesINI captures internal/external networks
+type nodesINI struct {
 	// IP address on VirtualMachine's network interfaces included in the fields' CIDRs
 	// that will be used in respective status.addresses fields.
 	InternalNetworkSubnetCIDR string `gcfg:"internal-network-subnet-cidr"`
@@ -124,12 +137,13 @@ type NodesINI struct {
 	ExcludeExternalNetworkSubnetCIDR string `gcfg:"exclude-external-network-subnet-cidr"`
 }
 
-// CPIConfigINI is the INI representation
-type CPIConfigINI struct {
-	CommonConfigINI
-	Nodes NodesINI
+// cpiConfigINI is the INI representation
+type cpiConfigINI struct {
+	commonConfigINI
+	Nodes nodesINI
 }
 
+// parseUIntOrZero parses string to uint, returns error for negative numbers
 func parseUIntOrZero(s string) (uint, error) {
 	var parsedInt int
 	var err error
@@ -147,6 +161,8 @@ func parseUIntOrZero(s string) (uint, error) {
 	return uint(parsedInt), nil
 }
 
+// parseUIntOrZero parses datacenters string into a slice of strings
+// example "DC0,DC1" -> []string{"DC0", "DC1"}
 func splitDatacenters(datacentersString string) []string {
 	splitted := strings.Split(datacentersString, ",")
 	result := make([]string, 0)
@@ -158,7 +174,10 @@ func splitDatacenters(datacentersString string) []string {
 	return result
 }
 
-func (iniConfig *CPIConfigINI) CreateConfig() (*CPIConfig, error) {
+// createConfig creates CPIConfig instance which is ready to further YAML serialization
+// from the intermediate type cpiConfigINI.
+// Due to differences between CPIConfig and cpiConfigINI number of extra checks and conversions are happening here.
+func (iniConfig *cpiConfigINI) createConfig() (*CPIConfig, error) {
 
 	globalVcenterPort, err := parseUIntOrZero(iniConfig.Global.VCenterPort)
 	if err != nil {
@@ -203,6 +222,9 @@ func (iniConfig *CPIConfigINI) CreateConfig() (*CPIConfig, error) {
 			return nil, fmt.Errorf("invalid port parameter for vc %s: %w", keyVcConfig, err)
 		}
 
+		// For YAML based config format VCenterIP is mandatory
+		// If this field in the config in INI config is not set, it is assumed then that value in [VirtualCenter "<value>"]
+		// section header
 		vcenterIP := valVcConfig.VCenterIP
 		if vcenterIP == "" {
 			vcenterIP = keyVcConfig
@@ -232,7 +254,8 @@ func (iniConfig *CPIConfigINI) CreateConfig() (*CPIConfig, error) {
 	return cfg, nil
 }
 
-// readCPIConfigINI parses vSphere cloud config file and stores it into CPIConfig.
+// readCPIConfigINI parses vSphere cloud config file, stores it into cpiConfigINI immediately, and converts
+// it into CPIConfig with the further return.
 func readCPIConfigINI(byConfig []byte) (*CPIConfig, error) {
 	if len(byConfig) == 0 {
 		return nil, fmt.Errorf("empty INI file")
@@ -240,11 +263,11 @@ func readCPIConfigINI(byConfig []byte) (*CPIConfig, error) {
 
 	strConfig := string(byConfig[:])
 
-	cfg := &CPIConfigINI{}
+	cfg := &cpiConfigINI{}
 
 	if err := ini.FatalOnly(ini.ReadStringInto(cfg, strConfig)); err != nil {
 		return nil, err
 	}
 
-	return cfg.CreateConfig()
+	return cfg.createConfig()
 }

@@ -9,6 +9,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// ReadConfig parses vSphere cloud-config file and returns CPIConfig structure
+// Accepts both YAML and INI formats as input.
+// YAML format takes precedence, in case parsing YAML is not successful function falls back to the legacy INI format.
+// Unlike 'cloud-provider-vsphere' version of a similar function, this does ignore environment variables.
 func ReadConfig(config []byte) (*CPIConfig, error) {
 	if len(config) == 0 {
 		return nil, errors.New("vSphere config is empty")
@@ -32,6 +36,7 @@ func ReadConfig(config []byte) (*CPIConfig, error) {
 	return cfg, nil
 }
 
+// MarshalConfig serializes CPIConfig instance into a YAML document
 func MarshalConfig(config *CPIConfig) (string, error) {
 	yamlBytes, err := yaml.Marshal(config)
 	if err != nil {

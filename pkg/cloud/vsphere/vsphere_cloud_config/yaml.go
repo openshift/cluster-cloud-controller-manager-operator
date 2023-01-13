@@ -6,6 +6,21 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+// This file contains type definition fir vsphere-cloud-provider YAML config format
+// Original code was taken from the vsphere-cloud-provider repository and copied here with as little changes as possible.
+// Type definition below uses for serializing vsphere-cloud-provider into a yaml document.
+// List of changes between type definition here and in the upstream:
+// 	- Related structs collected into a single file, in cloud-provider-vsphere it split across two different modules
+//  - 'TenantRef' and `SecretRef` fields was removed,
+//     since these fields are not exposed and not intended to come from the config
+//  - 'YAML' suffix was removed from struct definition names
+//  - yaml related tags in struct definitions were altered
+//    to make YAML serialization work better and not include empty values in the result document
+//
+// Sources:
+//  - https://github.com/kubernetes/cloud-provider-vsphere/blob/release-1.25/pkg/cloudprovider/vsphere/config/types_yaml.go
+//  - https://github.com/kubernetes/cloud-provider-vsphere/blob/release-1.25/pkg/common/config/types_yaml.go
+
 // Global are global values
 type Global struct {
 	// vCenter username.
@@ -122,13 +137,13 @@ type Nodes struct {
 	ExcludeExternalNetworkSubnetCIDR string `yaml:"excludeExternalNetworkSubnetCidr,omitempty"`
 }
 
-// CPIConfig is the YAML representation
+// CPIConfig is the YAML representation of vsphere-cloud-provider config
 type CPIConfig struct {
 	CommonConfig `yaml:"-,inline"`
 	Nodes        Nodes `yaml:"nodes,omitempty"`
 }
 
-// ReadCPIConfigYAML parses vSphere cloud config file and stores it into CPIConfig
+// readCPIConfigYAML parses vSphere cloud config file and stores it into CPIConfig
 func readCPIConfigYAML(byConfig []byte) (*CPIConfig, error) {
 	if len(byConfig) == 0 {
 		return nil, fmt.Errorf("empty YAML file")
