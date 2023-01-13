@@ -9,7 +9,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.6.0
 	github.com/onsi/gomega v1.24.0
 	github.com/openshift/api v0.0.0-20220921125526-1866ef90edbf
-	github.com/openshift/library-go v0.0.0-20220920133651-093893cf326b
+	github.com/openshift/library-go v0.0.0-20230112164258-24668b1349e6
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.0
@@ -26,8 +26,6 @@ require (
 	sigs.k8s.io/controller-tools v0.10.0
 	sigs.k8s.io/yaml v1.3.0
 )
-
-replace github.com/openshift/library-go => github.com/JoelSpeed/library-go v0.0.0-20230109105426-a2230524c08e
 
 require (
 	4d63.com/gochecknoglobals v0.1.0 // indirect
