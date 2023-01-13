@@ -10,11 +10,6 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
-const (
-	infraCloudConfName = "test-config"
-	infraCloudConfKey  = "foo"
-)
-
 func TestResourcesRenderingSmoke(t *testing.T) {
 
 	tc := []struct {

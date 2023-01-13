@@ -12,6 +12,11 @@ import (
 	ccm "k8s.io/cloud-provider-vsphere/pkg/cloudprovider/vsphere/config"
 )
 
+const (
+	infraCloudConfName = "test-config"
+	infraCloudConfKey  = "foo"
+)
+
 func makeInfrastructureResource(platform configv1.PlatformType, zonal, nodeNetworking, emptyVSpherePlatformSpec bool) *configv1.Infrastructure {
 	vspherePlatformSpec := &configv1.VSpherePlatformSpec{}
 	var platformSpec configv1.PlatformSpec
@@ -162,7 +167,7 @@ insecure-flag = "1"
 server = "test-server"
 datacenter = "DC1"
 default-datastore = "Datastore"
-folder = "/DC1/vm/folder"
+folder = "/DC1/vm/F1"
 
 [VirtualCenter "test-server"]
 datacenters = "DC1"`,
@@ -193,13 +198,13 @@ secret-namespace = "kube-system"
 insecure-flag = "1"
 
 [Workspace]
-server = "vcenter.sddc-44-236-21-251.vmwarevmc.com"
-datacenter = "SDDC-Datacenter"
-default-datastore = "WorkloadDatastore"
-folder = "/SDDC-Datacenter/vm/jcallen"
+server = "test-server"
+datacenter = "DC1"
+default-datastore = "DS1"
+folder = "/DC1/vm/F1"
 
-[VirtualCenter "vcenter.sddc-44-236-21-251.vmwarevmc.com"]
-datacenters = "SDDC-Datacenter"
+[VirtualCenter "test-server"]
+datacenters = "DC1"
 
 [Labels]
 region = "k8s-region"
@@ -235,13 +240,13 @@ secret-namespace = "kube-system"
 insecure-flag = "1"
 
 [Workspace]
-server = "vcenter.sddc-44-236-21-251.vmwarevmc.com"
-datacenter = "SDDC-Datacenter"
-default-datastore = "WorkloadDatastore"
-folder = "/SDDC-Datacenter/vm/jcallen"
+server = "test-server"
+datacenter = "DC1"
+default-datastore = "DS1"
+folder = "/DC1/vm/F1"
 
 [VirtualCenter "test-server"]
-datacenters = "SDDC-Datacenter"`,
+datacenters = "DC1"`,
 			infra: makeInfrastructureResource(configv1.VSpherePlatformType,
 				false,
 				true,
@@ -255,7 +260,7 @@ secret-namespace = "kube-system"
 insecure-flag = "1"
 
 [VirtualCenter "test-server"]
-datacenters = "SDDC-Datacenter"
+datacenters = "DC1"
 
 [Nodes]
 exclude-external-network-subnet-cidr = "192.1.2.0/24,fe80::2/128"
