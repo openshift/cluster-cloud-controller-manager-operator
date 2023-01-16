@@ -43,9 +43,7 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, _ *co
 	// https://github.com/openshift/api/pull/1278
 	if infra.Spec.PlatformSpec.VSphere != nil {
 		setNodes(cpiCfg, &infra.Spec.PlatformSpec.VSphere.NodeNetworking)
-		if err := setVirtualCenters(cpiCfg, infra.Spec.PlatformSpec.VSphere); err != nil {
-			return "", fmt.Errorf("could not set VirtualCenter section: %w", err)
-		}
+		setVirtualCenters(cpiCfg, infra.Spec.PlatformSpec.VSphere)
 
 		if len(infra.Spec.PlatformSpec.VSphere.FailureDomains) != 0 {
 			cpiCfg.Labels.Zone = zoneLabelValue
@@ -68,7 +66,7 @@ func setNodes(cfg *ccmConfig.CPIConfig, nodeNetworking *configv1.VSpherePlatform
 }
 
 // setVirtualCenters sets vcenter server sections according passed VSpherePlatformSpec
-func setVirtualCenters(cfg *ccmConfig.CPIConfig, vSphereSpec *configv1.VSpherePlatformSpec) error {
+func setVirtualCenters(cfg *ccmConfig.CPIConfig, vSphereSpec *configv1.VSpherePlatformSpec) {
 	for _, vcenter := range vSphereSpec.VCenters {
 		cfg.Vcenter[vcenter.Server] = &ccmConfig.VirtualCenterConfig{
 			VCenterIP:   vcenter.Server,
@@ -98,5 +96,4 @@ func setVirtualCenters(cfg *ccmConfig.CPIConfig, vSphereSpec *configv1.VSpherePl
 			vcenterCfg.Datacenters = append(vcenterCfg.Datacenters, fd.Topology.Datacenter)
 		}
 	}
-	return nil
 }
