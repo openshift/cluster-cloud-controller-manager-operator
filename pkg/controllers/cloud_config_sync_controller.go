@@ -194,7 +194,8 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 		configv1.AlibabaCloudPlatformType,
 		configv1.IBMCloudPlatformType,
 		configv1.PowerVSPlatformType,
-		configv1.OpenStackPlatformType:
+		configv1.OpenStackPlatformType,
+		configv1.NutanixPlatformType:
 		return true, nil
 	case configv1.AWSPlatformType:
 		// Some of AWS regions might require to sync a cloud-config, in such case reference in infra resource will be presented

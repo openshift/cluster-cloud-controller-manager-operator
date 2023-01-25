@@ -42,3 +42,7 @@ spec:
     from:
       kind: DockerImage
       name: quay.io/openshift/origin-powervs-cloud-controller-manager
+  - name: nutanix-cloud-controller-manager
+    from:
+      kind: DockerImage
+      name: quay.io/openshift/origin-nutanix-cloud-controller-manager
