@@ -21,7 +21,8 @@ func ReadConfig(config []byte) (*CPIConfig, error) {
 	klog.V(3).Info("Try to parse vSphere config, yaml format first")
 	cfg, err := readCPIConfigYAML(config)
 	if err != nil {
-		klog.Warningf("Parsing yaml config failed, fallback to ini: %v", err)
+		klog.V(3).Info("Parsing yaml config failed, fallback to ini")
+		klog.V(4).Infof("Yaml config parsing error:\n %s", err.Error())
 
 		cfg, err = readCPIConfigINI(config)
 		if err != nil {
