@@ -45,6 +45,11 @@ func Test_mergeCloudConfig(t *testing.T) {
 			require.NoError(t, err, "Cannot cleanup environment variables")
 		}
 	}
+	cleanupOpts := func() {
+		injectorOpts.disableIdentityExtensionAuth = false
+		injectorOpts.cloudConfigFilePath = ""
+		injectorOpts.outputFilePath = ""
+	}
 
 	cleanupInputFile := func(path string) {
 		err := os.WriteFile(inputFile.Name(), []byte(""), 0644)
@@ -117,6 +122,27 @@ func Test_mergeCloudConfig(t *testing.T) {
 			fileContent:    "{}",
 			expectedErrMsg: "couldn't write prepared cloud config to file: open /tmp: is a directory",
 		},
+		{
+			name:            "all ok, useManagedIdentityExtension not disabled",
+			args:            []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
+			envVars:         map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
+			fileContent:     "{\"aadClientSecret\":\"fizz\",\"aadClientId\":\"baz\",\"useManagedIdentityExtension\":true}",
+			expectedContent: "{\"aadClientId\":\"foo\",\"aadClientSecret\":\"bar\",\"useManagedIdentityExtension\":true}",
+		},
+		{
+			name:            "all ok, useManagedIdentityExtension disabled",
+			args:            []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name(), "--disable-identity-extension-auth"},
+			envVars:         map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
+			fileContent:     "{\"aadClientSecret\":\"fizz\",\"aadClientId\":\"baz\",\"useManagedIdentityExtension\":true}",
+			expectedContent: "{\"aadClientId\":\"foo\",\"aadClientSecret\":\"bar\",\"useManagedIdentityExtension\":false}",
+		},
+		{
+			name:            "all ok, invalid useManagedIdentityExtension value",
+			args:            []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name(), "--disable-identity-extension-auth"},
+			envVars:         map[string]string{"AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar"},
+			fileContent:     "{\"aadClientSecret\":\"fizz\",\"aadClientId\":\"baz\",\"useManagedIdentityExtension\":\"true\"}",
+			expectedContent: "{\"aadClientId\":\"foo\",\"aadClientSecret\":\"bar\",\"useManagedIdentityExtension\":false}",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -133,6 +159,7 @@ func Test_mergeCloudConfig(t *testing.T) {
 				require.NoError(t, err)
 				defer cleanupInputFile(inputFile.Name())
 			}
+			defer cleanupOpts()
 
 			_, mergeCloudConfError := executeCommand(injectorCmd, tc.args...)
 
