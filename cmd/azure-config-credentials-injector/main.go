@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/spf13/cobra"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -34,6 +34,7 @@ var (
 )
 
 func init() {
+	klog.InitFlags(flag.CommandLine)
 	injectorCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 	injectorCmd.PersistentFlags().StringVar(&injectorOpts.cloudConfigFilePath, "cloud-config-file-path", "/tmp/cloud-config/cloud.conf", "Location of the original cloud config file.")
 	injectorCmd.PersistentFlags().StringVar(&injectorOpts.outputFilePath, "output-file-path", "/tmp/merged-cloud-config/cloud.conf", "Location of the generated cloud config file with injected credentials.")
@@ -42,7 +43,7 @@ func init() {
 
 func main() {
 	if err := injectorCmd.Execute(); err != nil {
-		log.Fatal(err)
+		klog.Fatal(err)
 	}
 }
 
@@ -96,11 +97,11 @@ func prepareCloudConfig(cloudConfig map[string]interface{}, clientId string, cli
 	cloudConfig[clientSecretCloudConfigKey] = clientSecret
 	if value, found := cloudConfig[useManagedIdentityExtensionConfigKey]; found {
 		if injectorOpts.disableIdentityExtensionAuth {
-			fmt.Printf("%s cleared\n", useManagedIdentityExtensionConfigKey)
+			klog.Infof("%s cleared\n", useManagedIdentityExtensionConfigKey)
 			cloudConfig[useManagedIdentityExtensionConfigKey] = false
 		} else {
 			if value == true {
-				fmt.Printf("Warning: %s is set to \"true\", injected credentials may not be used\n", useManagedIdentityExtensionConfigKey)
+				klog.Warningf("Warning: %s is set to \"true\", injected credentials may not be used\n", useManagedIdentityExtensionConfigKey)
 			}
 		}
 	}
