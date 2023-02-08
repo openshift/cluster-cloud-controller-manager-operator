@@ -4,18 +4,19 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/spf13/cobra"
+	"k8s.io/klog/v2"
 )
 
 const (
 	clientIDEnvKey     = "AZURE_CLIENT_ID"
 	clientSecretEnvKey = "AZURE_CLIENT_SECRET"
 
-	clientIDCloudConfigKey     = "aadClientId"
-	clientSecretCloudConfigKey = "aadClientSecret"
+	clientIDCloudConfigKey               = "aadClientId"
+	clientSecretCloudConfigKey           = "aadClientSecret"
+	useManagedIdentityExtensionConfigKey = "useManagedIdentityExtension"
 )
 
 var (
@@ -26,20 +27,23 @@ var (
 	}
 
 	injectorOpts struct {
-		cloudConfigFilePath string
-		outputFilePath      string
+		cloudConfigFilePath          string
+		outputFilePath               string
+		disableIdentityExtensionAuth bool
 	}
 )
 
 func init() {
+	klog.InitFlags(flag.CommandLine)
 	injectorCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 	injectorCmd.PersistentFlags().StringVar(&injectorOpts.cloudConfigFilePath, "cloud-config-file-path", "/tmp/cloud-config/cloud.conf", "Location of the original cloud config file.")
 	injectorCmd.PersistentFlags().StringVar(&injectorOpts.outputFilePath, "output-file-path", "/tmp/merged-cloud-config/cloud.conf", "Location of the generated cloud config file with injected credentials.")
+	injectorCmd.PersistentFlags().BoolVar(&injectorOpts.disableIdentityExtensionAuth, "disable-identity-extension-auth", false, "Disable managed identity authentication, if it's set in cloudConfig.")
 }
 
 func main() {
 	if err := injectorCmd.Execute(); err != nil {
-		log.Fatal(err)
+		klog.Fatal(err)
 	}
 }
 
@@ -91,6 +95,16 @@ func readCloudConfig(path string) (map[string]interface{}, error) {
 func prepareCloudConfig(cloudConfig map[string]interface{}, clientId string, clientSecret string) ([]byte, error) {
 	cloudConfig[clientIDCloudConfigKey] = clientId
 	cloudConfig[clientSecretCloudConfigKey] = clientSecret
+	if value, found := cloudConfig[useManagedIdentityExtensionConfigKey]; found {
+		if injectorOpts.disableIdentityExtensionAuth {
+			klog.Infof("%s cleared\n", useManagedIdentityExtensionConfigKey)
+			cloudConfig[useManagedIdentityExtensionConfigKey] = false
+		} else {
+			if value == true {
+				klog.Warningf("Warning: %s is set to \"true\", injected credentials may not be used\n", useManagedIdentityExtensionConfigKey)
+			}
+		}
+	}
 
 	marshalled, err := json.Marshal(cloudConfig)
 	if err != nil {
