@@ -65,9 +65,7 @@ func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudCo
 // provisioning CCM instance in the cluster for the given OperatorConfig.
 //
 // These resources will be actively maintained by the operator, preventing
-// changes in their spec. However you can extend any resource spec with
-// values not specified in the provided source resource. These changes
-// would be preserved.
+// changes in their spec.
 func GetResources(operatorConfig config.OperatorConfig) ([]client.Object, error) {
 	assets, err := getAssets(operatorConfig)
 	if err != nil {
