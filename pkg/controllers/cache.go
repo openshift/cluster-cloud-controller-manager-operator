@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
@@ -81,10 +82,13 @@ func (n *objectWatcher) watch(ctx context.Context, obj client.Object) error {
 
 	// Add an event handler that only allows events through for the correct object name
 	// Since the informer is namespace bound, this should limit the events from this event handler to a single resource.
-	informer.AddEventHandler(&eventToChannelHandler{
+	_, err = informer.AddEventHandler(&eventToChannelHandler{
 		name:       obj.GetName(),
 		eventsChan: n.eventChan,
 	})
+	if err != nil {
+		klog.Fatal(err)
+	}
 
 	n.watchedResources[key] = struct{}{}
 
