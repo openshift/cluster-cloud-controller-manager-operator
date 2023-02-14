@@ -45,7 +45,9 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, _ *co
 		setNodes(cpiCfg, &infra.Spec.PlatformSpec.VSphere.NodeNetworking)
 		setVirtualCenters(cpiCfg, infra.Spec.PlatformSpec.VSphere)
 
-		if len(infra.Spec.PlatformSpec.VSphere.FailureDomains) != 0 {
+		// labels should only be applied if length of failuredomains is
+		// greater than one so existing single (or non-zonal) installs function.
+		if len(infra.Spec.PlatformSpec.VSphere.FailureDomains) > 1 {
 			cpiCfg.Labels.Zone = zoneLabelValue
 			cpiCfg.Labels.Region = regionLabelValue
 		}
