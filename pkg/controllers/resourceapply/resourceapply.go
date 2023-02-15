@@ -30,11 +30,11 @@ const (
 	generationAnnotation = "operator.openshift.io/generation"
 )
 
-// SetSpecHashAnnotation computes the hash of the provided spec and sets an annotation of the
+// setSpecHashAnnotation computes the hash of the provided spec and sets an annotation of the
 // hash on the provided ObjectMeta. This method is used internally by Apply<type> methods, and
 // is exposed to support testing with fake clients that need to know the mutated form of the
 // resource resulting from an Apply<type> call.
-func SetSpecHashAnnotation(objMeta *metav1.ObjectMeta, spec interface{}) error {
+func setSpecHashAnnotation(objMeta *metav1.ObjectMeta, spec interface{}) error {
 	jsonBytes, err := json.Marshal(spec)
 	if err != nil {
 		return err
@@ -129,13 +129,17 @@ func applyConfigMap(ctx context.Context, client coreclientv1.Client, recorder re
 
 func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *appsv1.Deployment) (bool, error) {
 	required := requiredOriginal.DeepCopy()
-	err := SetSpecHashAnnotation(&required.ObjectMeta, required.Spec)
-	if err != nil {
+	if err := annotatePodSpecWithRelatedConfigsHash(ctx, client, required.Namespace, &required.Spec.Template); err != nil {
+		klog.V(3).Infof("Can not check related configs for %s/%s: %w", required.GetObjectKind(), required.GetName(), err)
+		recorder.Event(required, corev1.EventTypeWarning, "Can not check related configs", err.Error())
+	}
+	if err := setSpecHashAnnotation(&required.ObjectMeta, required.Spec); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, "Resource create or update failed", err.Error())
 		return false, err
 	}
 
 	existing := &appsv1.Deployment{}
-	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		required.Annotations[generationAnnotation] = "1"
 		if err := client.Create(ctx, required); err != nil {
@@ -214,13 +218,17 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 
 func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *appsv1.DaemonSet) (bool, error) {
 	required := requiredOriginal.DeepCopy()
-	err := SetSpecHashAnnotation(&required.ObjectMeta, required.Spec)
-	if err != nil {
+	if err := annotatePodSpecWithRelatedConfigsHash(ctx, client, required.Namespace, &required.Spec.Template); err != nil {
+		klog.V(3).Infof("Can not check related configs for %s/%s: %w", required.GetObjectKind(), required.GetName(), err)
+		recorder.Event(required, corev1.EventTypeWarning, "Can not check related configs", err.Error())
+	}
+	if err := setSpecHashAnnotation(&required.ObjectMeta, required.Spec); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, "Resource create or update failed", err.Error())
 		return false, err
 	}
 
 	existing := &appsv1.DaemonSet{}
-	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		required.Annotations[generationAnnotation] = "1"
 		if err := client.Create(ctx, required); err != nil {
