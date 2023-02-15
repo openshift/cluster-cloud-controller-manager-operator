@@ -65,6 +65,10 @@ func cleanupResources(t *testing.T, g *WithT, ctx context.Context, cl client.Cli
 		for _, obj := range typedList.Items {
 			deleteResouce(g, &obj)
 		}
+	case *corev1.SecretList:
+		for _, obj := range typedList.Items {
+			deleteResouce(g, &obj)
+		}
 	case *appsv1.DaemonSetList:
 		for _, obj := range typedList.Items {
 			deleteResouce(g, &obj)
@@ -179,6 +183,50 @@ func TestApplyConfigMap(t *testing.T) {
 	}
 }
 
+func simpleSecret(namespace string, name string) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+		Data: map[string][]byte{"foo": []byte("bar")},
+	}
+}
+
+func simpleConfigMap(namespace string, name string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+		Data: map[string]string{"foo": "bar"},
+	}
+}
+
+func addSecretVolumeToPodSpec(spec *corev1.PodSpec, secretName string, volumeName string) {
+	volume := corev1.Volume{
+		Name: volumeName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
+		},
+	}
+
+	spec.Volumes = append(spec.Volumes, volume)
+}
+
+func addConfigMapVolumeToPodSpec(spec *corev1.PodSpec, cmName string, volumeName string) {
+	volume := corev1.Volume{
+		Name: volumeName,
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: cmName},
+			},
+		},
+	}
+
+	spec.Volumes = append(spec.Volumes, volume)
+}
+
 func TestApplyDeployment(t *testing.T) {
 	cl, tearDownFn := setupEnvtest(t)
 	defer tearDownFn(t)
@@ -217,7 +265,7 @@ func TestApplyDeployment(t *testing.T) {
 			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
 			expectedDeployment: func() *appsv1.Deployment {
 				w := workloadDeployment(namespace)
-				w.Annotations["operator.openshift.io/spec-hash"] = "3595383676891d94b068a1b3cfedc7e1e77f86f49ae53a30757b4f7f5cd4b36a"
+				w.Annotations["operator.openshift.io/spec-hash"] = "a188738eb8e2da21166bc0bfaeb7c87a9c7422f426591e7e3cd52f300cb0785d"
 				w.Spec.Template.Finalizers = []string{"newFinalizer"}
 				return w
 			}(),
@@ -324,7 +372,7 @@ func TestApplyDeployment(t *testing.T) {
 					},
 				}
 				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-				w.Annotations[specHashAnnotation] = "5e54f6f565b4d03edbdf5e129492b54cee18bb3ed84dcd84be02d5dd86e280fa"
+				w.Annotations[specHashAnnotation] = "ad5da8e55a1a2c05026368f3b68f5625f7fd038b38ac8a4aa1358e2e1a07a85d"
 				return w
 			}(),
 			expectedRecreate: true,
@@ -348,7 +396,6 @@ func TestApplyDeployment(t *testing.T) {
 			errorMsg:           "`selector` does not match template `labels`",
 			expectError:        true,
 		},
-
 		{
 			name: "resourceapply should report an error in case if resource deletion stucked",
 			actualDeployment: func() *appsv1.Deployment {
@@ -412,6 +459,84 @@ func TestApplyDeployment(t *testing.T) {
 			g.Expect(len(deployments.Items)).To(BeEquivalentTo(1))
 		})
 	}
+
+	updateDependentConfigsTest := []struct {
+		name             string
+		deployment       *appsv1.Deployment
+		initialSecret    *corev1.Secret
+		initialConfigMap *corev1.ConfigMap
+		updConfigsFunc   func(secret *corev1.Secret, configMap *corev1.ConfigMap)
+		expectedUpdate   bool
+	}{
+		{
+			name:           "should not update if related config specified in volumes did not change",
+			expectedUpdate: false,
+			updConfigsFunc: nil,
+			deployment: func() *appsv1.Deployment {
+				d := workloadDeployment(namespace)
+				addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "secret", "secret")
+				addConfigMapVolumeToPodSpec(&d.Spec.Template.Spec, "configmap", "configmap")
+				return d
+			}(),
+			initialSecret:    simpleSecret(namespace, "secret"),
+			initialConfigMap: simpleConfigMap(namespace, "configmap"),
+		},
+		{
+			name:           "should update if related config changed",
+			expectedUpdate: true,
+			updConfigsFunc: func(secret *corev1.Secret, configMap *corev1.ConfigMap) {
+				secret.Data = map[string][]byte{"bar": []byte("bazz")}
+			},
+			deployment: func() *appsv1.Deployment {
+				d := workloadDeployment(namespace)
+				addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "secret", "secret")
+				addConfigMapVolumeToPodSpec(&d.Spec.Template.Spec, "configmap", "configmap")
+				return d
+			}(),
+			initialSecret:    simpleSecret(namespace, "secret"),
+			initialConfigMap: simpleConfigMap(namespace, "configmap"),
+		},
+		{
+			name:           "non existent config should not prevent resourceapply",
+			expectedUpdate: false,
+			updConfigsFunc: nil,
+			deployment: func() *appsv1.Deployment {
+				d := workloadDeployment(namespace)
+				addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "non-existed", "non-existed")
+				return d
+			}(),
+			initialSecret:    simpleSecret(namespace, "secret"),
+			initialConfigMap: simpleConfigMap(namespace, "configmap"),
+		},
+	}
+	for _, tt := range updateDependentConfigsTest {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			eventRecorder := record.NewFakeRecorder(1000)
+			ctx := context.TODO()
+			defer cleanupResources(t, g, ctx, cl, &appsv1.DeploymentList{})
+			defer cleanupResources(t, g, ctx, cl, &corev1.ConfigMapList{})
+			defer cleanupResources(t, g, ctx, cl, &corev1.SecretList{})
+
+			g.Expect(cl.Create(ctx, tt.initialSecret)).To(Succeed())
+			g.Expect(tt.initialSecret.UID).NotTo(BeNil())
+			g.Expect(cl.Create(ctx, tt.initialConfigMap)).To(Succeed())
+			g.Expect(tt.initialSecret.UID).NotTo(BeNil())
+
+			_, err := applyDeployment(ctx, cl, eventRecorder, tt.deployment)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			if tt.updConfigsFunc != nil {
+				tt.updConfigsFunc(tt.initialSecret, tt.initialConfigMap)
+				g.Expect(cl.Update(ctx, tt.initialSecret)).To(Succeed())
+				g.Expect(cl.Update(ctx, tt.initialConfigMap)).To(Succeed())
+			}
+
+			updated, err := applyDeployment(ctx, cl, eventRecorder, tt.deployment)
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(updated).To(Equal(tt.expectedUpdate), "resource update expectation mismatch")
+		})
+	}
 }
 
 func workloadDeployment(namespace string) *appsv1.Deployment {
@@ -458,7 +583,7 @@ func workloadDeployment(namespace string) *appsv1.Deployment {
 
 func workloadDeploymentWithDefaultSpecHash(namespace string) *appsv1.Deployment {
 	w := workloadDeployment(namespace)
-	w.Annotations[specHashAnnotation] = "259870a8d6f8fca4ded383158594ac91935b0225acabe8e16670b6f6a395f68d"
+	w.Annotations[specHashAnnotation] = "8b26fe4cab14c9368f2ca916f59fafdc62f312544d7994a1580db80758b50f05"
 	return w
 }
 
@@ -500,7 +625,7 @@ func TestApplyDaemonSet(t *testing.T) {
 			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
 			expectedDaemonSet: func() *appsv1.DaemonSet {
 				w := workloadDaemonSet(namespace)
-				w.Annotations["operator.openshift.io/spec-hash"] = "42ed5653bc5ded7dc099b924ede011e43140c675302d1da42a6b645771d242a0"
+				w.Annotations["operator.openshift.io/spec-hash"] = "cb44c29fda480ea0b4e7a08dda99db54c46d7ed21a8d9360b6b701864fe7cbbb"
 				w.Spec.Template.Finalizers = []string{"newFinalizer"}
 				return w
 			}(),
@@ -605,7 +730,7 @@ func TestApplyDaemonSet(t *testing.T) {
 					},
 				}
 				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-				w.Annotations[specHashAnnotation] = "ba95dff6a88cc11a6cd80aa8a8d7a5e88793809ad27f9f8c5b7b66c39ce13ee4"
+				w.Annotations[specHashAnnotation] = "4c860db5451a859e104e640b8315da4bb6ece3fb8143344c8fcdf1ba95431dd9"
 				return w
 			}(),
 			expectedRecreate: true,
@@ -691,6 +816,84 @@ func TestApplyDaemonSet(t *testing.T) {
 			g.Expect(len(dss.Items)).To(BeEquivalentTo(1))
 		})
 	}
+
+	updateDependentConfigsTest := []struct {
+		name             string
+		daemonSet        *appsv1.DaemonSet
+		initialSecret    *corev1.Secret
+		initialConfigMap *corev1.ConfigMap
+		updConfigsFunc   func(secret *corev1.Secret, configMap *corev1.ConfigMap)
+		expectedUpdate   bool
+	}{
+		{
+			name:           "should not update if related config specified in volumes did not change",
+			expectedUpdate: false,
+			updConfigsFunc: nil,
+			daemonSet: func() *appsv1.DaemonSet {
+				ds := workloadDaemonSet(namespace)
+				addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "secret", "secret")
+				addConfigMapVolumeToPodSpec(&ds.Spec.Template.Spec, "configmap", "configmap")
+				return ds
+			}(),
+			initialSecret:    simpleSecret(namespace, "secret"),
+			initialConfigMap: simpleConfigMap(namespace, "configmap"),
+		},
+		{
+			name:           "should update if related config changed",
+			expectedUpdate: true,
+			updConfigsFunc: func(secret *corev1.Secret, configMap *corev1.ConfigMap) {
+				secret.Data = map[string][]byte{"bar": []byte("bazz")}
+			},
+			daemonSet: func() *appsv1.DaemonSet {
+				ds := workloadDaemonSet(namespace)
+				addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "secret", "secret")
+				addConfigMapVolumeToPodSpec(&ds.Spec.Template.Spec, "configmap", "configmap")
+				return ds
+			}(),
+			initialSecret:    simpleSecret(namespace, "secret"),
+			initialConfigMap: simpleConfigMap(namespace, "configmap"),
+		},
+		{
+			name:           "non existent config should not prevent resourceapply",
+			expectedUpdate: false,
+			updConfigsFunc: nil,
+			daemonSet: func() *appsv1.DaemonSet {
+				ds := workloadDaemonSet(namespace)
+				addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "non-existed", "non-existed")
+				return ds
+			}(),
+			initialSecret:    simpleSecret(namespace, "secret"),
+			initialConfigMap: simpleConfigMap(namespace, "configmap"),
+		},
+	}
+	for _, tt := range updateDependentConfigsTest {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			eventRecorder := record.NewFakeRecorder(1000)
+			ctx := context.TODO()
+			defer cleanupResources(t, g, ctx, cl, &appsv1.DaemonSetList{})
+			defer cleanupResources(t, g, ctx, cl, &corev1.ConfigMapList{})
+			defer cleanupResources(t, g, ctx, cl, &corev1.SecretList{})
+
+			g.Expect(cl.Create(ctx, tt.initialSecret)).To(Succeed())
+			g.Expect(tt.initialSecret.UID).NotTo(BeNil())
+			g.Expect(cl.Create(ctx, tt.initialConfigMap)).To(Succeed())
+			g.Expect(tt.initialSecret.UID).NotTo(BeNil())
+
+			_, err := applyDaemonSet(ctx, cl, eventRecorder, tt.daemonSet)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			if tt.updConfigsFunc != nil {
+				tt.updConfigsFunc(tt.initialSecret, tt.initialConfigMap)
+				g.Expect(cl.Update(ctx, tt.initialSecret)).To(Succeed())
+				g.Expect(cl.Update(ctx, tt.initialConfigMap)).To(Succeed())
+			}
+
+			updated, err := applyDaemonSet(ctx, cl, eventRecorder, tt.daemonSet)
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(updated).To(Equal(tt.expectedUpdate), "resource update expectation mismatch")
+		})
+	}
 }
 
 func workloadDaemonSet(namespace string) *appsv1.DaemonSet {
@@ -734,7 +937,7 @@ func workloadDaemonSet(namespace string) *appsv1.DaemonSet {
 
 func workloadDaemonSetWithDefaultSpecHash(namespace string) *appsv1.DaemonSet {
 	w := workloadDaemonSet(namespace)
-	w.Annotations[specHashAnnotation] = "eaeff6ac704fb141d5085803b5b3cc12067ef98c9f2ba8c1052df81faa53299c"
+	w.Annotations[specHashAnnotation] = "b9f17f24c21dbab45ba7b59d458142cf6aab160ec03a471272e561a062e57107"
 	return w
 }
 

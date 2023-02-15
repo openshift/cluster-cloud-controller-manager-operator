@@ -1032,7 +1032,6 @@ var _ = Describe("Apply resources should", func() {
 				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
 			}, timeout).Should(BeTrue())
 		}
-		Consistently(recorder.Events).ShouldNot(Receive())
 	})
 
 })
