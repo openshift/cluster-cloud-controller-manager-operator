@@ -16,8 +16,8 @@ import (
 const configHashAnnotation = "operator.openshift.io/config-hash"
 
 type configSources struct {
-	ConfigMaps sets.String
-	Secrets    sets.String
+	ConfigMaps sets.Set[string]
+	Secrets    sets.Set[string]
 }
 
 // collectRelatedConfigSources looks into pod template spec for secret or config map references.
@@ -25,8 +25,8 @@ type configSources struct {
 // returns configSources structure which contains sets of config maps and secrets names.
 func collectRelatedConfigSources(spec *corev1.PodTemplateSpec) configSources {
 	sources := configSources{
-		ConfigMaps: sets.String{},
-		Secrets:    sets.String{},
+		ConfigMaps: sets.Set[string]{},
+		Secrets:    sets.Set[string]{},
 	}
 
 	if spec == nil {

@@ -186,8 +186,8 @@ func TestCollectDependantConfigs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			g := gmg.NewWithT(t)
 			emptySpecSources := collectRelatedConfigSources(tc.podTemplate)
-			g.Expect(emptySpecSources.Secrets.List()).To(gmg.Equal(tc.expectedSecrets))
-			g.Expect(emptySpecSources.ConfigMaps.List()).To(gmg.Equal(tc.expectedConfigMaps))
+			g.Expect(sets.List(emptySpecSources.Secrets)).To(gmg.Equal(tc.expectedSecrets))
+			g.Expect(sets.List(emptySpecSources.ConfigMaps)).To(gmg.Equal(tc.expectedConfigMaps))
 		})
 	}
 
@@ -200,12 +200,12 @@ func TestCollectDependantConfigs(t *testing.T) {
 			switch r := resource.(type) {
 			case *appsv1.Deployment:
 				sources := collectRelatedConfigSources(&r.Spec.Template)
-				g.Expect(sources.Secrets.List()).To(gmg.BeComparableTo([]string{"azure-cloud-credentials"}))
-				g.Expect(sources.ConfigMaps.List()).To(gmg.BeComparableTo([]string{"ccm-trusted-ca", "cloud-conf"}))
+				g.Expect(sets.List(sources.Secrets)).To(gmg.BeComparableTo([]string{"azure-cloud-credentials"}))
+				g.Expect(sets.List(sources.ConfigMaps)).To(gmg.BeComparableTo([]string{"ccm-trusted-ca", "cloud-conf"}))
 			case *appsv1.DaemonSet:
 				sources := collectRelatedConfigSources(&r.Spec.Template)
-				g.Expect(sources.Secrets.List()).To(gmg.BeComparableTo([]string{"azure-cloud-credentials"}))
-				g.Expect(sources.ConfigMaps.List()).To(gmg.BeComparableTo([]string{"ccm-trusted-ca", "cloud-conf"}))
+				g.Expect(sets.List(sources.Secrets)).To(gmg.BeComparableTo([]string{"azure-cloud-credentials"}))
+				g.Expect(sets.List(sources.ConfigMaps)).To(gmg.BeComparableTo([]string{"ccm-trusted-ca", "cloud-conf"}))
 			}
 		}
 	})
@@ -213,8 +213,8 @@ func TestCollectDependantConfigs(t *testing.T) {
 
 func TestCalculateConfigsHash(t *testing.T) {
 	sources := configSources{
-		ConfigMaps: sets.NewString("configmap"),
-		Secrets:    sets.NewString("secret"),
+		ConfigMaps: sets.New[string]("configmap"),
+		Secrets:    sets.New[string]("secret"),
 	}
 
 	configMap := &corev1.ConfigMap{
