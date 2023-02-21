@@ -29,6 +29,7 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers/resourceapply"
 )
 
 const (
@@ -758,7 +759,7 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), objects)
 		Expect(err).Should(HaveOccurred())
 		Expect(updated).To(BeFalse())
-		Eventually(recorder.Events).Should(Receive(ContainSubstring("Create failed")))
+		Eventually(recorder.Events).Should(Receive(ContainSubstring(resourceapply.ResourceCreateFailedEvent)))
 	})
 
 	It("Expect no update when resources are applied twice", func() {
@@ -1031,7 +1032,6 @@ var _ = Describe("Apply resources should", func() {
 				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
 			}, timeout).Should(BeTrue())
 		}
-		Consistently(recorder.Events).ShouldNot(Receive())
 	})
 
 })

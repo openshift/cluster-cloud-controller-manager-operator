@@ -111,6 +111,10 @@ spec:
             items:
               - key: cloud.conf
                 path: cloud.conf
+        - name: secret-vccm
+          secret:
+            secretName: {{ .globalCredsSecretName }}
+            optional: true
         - name: trusted-ca
           configMap:
             name: ccm-trusted-ca
