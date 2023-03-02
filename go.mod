@@ -8,7 +8,7 @@ require (
 	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/onsi/ginkgo v1.16.5
-	github.com/onsi/gomega v1.17.0
+	github.com/onsi/gomega v1.18.1
 	github.com/openshift/api v0.0.0-20211209135129-c58d9f695577
 	github.com/openshift/library-go v0.0.0-20211220195323-eca2c467c492
 	github.com/spf13/cobra v1.2.1
