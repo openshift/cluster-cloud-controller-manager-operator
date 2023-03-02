@@ -217,6 +217,11 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 		return false, nil
 	}
 
+	if r.isPlatformExternal(infra.Status.PlatformStatus) {
+		klog.V(3).Info("'External' platform type is detected, do nothing.")
+		return false, nil
+	}
+
 	// If CCM already owns cloud controllers, then provision is allowed by default
 	ownedByCCM, err := r.isCloudControllersOwnedByCCM(ctx)
 	if err != nil {
@@ -368,4 +373,8 @@ func (r *CloudOperatorReconciler) checkControllerConditions(ctx context.Context)
 	}
 
 	return cloudConfigControllerAvailable && trustedCABundleControllerAvailable, nil
+}
+
+func (r *CloudOperatorReconciler) isPlatformExternal(platformStatus *configv1.PlatformStatus) bool {
+	return platformStatus.Type == configv1.ExternalPlatformType
 }
