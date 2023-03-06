@@ -28,13 +28,28 @@ import (
 const (
 	specHashAnnotation   = "operator.openshift.io/spec-hash"
 	generationAnnotation = "operator.openshift.io/generation"
+
+	ConfigCheckFailedEvent = "ConfigurationCheckFailed"
+
+	ResourceCreateSuccessEvent = "ResourceCreateSuccess"
+	ResourceCreateFailedEvent  = "ResourceCreateFailed"
+
+	ResourceUpdateSuccessEvent = "ResourceUpdateSuccess"
+	ResourceUpdateFailedEvent  = "ResourceUpdateFailed"
+
+	ResourceCreateOrUpdateFailedEvent = "ResourceCreateOrUpdateFailed"
+
+	ResourceRecreatingEvent = "ResourceRecreating"
+	RecreateSuccessEvent    = "ResourceRecreateSuccess"
+
+	ResourceDeleteFailedEvent = "ResourceDeleteFailed"
 )
 
-// SetSpecHashAnnotation computes the hash of the provided spec and sets an annotation of the
+// setSpecHashAnnotation computes the hash of the provided spec and sets an annotation of the
 // hash on the provided ObjectMeta. This method is used internally by Apply<type> methods, and
 // is exposed to support testing with fake clients that need to know the mutated form of the
 // resource resulting from an Apply<type> call.
-func SetSpecHashAnnotation(objMeta *metav1.ObjectMeta, spec interface{}) error {
+func setSpecHashAnnotation(objMeta *metav1.ObjectMeta, spec interface{}) error {
 	jsonBytes, err := json.Marshal(spec)
 	if err != nil {
 		return err
@@ -70,14 +85,14 @@ func applyConfigMap(ctx context.Context, client coreclientv1.Client, recorder re
 	if apierrors.IsNotFound(err) {
 		err := client.Create(ctx, resourcemerge.WithCleanLabelsAndAnnotations(required).(*corev1.ConfigMap))
 		if err != nil {
-			recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+			recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 			return false, err
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+		recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
 		return true, nil
 	}
 	if err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, err
 	}
 
@@ -120,33 +135,37 @@ func applyConfigMap(ctx context.Context, client coreclientv1.Client, recorder re
 
 	err = client.Update(ctx, toWrite)
 	if err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, err
 	}
-	recorder.Event(toWrite, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+	recorder.Event(toWrite, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
 	return true, err
 }
 
 func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *appsv1.Deployment) (bool, error) {
 	required := requiredOriginal.DeepCopy()
-	err := SetSpecHashAnnotation(&required.ObjectMeta, required.Spec)
-	if err != nil {
+	if err := annotatePodSpecWithRelatedConfigsHash(ctx, client, required.Namespace, &required.Spec.Template); err != nil {
+		klog.V(3).Infof("Can not check related configs for %s/%s: %w", required.GetObjectKind(), required.GetName(), err)
+		recorder.Event(required, corev1.EventTypeWarning, ConfigCheckFailedEvent, err.Error())
+	}
+	if err := setSpecHashAnnotation(&required.ObjectMeta, required.Spec); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceCreateOrUpdateFailedEvent, err.Error())
 		return false, err
 	}
 
 	existing := &appsv1.Deployment{}
-	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		required.Annotations[generationAnnotation] = "1"
 		if err := client.Create(ctx, required); err != nil {
-			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
 			return false, err
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
 		return true, nil
 	}
 	if err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Failed to get resource for update", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, err
 	}
 
@@ -173,28 +192,28 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 		klog.Infof("Deployment need to be recreated with new parameters")
 		recorder.Event(
 			existing, corev1.EventTypeNormal,
-			"Delete existing deployment", "Delete existing deployment to recreate it with new parameters",
+			ResourceRecreatingEvent, "Delete existing deployment to recreate it with new parameters",
 		)
 		// Perform dry run creation in order to validate deployment before deleting existing one
 		requiredCopy := required.DeepCopy()
 		requiredCopy.Name = fmt.Sprintf("%s-dry-run", requiredCopy.Name)
 		dryRunOpts := &coreclientv1.CreateOptions{DryRun: []string{metav1.DryRunAll}}
 		if err := client.Create(ctx, requiredCopy, dryRunOpts); err != nil {
-			recorder.Event(existing, corev1.EventTypeWarning, "New resource validation failed", err.Error())
+			recorder.Event(existing, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
 			return false, fmt.Errorf("new resource validation prior to old resource deletion failed: %v", err)
 		}
 
 		if err := client.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
-			recorder.Event(existing, corev1.EventTypeWarning, "Deletion failed", err.Error())
+			recorder.Event(existing, corev1.EventTypeWarning, ResourceDeleteFailedEvent, err.Error())
 			return false, fmt.Errorf("old resource deletion failed: %v", err)
 		}
 
 		required.Annotations[generationAnnotation] = "1"
 		if err := client.Create(ctx, required); err != nil {
-			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
 			return false, fmt.Errorf("deployment recreation failed: %v", err)
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Recreated successfully", "Resource was successfully recreated")
+		recorder.Event(required, corev1.EventTypeNormal, RecreateSuccessEvent, "Resource was successfully recreated")
 		return true, nil
 	}
 
@@ -205,33 +224,37 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 	toWrite.Annotations[generationAnnotation] = fmt.Sprintf("%x", existingCopy.GetGeneration()+1)
 
 	if err := client.Update(ctx, toWrite); err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, err
 	}
-	recorder.Event(required, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
 	return true, nil
 }
 
 func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *appsv1.DaemonSet) (bool, error) {
 	required := requiredOriginal.DeepCopy()
-	err := SetSpecHashAnnotation(&required.ObjectMeta, required.Spec)
-	if err != nil {
+	if err := annotatePodSpecWithRelatedConfigsHash(ctx, client, required.Namespace, &required.Spec.Template); err != nil {
+		klog.V(3).Infof("Can not check related configs for %s/%s: %w", required.GetObjectKind(), required.GetName(), err)
+		recorder.Event(required, corev1.EventTypeWarning, ConfigCheckFailedEvent, err.Error())
+	}
+	if err := setSpecHashAnnotation(&required.ObjectMeta, required.Spec); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceCreateOrUpdateFailedEvent, err.Error())
 		return false, err
 	}
 
 	existing := &appsv1.DaemonSet{}
-	err = client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		required.Annotations[generationAnnotation] = "1"
 		if err := client.Create(ctx, required); err != nil {
-			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
 			return false, err
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
 		return true, nil
 	}
 	if err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Failed to get resource for update", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, err
 	}
 
@@ -258,28 +281,28 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 		klog.Infof("DaemonSet need to be recreated with new parameters")
 		recorder.Event(
 			existing, corev1.EventTypeNormal,
-			"Delete existing daemonset", "Delete existing daemonset to recreate it with new parameters",
+			ResourceRecreatingEvent, "Delete existing daemonset to recreate it with new parameters",
 		)
 		// Perform dry run creation in order to validate ds before deleting existing one
 		requiredCopy := required.DeepCopy()
 		requiredCopy.Name = fmt.Sprintf("%s-dry-run", requiredCopy.Name)
 		dryRunOpts := &coreclientv1.CreateOptions{DryRun: []string{metav1.DryRunAll}}
 		if err := client.Create(ctx, requiredCopy, dryRunOpts); err != nil {
-			recorder.Event(existing, corev1.EventTypeWarning, "New resource validation failed", err.Error())
+			recorder.Event(existing, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
 			return false, fmt.Errorf("new resource validation prior to old resource deletion failed: %v", err)
 		}
 
 		if err := client.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
-			recorder.Event(existing, corev1.EventTypeWarning, "Deletion failed", err.Error())
+			recorder.Event(existing, corev1.EventTypeWarning, ResourceDeleteFailedEvent, err.Error())
 			return false, fmt.Errorf("old resource deletion failed: %v", err)
 		}
 
 		required.Annotations[generationAnnotation] = "1"
 		if err := client.Create(ctx, required); err != nil {
-			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
 			return false, fmt.Errorf("ds recreation failed: %v", err)
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Recreated successfully", "Resource was successfully recreated")
+		recorder.Event(required, corev1.EventTypeNormal, RecreateSuccessEvent, "Resource was successfully recreated")
 		return true, nil
 	}
 
@@ -290,10 +313,10 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 	toWrite.Annotations[generationAnnotation] = fmt.Sprintf("%x", existingCopy.GetGeneration()+1)
 
 	if err := client.Update(ctx, toWrite); err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, err
 	}
-	recorder.Event(required, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
 	return true, nil
 }
 
@@ -304,14 +327,14 @@ func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, r
 	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
 	if apierrors.IsNotFound(err) {
 		if err := client.Create(ctx, required); err != nil {
-			recorder.Event(required, corev1.EventTypeWarning, "Create failed", err.Error())
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
 			return false, fmt.Errorf("pdb creation failed: %v", err)
 		}
-		recorder.Event(required, corev1.EventTypeNormal, "Created successfully", "Resource was successfully created")
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
 		return true, nil
 	}
 	if err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Failed to get resource for update", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, fmt.Errorf("failed to get pdb for update: %v", err)
 	}
 
@@ -330,9 +353,9 @@ func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, r
 	toWrite.Spec = *required.Spec.DeepCopy()
 
 	if err := client.Update(ctx, toWrite); err != nil {
-		recorder.Event(required, corev1.EventTypeWarning, "Update failed", err.Error())
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, err
 	}
-	recorder.Event(required, corev1.EventTypeNormal, "Updated successfully", "Resource was successfully updated")
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
 	return true, nil
 }
