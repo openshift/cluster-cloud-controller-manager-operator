@@ -501,7 +501,7 @@ var _ = Describe("Component sync controller", func() {
 			coStatus:          coStatus,
 			expectProvisioned: false,
 		}),
-		Entry("Should not provision resources for AWS if external FeatureGate is not present", testCase{
+		Entry("Should provision resources for AWS if external FeatureGate is not present", testCase{
 			status: &configv1.InfrastructureStatus{
 				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
 				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
@@ -512,7 +512,7 @@ var _ = Describe("Component sync controller", func() {
 			},
 			kcmStatus:         kcmStatus,
 			coStatus:          coStatus,
-			expectProvisioned: false,
+			expectProvisioned: true,
 		}),
 		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
 			status: &configv1.InfrastructureStatus{

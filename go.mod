@@ -8,7 +8,7 @@ require (
 	github.com/golangci/golangci-lint v1.49.0
 	github.com/onsi/ginkgo/v2 v2.8.0
 	github.com/onsi/gomega v1.26.0
-	github.com/openshift/api v0.0.0-20230111143458-54592eea5539
+	github.com/openshift/api v0.0.0-20230120195050-6ba31fa438f2
 	github.com/openshift/library-go v0.0.0-20230112164258-24668b1349e6
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
@@ -29,6 +29,8 @@ require (
 	sigs.k8s.io/controller-tools v0.11.3
 	sigs.k8s.io/yaml v1.3.0
 )
+
+replace github.com/openshift/library-go => github.com/JoelSpeed/library-go v0.0.0-20230307115500-45b41bd4cffd
 
 require (
 	4d63.com/gochecknoglobals v0.1.0 // indirect
@@ -149,7 +151,7 @@ require (
 	github.com/nishanths/exhaustive v0.8.1 // indirect
 	github.com/nishanths/predeclared v0.2.2 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
-	github.com/openshift/client-go v0.0.0-20220831193253-4950ae70c8ea // indirect
+	github.com/openshift/client-go v0.0.0-20230120202327-72f107311084 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.2 // indirect
 	github.com/phayes/checkstyle v0.0.0-20170904204023-bfd46e6a821d // indirect
