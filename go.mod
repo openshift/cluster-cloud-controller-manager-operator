@@ -8,7 +8,7 @@ require (
 	github.com/golangci/golangci-lint v1.49.0
 	github.com/onsi/ginkgo/v2 v2.8.0
 	github.com/onsi/gomega v1.26.0
-	github.com/openshift/api v0.0.0-20230120195050-6ba31fa438f2
+	github.com/openshift/api v0.0.0-20230223193310-d964c7a58d75
 	github.com/openshift/library-go v0.0.0-20230112164258-24668b1349e6
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
@@ -30,7 +30,7 @@ require (
 	sigs.k8s.io/yaml v1.3.0
 )
 
-replace github.com/openshift/library-go => github.com/JoelSpeed/library-go v0.0.0-20230307115500-45b41bd4cffd
+replace github.com/openshift/library-go => github.com/JoelSpeed/library-go v0.0.0-20230308154344-3706d32a00d0
 
 require (
 	4d63.com/gochecknoglobals v0.1.0 // indirect
