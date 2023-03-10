@@ -62,6 +62,10 @@ spec:
               value: {{ .globalCredsSecretNamespace }}
             - name: NUTANIX_SECRET_NAME
               value: {{ .globalCredsSecretName }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             requests:
               cpu: 200m
