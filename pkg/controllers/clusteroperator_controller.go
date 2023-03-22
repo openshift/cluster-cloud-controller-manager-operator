@@ -25,8 +25,11 @@ import (
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	errutils "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -81,14 +84,6 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	allowedToProvision, err := r.provisioningAllowed(ctx, infra)
-	if err != nil {
-		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
-		return ctrl.Result{}, err
-	} else if !allowedToProvision {
-		return ctrl.Result{}, nil
-	}
-
 	clusterProxy := &configv1.Proxy{}
 	if err := r.Get(ctx, client.ObjectKey{Name: proxyResourceName}, clusterProxy); err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("Unable to retrive Proxy object: %v", err)
@@ -110,7 +105,38 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if err := r.sync(ctx, operatorConfig); err != nil {
+	// Get resources for platform the specific platform
+	resources, err := cloud.GetResources(operatorConfig)
+	if err != nil {
+		klog.Errorf("Unable to render operands manifests: %s", err)
+		if err := r.setStatusDegraded(ctx, err); err != nil {
+			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+		}
+	}
+
+	allowedToProvision, err := r.provisioningAllowed(ctx, infra)
+	if err != nil {
+		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
+		return ctrl.Result{}, err
+	} else if !allowedToProvision {
+		operandsProvisioned, err := r.operandsProvisioned(ctx, resources)
+		if err != nil {
+			klog.Errorf("Unable to determine if operands are already provisioned: %v", err)
+		}
+		if operandsProvisioned {
+			if err := r.deleteOperands(ctx, resources); err != nil {
+				if err := r.setStatusDegraded(ctx, err); err != nil {
+					klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
+					return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
+				}
+				return ctrl.Result{}, fmt.Errorf("Unable to delete previously deployed operands: %v", err)
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.sync(ctx, resources); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
 		if err := r.setStatusDegraded(ctx, err); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
@@ -132,12 +158,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig) error {
-	// Deploy resources for platform
-	resources, err := cloud.GetResources(config)
-	if err != nil {
-		return err
-	}
+func (r *CloudOperatorReconciler) sync(ctx context.Context, resources []client.Object) error {
 	updated, err := r.applyResources(ctx, resources)
 	if err != nil {
 		return err
@@ -146,6 +167,47 @@ func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.Operat
 		return r.setStatusProgressing(ctx)
 	}
 
+	return nil
+}
+
+// operandsProvisioned checks if resources from the passed slice are provisioned
+func (r *CloudOperatorReconciler) operandsProvisioned(ctx context.Context, resources []client.Object) (bool, error) {
+	var errList []error
+	// use delete with dry run for avoid occasional resource mutation in the passed slice
+	opts := &client.DeleteOptions{
+		DryRun: []string{metav1.DryRunAll},
+	}
+	for _, resource := range resources {
+		err := r.Client.Delete(ctx, resource, opts)
+		if err == nil {
+			return true, nil
+		}
+		if err != nil && !errors.IsNotFound(err) {
+			errList = append(errList, err)
+		}
+	}
+	if len(errList) > 0 {
+		return false, errutils.NewAggregate(errList)
+	}
+	return false, nil
+}
+
+// deleteOperands deletes resources from the passed slice from the cluster
+func (r *CloudOperatorReconciler) deleteOperands(ctx context.Context, resources []client.Object) error {
+	var errList []error
+	propagation := metav1.DeletePropagationForeground
+	opts := &client.DeleteOptions{
+		GracePeriodSeconds: pointer.Int64(20),
+		PropagationPolicy:  &propagation,
+	}
+	for _, resource := range resources {
+		if err := r.Client.Delete(ctx, resource, opts); err != nil {
+			errList = append(errList, err)
+		}
+	}
+	if len(errList) > 0 {
+		return errutils.NewAggregate(errList)
+	}
 	return nil
 }
 
