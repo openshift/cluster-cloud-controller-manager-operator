@@ -219,6 +219,10 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 
 	if r.isPlatformExternal(infra.Status.PlatformStatus) {
 		klog.V(3).Info("'External' platform type is detected, do nothing.")
+		if err := r.setStatusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return false, err
+		}
 		return false, nil
 	}
 
