@@ -484,3 +484,98 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		}
 	})
 })
+
+var _ = Describe("Cloud config sync isProviderNutanixAndCloudConfigNeeded", func() {
+	// This is just testing the isProviderNutanixAndCloudConfigNeeded function
+	var reconciler *CloudConfigReconciler
+
+	ctx := context.Background()
+	targetNamespaceName := testManagedNamespace
+
+	BeforeEach(func() {
+		reconciler = &CloudConfigReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				ManagedNamespace: targetNamespaceName,
+			},
+			Scheme: scheme.Scheme,
+		}
+	})
+
+	It("should return false if no PlatformStatus in infra resource presented", func() {
+		infraResource := makeInfrastructureResource(configv1.NutanixPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+		needed, err := reconciler.isProviderNutanixAndCloudConfigNeeded(ctx, infraResource.Status.PlatformStatus)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needed).To(BeFalse(), "Nutanix ConfigMap should not be needed when there is no PlatformStatus")
+	})
+
+	It("should return false if the platform is not Nutanix", func() {
+		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+		needed, err := reconciler.isProviderNutanixAndCloudConfigNeeded(ctx, infraResource.Status.PlatformStatus)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needed).To(BeFalse(), "Nutanix ConfigMap should not be needed on non-Nutanix platforms")
+	})
+
+	It("should return false if the platform is Nutanix and the ConfigMap exists", func() {
+		infraResource := makeInfrastructureResource(configv1.NutanixPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      syncedCloudConfigMapName,
+				Namespace: targetNamespaceName,
+			},
+		}
+		Expect(cl.Create(ctx, cm)).To(Succeed())
+
+		needed, err := reconciler.isProviderNutanixAndCloudConfigNeeded(ctx, infraResource.Status.PlatformStatus)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needed).To(BeFalse(), "False positive as the Nutanix ConfigMap already exists")
+	})
+
+	It("should return true if the platform is Nutanix and the ConfigMap does not exist", func() {
+		infraResource := makeInfrastructureResource(configv1.NutanixPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+		needed, err := reconciler.isProviderNutanixAndCloudConfigNeeded(ctx, infraResource.Status.PlatformStatus)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needed).To(BeTrue(), "Expected ConfigMap to be needed when it does not exist and platform is Nutanix")
+	})
+
+	AfterEach(func() {
+		infra := &configv1.Infrastructure{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: infrastructureResourceName,
+			},
+		}
+		// omitted error intentionally, 404 might be there for some cases
+		cl.Delete(ctx, infra) //nolint:errcheck
+		Eventually(func() bool {
+			return apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra))
+		}).Should(BeTrue())
+
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      syncedCloudConfigMapName,
+				Namespace: targetNamespaceName,
+			},
+		}
+		cl.Delete(ctx, cm) //nolint:errcheck
+		Eventually(func() bool {
+			return apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(cm), cm))
+		}).Should(BeTrue())
+	})
+})
