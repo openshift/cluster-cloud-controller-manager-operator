@@ -55,6 +55,36 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// Due to an upgrade issue from 4.12 -> 4.13 on Nutanix, a user will need to manually create the necessary
+	// cloud configuration ConfigMap. We need to check here and set the operator's upgradeable status to
+	// false if the configmap does not exist.
+	// We are checking here because Nutanix does not require a sync in this version and the controller will return early otherwise.
+	// See https://issues.redhat.com/browse/OCPBUGS-7898 for more information.
+	if cmNeeded, err := r.isProviderNutanixAndCloudConfigNeeded(ctx, infra.Status.PlatformStatus); cmNeeded {
+		// The ConfigMap does not exist, set upgradeable to false and return
+		reason := "MissingNutanixConfigMap"
+		message := "Cloud Config Controller is not upgradeable due to missing \"cloud-conf\" ConfigMap"
+		if err := r.setUpgradeableCondition(ctx, configv1.ConditionFalse, reason, message); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, nil
+	} else if err != nil {
+		// An error occurred while checking, set degraged and return the error.
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, err
+	} else if infra.Status.PlatformStatus != nil && infra.Status.PlatformStatus.Type == configv1.NutanixPlatformType {
+		// we are on Nutanix platform and the ConfigMap exists, ensure that the operator is upgradeable
+		if err := r.setUpgradeableCondition(ctx, configv1.ConditionTrue, ReasonAsExpected, ""); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+
+		// we will always return early on Nutanix, but as this patch is intended for 4.12 only it will be fine
+		// because Nutanix does not have a CCM in 4.12 and this operator will be replaced by the incoming 4.13 version.
+		return ctrl.Result{}, nil
+	}
+
 	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus, infra.Spec.CloudConfig)
 	if err != nil {
 		if err := r.setDegradedCondition(ctx); err != nil {
@@ -307,4 +337,47 @@ func (r *CloudConfigReconciler) setDegradedCondition(ctx context.Context) error 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.Info("Cloud Config Controller is degraded")
 	return r.syncStatus(ctx, co, conds)
+}
+
+func (r *CloudConfigReconciler) setUpgradeableCondition(ctx context.Context, condition configv1.ConditionStatus, reason string, message string) error {
+	co, err := r.getOrCreateClusterOperator(ctx)
+	if err != nil {
+		return err
+	}
+
+	conds := []configv1.ClusterOperatorStatusCondition{
+		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, condition, reason, message),
+	}
+
+	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
+	if condition == configv1.ConditionFalse {
+		klog.Info("Cloud Config Controller is not upgradeable")
+	} else {
+		klog.Info("Cloud Config Controller is upgradeable")
+	}
+	return r.syncStatus(ctx, co, conds)
+}
+
+// isProviderNutanixAndCloudConfigNeeded will determine whether the proper cloud configuration ConfigMap is present
+// on the Nutanix platform. This function is being added to mitigate an upgrade issue where the user must create
+// the ConfigMap before the upgrade can progress.
+// See https://issues.redhat.com/browse/OCPBUGS-7898 for more information.
+func (r *CloudConfigReconciler) isProviderNutanixAndCloudConfigNeeded(ctx context.Context, platformStatus *configv1.PlatformStatus) (bool, error) {
+	if platformStatus == nil || platformStatus.Type != configv1.NutanixPlatformType {
+		return false, nil
+	}
+
+	cm := &corev1.ConfigMap{}
+	// the name of this ConfigMap is sourced from the Nutanix asset for the volume mount
+	// See: https://github.com/openshift/cluster-cloud-controller-manager-operator/blob/release-4.13/pkg/cloud/nutanix/assets/cloud-controller-manager-deployment.yaml#L107
+	if err := r.Get(ctx, client.ObjectKey{Name: syncedCloudConfigMapName, Namespace: r.ManagedNamespace}, cm); errors.IsNotFound(err) {
+		// confirmed that the ConfigMap does not exist.
+		klog.Warningf("ConfigMap \"cloud-conf\" is not found, and is required for upgrade on Nutanix platform")
+		return true, nil
+	} else if err != nil {
+		// got an unexpected error, report false and return the error
+		return false, err
+	}
+
+	return false, nil
 }

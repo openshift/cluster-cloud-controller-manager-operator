@@ -86,6 +86,12 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
 		return ctrl.Result{}, err
 	} else if !allowedToProvision {
+		// we are returning early, but need to make sure we set ourselves to available so that we do not cause issues
+		if err := r.setStatusAvailable(ctx); err != nil {
+			klog.Errorf("Unable to sync cluster operator status: %s", err)
+			return ctrl.Result{}, err
+		}
+
 		return ctrl.Result{}, nil
 	}
 

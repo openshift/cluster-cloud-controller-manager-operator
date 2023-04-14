@@ -115,12 +115,25 @@ func (r *ClusterOperatorStatusClient) setStatusAvailable(ctx context.Context) er
 		return err
 	}
 
+	// we want to preserve the upgradeable flag in case the sync controller has marked us as not upgradeable
+	upgradeable := configv1.ConditionTrue
+	upgReason := ReasonAsExpected
+	upgMessage := "Cluster Cloud Controller Manager Operator is working as expected, no concerns about upgrading"
+	for _, c := range co.Status.Conditions {
+		if c.Type == configv1.OperatorUpgradeable {
+			upgradeable = c.Status
+			upgReason = c.Reason
+			upgMessage = c.Message
+			break
+		}
+	}
+
 	conds := []configv1.ClusterOperatorStatusCondition{
 		newClusterOperatorStatusCondition(configv1.OperatorAvailable, configv1.ConditionTrue, ReasonAsExpected,
 			fmt.Sprintf("Cluster Cloud Controller Manager Operator is available at %s", r.ReleaseVersion)),
 		newClusterOperatorStatusCondition(configv1.OperatorProgressing, configv1.ConditionFalse, ReasonAsExpected, ""),
 		newClusterOperatorStatusCondition(configv1.OperatorDegraded, configv1.ConditionFalse, ReasonAsExpected, ""),
-		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionTrue, ReasonAsExpected, ""),
+		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, upgradeable, upgReason, upgMessage),
 	}
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
