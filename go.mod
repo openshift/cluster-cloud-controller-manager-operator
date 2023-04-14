@@ -30,6 +30,8 @@ require (
 	sigs.k8s.io/yaml v1.3.0
 )
 
+replace github.com/openshift/library-go => github.com/neisw/library-go v0.0.0-20230414134228-93654b048f4e
+
 require (
 	4d63.com/gochecknoglobals v0.1.0 // indirect
 	github.com/Antonboom/errname v0.1.7 // indirect
