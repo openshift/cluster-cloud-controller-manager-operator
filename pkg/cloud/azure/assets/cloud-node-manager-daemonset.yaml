@@ -24,6 +24,7 @@ spec:
         infrastructure.openshift.io/cloud-node-manager: {{ .cloudproviderName }}
       annotations:
         cluster-autoscaler.kubernetes.io/daemonset-pod: "true"
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
     spec:
       priorityClassName: system-node-critical
       serviceAccountName: cloud-node-manager
