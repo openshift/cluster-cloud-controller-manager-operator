@@ -63,7 +63,8 @@ spec:
               fi
               exec /bin/azure-cloud-node-manager \
                 --node-name=$(NODE_NAME) \
-                --wait-routes=false
+                --wait-routes=false \
+                --enable-deprecated-beta-topology-labels
           ports:
           - containerPort: 10263
             name: https
