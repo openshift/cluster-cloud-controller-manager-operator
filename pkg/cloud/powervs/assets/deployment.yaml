@@ -16,6 +16,8 @@ spec:
       infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}
   template:
     metadata:
+      annotations:
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         k8s-app: powervs-cloud-controller-manager
         infrastructure.openshift.io/cloud-controller-manager: {{ .cloudproviderName }}

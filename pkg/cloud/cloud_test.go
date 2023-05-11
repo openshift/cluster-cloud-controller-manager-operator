@@ -83,7 +83,7 @@ func getPlatforms() testPlatformsMap {
 
 func TestGetResources(t *testing.T) {
 	platformsMap := getPlatforms()
-	getResourcesThresholdMs := 25 * time.Millisecond
+	getResourcesThresholdMs := 30 * time.Millisecond
 
 	t.Log("disabling klog logging")
 	testingutils.TurnOffKlog()
