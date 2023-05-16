@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"time"
@@ -25,6 +26,7 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -39,6 +41,10 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
+	configv1client "github.com/openshift/client-go/config/clientset/versioned"
+	configinformers "github.com/openshift/client-go/config/informers/externalversions"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	"github.com/openshift/library-go/pkg/operator/events"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/restmapper"
@@ -111,6 +117,8 @@ func main() {
 		LeaseDuration: leaderElectionConfig.LeaseDuration,
 	})
 
+	ctx := ctrl.SetupSignalHandler()
+
 	syncPeriod := 10 * time.Minute
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Namespace:          *managedNamespace,
@@ -137,6 +145,54 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setup for the feature gate accessor. This reads and monitors feature gates
+	// from the FeatureGate object status for the given version.
+	desiredVersion := controllers.GetReleaseVersion()
+	missingVersion := "0.0.1-snapshot"
+
+	configClient, err := configv1client.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create config client")
+		os.Exit(1)
+	}
+	configInformers := configinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
+
+	kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create kube client")
+		os.Exit(1)
+	}
+
+	controllerRef, err := events.GetControllerReferenceForCurrentPod(ctx, kubeClient, *managedNamespace, nil)
+	if err != nil {
+		klog.Warningf("unable to get owner reference (falling back to namespace): %v", err)
+	}
+
+	recorder := events.NewKubeRecorder(kubeClient.CoreV1().Events(*managedNamespace), "cloud-controller-manager-operator", controllerRef)
+	featureGateAccessor := featuregates.NewFeatureGateAccess(
+		desiredVersion, missingVersion,
+		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
+		recorder,
+	)
+
+	featureGateAccessor.SetChangeHandler(func(featureChange featuregates.FeatureChange) {
+		// Do nothing here. The controller watches feature gate changes and will react to them.
+		klog.InfoS("FeatureGates changed", "enabled", featureChange.New.Enabled, "disabled", featureChange.New.Disabled)
+	})
+
+	go featureGateAccessor.Run(ctx)
+	go configInformers.Start(ctx.Done())
+
+	select {
+	case <-featureGateAccessor.InitialFeatureGatesObserved():
+		features, _ := featureGateAccessor.CurrentFeatureGates()
+
+		enabled, disabled := getEnabledDisabledFeatures(features)
+		setupLog.Info("FeatureGates initialized", "enabled", enabled, "disabled", disabled)
+	case <-time.After(1 * time.Minute):
+		setupLog.Error(errors.New("timed out waiting for FeatureGate detection"), "unable to start manager")
+	}
+
 	if err = (&controllers.CloudOperatorReconciler{
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
@@ -144,8 +200,9 @@ func main() {
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
 		},
-		Scheme:     mgr.GetScheme(),
-		ImagesFile: *imagesFile,
+		Scheme:            mgr.GetScheme(),
+		ImagesFile:        *imagesFile,
+		FeatureGateAccess: featureGateAccessor,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterOperator")
 		os.Exit(1)
@@ -162,8 +219,23 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func getEnabledDisabledFeatures(features featuregates.FeatureGate) ([]string, []string) {
+	var enabled []string
+	var disabled []string
+
+	for _, feature := range features.KnownFeatures() {
+		if features.Enabled(feature) {
+			enabled = append(enabled, string(feature))
+		} else {
+			disabled = append(disabled, string(feature))
+		}
+	}
+
+	return enabled, disabled
 }

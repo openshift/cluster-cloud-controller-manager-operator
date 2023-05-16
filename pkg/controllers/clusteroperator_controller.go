@@ -23,6 +23,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/cloudprovider"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,9 +50,10 @@ const (
 // CloudOperatorReconciler reconciles a ClusterOperator object
 type CloudOperatorReconciler struct {
 	ClusterOperatorStatusClient
-	Scheme     *runtime.Scheme
-	watcher    ObjectWatcher
-	ImagesFile string
+	Scheme            *runtime.Scheme
+	watcher           ObjectWatcher
+	ImagesFile        string
+	FeatureGateAccess featuregates.FeatureGateAccess
 }
 
 // +kubebuilder:rbac:groups=config.openshift.io,resources=clusteroperators,verbs=get;list;watch;create;update;patch;delete
@@ -234,27 +236,8 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 		return true, nil
 	}
 
-	featureGate := &configv1.FeatureGate{}
-	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
-		klog.Infof("FeatureGate cluster does not exist. Skipping...")
-
-		if err := r.setStatusAvailable(ctx); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return false, err
-		}
-		return false, nil
-	} else if err != nil {
-		klog.Errorf("Unable to retrive FeatureGate object: %v", err)
-
-		if err := r.setStatusDegraded(ctx, err); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
-		return false, err
-	}
-
 	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
-	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus, featureGate)
+	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus, r.FeatureGateAccess)
 	if err != nil {
 		klog.Errorf("Could not determine external cloud provider state: %v", err)
 
