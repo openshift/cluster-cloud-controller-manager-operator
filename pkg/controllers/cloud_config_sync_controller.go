@@ -28,6 +28,8 @@ const (
 	// Controller conditions for the Cluster Operator resource
 	cloudConfigControllerAvailableCondition = "CloudConfigControllerAvailable"
 	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
+
+	upgradeAvailableMessage = "Cluster Cloud Controller Manager Operator is working as expected, no concerns about upgrading"
 )
 
 type CloudConfigReconciler struct {
@@ -76,7 +78,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	} else if infra.Status.PlatformStatus != nil && infra.Status.PlatformStatus.Type == configv1.NutanixPlatformType {
 		// we are on Nutanix platform and the ConfigMap exists, ensure that the operator is upgradeable
-		if err := r.setUpgradeableCondition(ctx, configv1.ConditionTrue, ReasonAsExpected, ""); err != nil {
+		if err := r.setUpgradeableCondition(ctx, configv1.ConditionTrue, ReasonAsExpected, upgradeAvailableMessage); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 		}
 
@@ -314,6 +316,8 @@ func (r *CloudConfigReconciler) setAvailableCondition(ctx context.Context) error
 			"Cloud Config Controller works as expected"),
 		newClusterOperatorStatusCondition(cloudConfigControllerDegradedCondition, configv1.ConditionFalse, ReasonAsExpected,
 			"Cloud Config Controller works as expected"),
+		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionTrue, ReasonAsExpected,
+			upgradeAvailableMessage),
 	}
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}

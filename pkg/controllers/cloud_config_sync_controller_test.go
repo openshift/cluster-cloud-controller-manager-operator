@@ -511,6 +511,19 @@ var _ = Describe("Cloud config sync isProviderNutanixAndCloudConfigNeeded", func
 		Expect(needed).To(BeFalse(), "Nutanix ConfigMap should not be needed when there is no PlatformStatus")
 	})
 
+	It("should return false if the platform is None", func() {
+		// there is slightly different logic for None platform type, it uses a default switch clause
+		infraResource := makeInfrastructureResource(configv1.NonePlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+		needed, err := reconciler.isProviderNutanixAndCloudConfigNeeded(ctx, infraResource.Status.PlatformStatus)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needed).To(BeFalse(), "Nutanix ConfigMap should not be needed on non-Nutanix platforms")
+	})
+
 	It("should return false if the platform is not Nutanix", func() {
 		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
 		Expect(cl.Create(ctx, infraResource)).To(Succeed())
