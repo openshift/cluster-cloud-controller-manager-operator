@@ -189,18 +189,18 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	build := ctrl.NewControllerManagedBy(mgr).
 		For(&configv1.ClusterOperator{}, builder.WithPredicates(clusterOperatorPredicates())).
-		Watches(&source.Kind{Type: &configv1.Infrastructure{}},
+		Watches(&configv1.Infrastructure{},
 			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
 			builder.WithPredicates(infrastructurePredicates())).
-		Watches(&source.Kind{Type: &configv1.FeatureGate{}},
+		Watches(&configv1.FeatureGate{},
 			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
 			builder.WithPredicates(featureGatePredicates())).
-		Watches(&source.Kind{Type: &operatorv1.KubeControllerManager{}},
+		Watches(&operatorv1.KubeControllerManager{},
 			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
 			builder.WithPredicates(kcmPredicates())).
-		Watches(&source.Channel{Source: watcher.EventStream()}, handler.EnqueueRequestsFromMapFunc(toClusterOperator)).
-		Watches(&source.Kind{Type: &corev1.ConfigMap{}}, handler.EnqueueRequestsFromMapFunc(toClusterOperator)).
-		Watches(&source.Kind{Type: &corev1.Secret{}}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
+		WatchesRawSource(&source.Channel{Source: watcher.EventStream()}, handler.EnqueueRequestsFromMapFunc(toClusterOperator)).
+		Watches(&corev1.ConfigMap{}, handler.EnqueueRequestsFromMapFunc(toClusterOperator)).
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
 
 	return build.Complete(r)
 }

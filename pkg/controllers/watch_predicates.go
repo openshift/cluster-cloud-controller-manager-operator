@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"context"
+
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -25,13 +27,13 @@ func clusterOperatorPredicates() predicate.Funcs {
 	}
 }
 
-func toClusterOperator(client.Object) []reconcile.Request {
+func toClusterOperator(context.Context, client.Object) []reconcile.Request {
 	return []reconcile.Request{{
 		NamespacedName: client.ObjectKey{Name: clusterOperatorName},
 	}}
 }
 
-func toManagedConfigMap(client.Object) []reconcile.Request {
+func toManagedConfigMap(context.Context, client.Object) []reconcile.Request {
 	return []reconcile.Request{{
 		NamespacedName: client.ObjectKey{Name: syncedCloudConfigMapName, Namespace: DefaultManagedNamespace},
 	}}

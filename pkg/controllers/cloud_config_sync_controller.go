@@ -15,7 +15,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 )
@@ -262,12 +261,12 @@ func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			),
 		).
 		Watches(
-			&source.Kind{Type: &configv1.Infrastructure{}},
+			&configv1.Infrastructure{},
 			handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
 			builder.WithPredicates(infrastructurePredicates()),
 		).
 		Watches(
-			&source.Kind{Type: &configv1.Network{}},
+			&configv1.Network{},
 			handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
 		)
 

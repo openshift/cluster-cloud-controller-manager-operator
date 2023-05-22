@@ -58,6 +58,7 @@ const (
 
 var cfg *rest.Config
 var cl client.Client
+var ctx = context.Background()
 var testEnv *envtest.Environment
 
 func TestAPIs(t *testing.T) {

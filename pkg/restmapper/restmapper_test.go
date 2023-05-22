@@ -60,11 +60,13 @@ func TestPartialRestMapperProvider(t *testing.T) {
 
 		// Create two different REST mappers with different passed group filter predicates
 		allGroupsRestMapperProvider := NewPartialRestMapperProvider(AllGroups)
-		allGroupsRestMapper, err := allGroupsRestMapperProvider(restCfg)
+		httpClient, err := rest.HTTPClientFor(restCfg)
+		g.Expect(err).ToNot(gmg.HaveOccurred())
+		allGroupsRestMapper, err := allGroupsRestMapperProvider(restCfg, httpClient)
 		g.Expect(err).To(gmg.Succeed())
 
 		filteredGroupsRestMapperProvider := NewPartialRestMapperProvider(KubernetesAppsGroup)
-		filteredGroupsMapper, err := filteredGroupsRestMapperProvider(restCfg)
+		filteredGroupsMapper, err := filteredGroupsRestMapperProvider(restCfg, httpClient)
 		g.Expect(err).To(gmg.Succeed())
 
 		// mapping for event expected to be found in allGroupsMapper

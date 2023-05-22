@@ -1,6 +1,7 @@
 package restmapper
 
 import (
+	"net/http"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -10,38 +11,25 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 type RESTMapperProvider func(c *rest.Config) (meta.RESTMapper, error)
 
 // NewPartialRestMapperProvider returns configured 'partial' rest mapper provider intended to be used with controller-runtime manager.
 // Takes GroupFilterPredicate as an argument for filtering out APIGroups during discovery procedure.
-func NewPartialRestMapperProvider(groupFilterPredicate GroupFilterPredicate) RESTMapperProvider {
-	partialRESTMapperProvider := func(c *rest.Config) (meta.RESTMapper, error) {
-		drm, err := apiutil.NewDynamicRESTMapper(c,
-			apiutil.WithLazyDiscovery,
-			apiutil.WithCustomMapper(
-				func() (meta.RESTMapper, error) {
-					dc, err := discovery.NewDiscoveryClientForConfig(c)
-					if err != nil {
-						return nil, err
-					}
-
-					groupResources, err := getFilteredAPIGroupResources(dc, groupFilterPredicate)
-					if err != nil {
-						return nil, err
-					}
-
-					return restmapper.NewDiscoveryRESTMapper(groupResources), nil
-				},
-			),
-		)
+func NewPartialRestMapperProvider(groupFilterPredicate GroupFilterPredicate) func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
+	partialRESTMapperProvider := func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
+		dc, err := discovery.NewDiscoveryClientForConfig(c)
 		if err != nil {
 			return nil, err
 		}
 
-		return drm, nil
+		groupResources, err := getFilteredAPIGroupResources(dc, groupFilterPredicate)
+		if err != nil {
+			return nil, err
+		}
+
+		return restmapper.NewDiscoveryRESTMapper(groupResources), nil
 	}
 	return partialRESTMapperProvider
 }
