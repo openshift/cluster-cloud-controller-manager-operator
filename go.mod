@@ -7,7 +7,7 @@ require (
 	github.com/go-logr/logr v1.2.4
 	github.com/golangci/golangci-lint v1.52.2
 	github.com/onsi/ginkgo/v2 v2.9.5
-	github.com/onsi/gomega v1.27.6
+	github.com/onsi/gomega v1.27.7
 	github.com/openshift/api v0.0.0-20230426193520-54a14470e5dc
 	github.com/openshift/client-go v0.0.0-20230120202327-72f107311084
 	github.com/openshift/library-go v0.0.0-20230501171818-442d38f5a55b
@@ -25,7 +25,7 @@ require (
 	k8s.io/component-base v0.27.2
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/utils v0.0.0-20230505201702-9f6742963106
-	sigs.k8s.io/controller-runtime v0.15.0-beta.0.0.20230519160631-e7b94074ad38
+	sigs.k8s.io/controller-runtime v0.15.0
 	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20230214070730-08dce9f0bfdc
 	sigs.k8s.io/controller-tools v0.12.0
 	sigs.k8s.io/yaml v1.3.0
@@ -220,7 +220,7 @@ require (
 	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.9.1 // indirect
-	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
+	gomodules.xyz/jsonpatch/v2 v2.3.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect

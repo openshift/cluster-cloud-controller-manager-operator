@@ -518,7 +518,7 @@ github.com/onsi/ginkgo/v2/internal/parallel_support
 github.com/onsi/ginkgo/v2/internal/testingtproxy
 github.com/onsi/ginkgo/v2/reporters
 github.com/onsi/ginkgo/v2/types
-# github.com/onsi/gomega v1.27.6
+# github.com/onsi/gomega v1.27.7
 ## explicit; go 1.18
 github.com/onsi/gomega
 github.com/onsi/gomega/format
@@ -996,8 +996,8 @@ golang.org/x/tools/internal/pkgbits
 golang.org/x/tools/internal/tokeninternal
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
-# gomodules.xyz/jsonpatch/v2 v2.2.0
-## explicit; go 1.12
+# gomodules.xyz/jsonpatch/v2 v2.3.0
+## explicit; go 1.20
 gomodules.xyz/jsonpatch/v2
 # google.golang.org/appengine v1.6.7
 ## explicit; go 1.11
@@ -1534,7 +1534,7 @@ mvdan.cc/lint
 # mvdan.cc/unparam v0.0.0-20221223090309-7455f1af531d
 ## explicit; go 1.18
 mvdan.cc/unparam/check
-# sigs.k8s.io/controller-runtime v0.15.0-beta.0.0.20230519160631-e7b94074ad38
+# sigs.k8s.io/controller-runtime v0.15.0
 ## explicit; go 1.20
 sigs.k8s.io/controller-runtime
 sigs.k8s.io/controller-runtime/pkg/builder
