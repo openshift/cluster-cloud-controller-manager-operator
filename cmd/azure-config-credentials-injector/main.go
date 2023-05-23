@@ -52,12 +52,12 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	azureClientId, found := os.LookupEnv(clientIDEnvKey)
+	azureClientId, found := mustLookupEnvValue(clientIDEnvKey)
 	if !found {
 		return fmt.Errorf("%s env variable should be set up", clientIDEnvKey)
 	}
 
-	azureClientSecret, found := os.LookupEnv(clientSecretEnvKey)
+	azureClientSecret, secretFound = mustLookupEnvValue(clientSecretEnvKey)
 	if !found {
 		return fmt.Errorf("%s env variable should be set up", clientSecretEnvKey)
 	}
@@ -119,4 +119,12 @@ func writeCloudConfig(path string, preparedConfig []byte) error {
 		return err
 	}
 	return nil
+}
+
+func mustLookupEnvValue(key string) (string, bool) {
+	value, found := os.LookupEnv(key)
+	if !found || len(value) == 0 {
+		return "", false
+	}
+	return value, true
 }
