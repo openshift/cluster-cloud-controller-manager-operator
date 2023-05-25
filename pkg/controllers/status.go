@@ -120,7 +120,9 @@ func (r *ClusterOperatorStatusClient) setStatusAvailable(ctx context.Context) er
 	upgReason := ReasonAsExpected
 	upgMessage := "Cluster Cloud Controller Manager Operator is working as expected, no concerns about upgrading"
 	for _, c := range co.Status.Conditions {
-		if c.Type == configv1.OperatorUpgradeable {
+		// if the cloud config sync controller has marked itself as non-upgradeable, the operator
+		// should also mark itself as non-upgradeable.
+		if c.Type == cloudConfigControllerUpgradeableCondition && c.Status == configv1.ConditionFalse {
 			upgradeable = c.Status
 			upgReason = c.Reason
 			upgMessage = c.Message

@@ -26,8 +26,9 @@ const (
 	defaultConfigKey = "cloud.conf"
 
 	// Controller conditions for the Cluster Operator resource
-	cloudConfigControllerAvailableCondition = "CloudConfigControllerAvailable"
-	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
+	cloudConfigControllerAvailableCondition   = "CloudConfigControllerAvailable"
+	cloudConfigControllerDegradedCondition    = "CloudConfigControllerDegraded"
+	cloudConfigControllerUpgradeableCondition = "CloudConfigControllerUpgradeable"
 
 	upgradeAvailableMessage = "Cluster Cloud Controller Manager Operator is working as expected, no concerns about upgrading"
 )
@@ -316,7 +317,7 @@ func (r *CloudConfigReconciler) setAvailableCondition(ctx context.Context) error
 			"Cloud Config Controller works as expected"),
 		newClusterOperatorStatusCondition(cloudConfigControllerDegradedCondition, configv1.ConditionFalse, ReasonAsExpected,
 			"Cloud Config Controller works as expected"),
-		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionTrue, ReasonAsExpected,
+		newClusterOperatorStatusCondition(cloudConfigControllerUpgradeableCondition, configv1.ConditionTrue, ReasonAsExpected,
 			upgradeAvailableMessage),
 	}
 
@@ -350,7 +351,7 @@ func (r *CloudConfigReconciler) setUpgradeableCondition(ctx context.Context, con
 	}
 
 	conds := []configv1.ClusterOperatorStatusCondition{
-		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, condition, reason, message),
+		newClusterOperatorStatusCondition(cloudConfigControllerUpgradeableCondition, condition, reason, message),
 	}
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
