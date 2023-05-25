@@ -187,7 +187,7 @@ func main() {
 	case <-featureGateAccessor.InitialFeatureGatesObserved():
 		features, _ := featureGateAccessor.CurrentFeatureGates()
 
-		enabled, disabled := getEnabledDisabledFeatures(features)
+		enabled, disabled := util.GetEnabledDisabledFeatures(features, nil)
 		setupLog.Info("FeatureGates initialized", "enabled", enabled, "disabled", disabled)
 	case <-time.After(1 * time.Minute):
 		setupLog.Error(errors.New("timed out waiting for FeatureGate detection"), "unable to start manager")
@@ -223,19 +223,4 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-func getEnabledDisabledFeatures(features featuregates.FeatureGate) ([]string, []string) {
-	var enabled []string
-	var disabled []string
-
-	for _, feature := range features.KnownFeatures() {
-		if features.Enabled(feature) {
-			enabled = append(enabled, string(feature))
-		} else {
-			disabled = append(disabled, string(feature))
-		}
-	}
-
-	return enabled, disabled
 }

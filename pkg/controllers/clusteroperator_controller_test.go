@@ -30,6 +30,7 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers/resourceapply"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 )
 
 const (
@@ -271,7 +272,15 @@ var _ = Describe("Component sync controller", func() {
 		},
 	}
 
-	getOperatorConfigForPlatform := func(status *configv1.PlatformStatus) config.OperatorConfig {
+	getOperatorConfigForPlatform := func(status *configv1.PlatformStatus, featureGate featuregates.FeatureGateAccess) config.OperatorConfig {
+		featureGatesString := ""
+		if featureGate != nil {
+			upstreamGates, _ := util.GetUpstreamCloudFeatureGates()
+			features, _ := featureGate.CurrentFeatureGates()
+			enabled, _ := util.GetEnabledDisabledFeatures(features, upstreamGates)
+			featureGatesString = util.BuildFeatureGateString(enabled, nil)
+		}
+
 		return config.OperatorConfig{
 			ManagedNamespace: DefaultManagedNamespace,
 			ImagesReference: config.ImagesReference{
@@ -282,6 +291,7 @@ var _ = Describe("Component sync controller", func() {
 				CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 			},
 			PlatformStatus: status,
+			FeatureGates:   featureGatesString,
 		}
 	}
 
@@ -390,7 +400,7 @@ var _ = Describe("Component sync controller", func() {
 
 			watchMap := watcher.getWatchedResources()
 
-			operatorConfig := getOperatorConfigForPlatform(tc.status.PlatformStatus)
+			operatorConfig := getOperatorConfigForPlatform(tc.status.PlatformStatus, tc.featureGate)
 
 			clusterOperator, err := operatorController.getOrCreateClusterOperator(context.Background())
 			Expect(err).To(Succeed())
