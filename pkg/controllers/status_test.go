@@ -291,6 +291,7 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 	type tCase struct {
 		currentVersion     []configv1.OperandVersion
 		desiredVersion     string
+		injectedConditions []configv1.ClusterOperatorStatusCondition
 		expectedConditions []configv1.ClusterOperatorStatusCondition
 	}
 	tCases := []tCase{
@@ -318,6 +319,32 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 				newClusterOperatorStatusCondition(configv1.OperatorDegraded, configv1.ConditionFalse, ReasonAsExpected, ""),
 			},
 		},
+		{
+			desiredVersion: "1.0",
+			injectedConditions: []configv1.ClusterOperatorStatusCondition{
+				newClusterOperatorStatusCondition(cloudConfigControllerUpgradeableCondition, configv1.ConditionTrue, ReasonAsExpected, ""),
+			},
+			expectedConditions: []configv1.ClusterOperatorStatusCondition{
+				newClusterOperatorStatusCondition(configv1.OperatorAvailable, configv1.ConditionTrue, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(configv1.OperatorProgressing, configv1.ConditionFalse, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionTrue, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(configv1.OperatorDegraded, configv1.ConditionFalse, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(cloudConfigControllerUpgradeableCondition, configv1.ConditionTrue, ReasonAsExpected, ""),
+			},
+		},
+		{
+			desiredVersion: "1.0",
+			injectedConditions: []configv1.ClusterOperatorStatusCondition{
+				newClusterOperatorStatusCondition(cloudConfigControllerUpgradeableCondition, configv1.ConditionFalse, "MissingConfigMap", "It's missing!"),
+			},
+			expectedConditions: []configv1.ClusterOperatorStatusCondition{
+				newClusterOperatorStatusCondition(configv1.OperatorAvailable, configv1.ConditionTrue, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(configv1.OperatorProgressing, configv1.ConditionFalse, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionFalse, "MissingConfigMap", "It's missing!"),
+				newClusterOperatorStatusCondition(configv1.OperatorDegraded, configv1.ConditionFalse, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(cloudConfigControllerUpgradeableCondition, configv1.ConditionFalse, "MissingConfigMap", "It's missing!"),
+			},
+		},
 	}
 
 	for i, tc := range tCases {
@@ -339,6 +366,14 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 			builder = builder.WithObjects(operator)
 		}
 		optr.Client = builder.Build()
+
+		if tc.injectedConditions != nil {
+			co, err := optr.getOrCreateClusterOperator(context.TODO())
+			assert.NoErrorf(t, err, "Failed to fetch ClusterOperator for injectedConditions")
+
+			err = optr.syncStatus(context.TODO(), co, tc.injectedConditions)
+			assert.NoErrorf(t, err, "Failed to syncStatus for injectedConditions")
+		}
 
 		err := optr.setStatusAvailable(context.TODO())
 		assert.NoErrorf(t, err, "Failed to set Available status on ClusterOperator")
