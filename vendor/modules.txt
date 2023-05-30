@@ -530,8 +530,8 @@ github.com/onsi/gomega/matchers/support/goraph/edge
 github.com/onsi/gomega/matchers/support/goraph/node
 github.com/onsi/gomega/matchers/support/goraph/util
 github.com/onsi/gomega/types
-# github.com/openshift/api v0.0.0-20230426193520-54a14470e5dc
-## explicit; go 1.19
+# github.com/openshift/api v0.0.0-20230525164355-91a8d2b2e2d9
+## explicit; go 1.20
 github.com/openshift/api
 github.com/openshift/api/apiserver
 github.com/openshift/api/apiserver/v1
@@ -600,8 +600,8 @@ github.com/openshift/api/template
 github.com/openshift/api/template/v1
 github.com/openshift/api/user
 github.com/openshift/api/user/v1
-# github.com/openshift/client-go v0.0.0-20230120202327-72f107311084
-## explicit; go 1.19
+# github.com/openshift/client-go v0.0.0-20230503144108-75015d2347cb
+## explicit; go 1.20
 github.com/openshift/client-go/config/applyconfigurations/config/v1
 github.com/openshift/client-go/config/applyconfigurations/config/v1alpha1
 github.com/openshift/client-go/config/applyconfigurations/internal
@@ -616,8 +616,8 @@ github.com/openshift/client-go/config/informers/externalversions/config/v1alpha1
 github.com/openshift/client-go/config/informers/externalversions/internalinterfaces
 github.com/openshift/client-go/config/listers/config/v1
 github.com/openshift/client-go/config/listers/config/v1alpha1
-# github.com/openshift/library-go v0.0.0-20230501171818-442d38f5a55b
-## explicit; go 1.19
+# github.com/openshift/library-go v0.0.0-20230523150659-ab179469ba38
+## explicit; go 1.20
 github.com/openshift/library-go/pkg/cloudprovider
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
 github.com/openshift/library-go/pkg/config/clusterstatus
