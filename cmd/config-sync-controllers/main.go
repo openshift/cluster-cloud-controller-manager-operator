@@ -26,7 +26,6 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -97,11 +96,8 @@ func main() {
 
 	syncPeriod := 10 * time.Minute
 
-	opts := cache.Options{}
-	opts.Namespaces = []string{*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace}
-
-	cacheBuilder := func(config *rest.Config, opts cache.Options) (cache.Cache, error) {
-		return cache.New(restConfig, opts)
+	cacheOptions := cache.Options{
+		Namespaces: []string{*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace},
 	}
 
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
@@ -123,7 +119,7 @@ func main() {
 		LeaseDuration:           &le.LeaseDuration.Duration,
 		RetryPeriod:             &le.RetryPeriod.Duration,
 		RenewDeadline:           &le.RenewDeadline.Duration,
-		NewCache:                cacheBuilder,
+		Cache:                   cacheOptions,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
