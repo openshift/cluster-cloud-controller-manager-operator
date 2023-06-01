@@ -20,10 +20,11 @@ import (
 
 // The default set of status change reasons.
 const (
-	ReasonAsExpected   = "AsExpected"
-	ReasonInitializing = "Initializing"
-	ReasonSyncing      = "SyncingResources"
-	ReasonSyncFailed   = "SyncingFailed"
+	ReasonAsExpected          = "AsExpected"
+	ReasonInitializing        = "Initializing"
+	ReasonSyncing             = "SyncingResources"
+	ReasonSyncFailed          = "SyncingFailed"
+	ReasonPlatformTechPreview = "PlatformTechPreview"
 )
 
 const (
@@ -47,7 +48,7 @@ type ClusterOperatorStatusClient struct {
 // setStatusDegraded sets the Degraded condition to True, with the given reason and
 // message, and sets the upgradeable condition.  It does not modify any existing
 // Available or Progressing conditions.
-func (r *ClusterOperatorStatusClient) setStatusDegraded(ctx context.Context, reconcileErr error) error {
+func (r *ClusterOperatorStatusClient) setStatusDegraded(ctx context.Context, reconcileErr error, overrides []configv1.ClusterOperatorStatusCondition) error {
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		klog.Errorf("Failed to get or create Cluster Operator: %v", err)
@@ -72,13 +73,13 @@ func (r *ClusterOperatorStatusClient) setStatusDegraded(ctx context.Context, rec
 
 	r.Recorder.Eventf(co, corev1.EventTypeWarning, "Status degraded", reconcileErr.Error())
 	klog.V(2).Infof("Syncing status: degraded: %s", message)
-	return r.syncStatus(ctx, co, conds)
+	return r.syncStatus(ctx, co, conds, overrides)
 }
 
 // setStatusProgressing sets the Progressing condition to True, with the given
 // reason and message, and sets the upgradeable condition to True.  It does not
 // modify any existing Available or Degraded conditions.
-func (r *ClusterOperatorStatusClient) setStatusProgressing(ctx context.Context) error {
+func (r *ClusterOperatorStatusClient) setStatusProgressing(ctx context.Context, overrides []configv1.ClusterOperatorStatusCondition) error {
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		klog.Errorf("Failed to get or create Cluster Operator: %v", err)
@@ -104,12 +105,12 @@ func (r *ClusterOperatorStatusClient) setStatusProgressing(ctx context.Context) 
 		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionTrue, ReasonAsExpected, ""),
 	}
 
-	return r.syncStatus(ctx, co, conds)
+	return r.syncStatus(ctx, co, conds, overrides)
 }
 
 // setStatusAvailable sets the Available condition to True, with the given reason
 // and message, and sets both the Progressing and Degraded conditions to False.
-func (r *ClusterOperatorStatusClient) setStatusAvailable(ctx context.Context) error {
+func (r *ClusterOperatorStatusClient) setStatusAvailable(ctx context.Context, overrides []configv1.ClusterOperatorStatusCondition) error {
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		return err
@@ -125,7 +126,7 @@ func (r *ClusterOperatorStatusClient) setStatusAvailable(ctx context.Context) er
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.V(2).Info("Syncing status: available")
-	return r.syncStatus(ctx, co, conds)
+	return r.syncStatus(ctx, co, conds, overrides)
 }
 
 // setCloudControllerOwnerCondition sets the CloudControllerOwner condition to True, with the given reason and message.
@@ -142,7 +143,7 @@ func (r *CloudOperatorReconciler) setCloudControllerOwnerCondition(ctx context.C
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.V(2).Info("Setting condition CloudControllerOwner to True")
-	return r.syncStatus(ctx, co, conds)
+	return r.syncStatus(ctx, co, conds, nil)
 }
 
 func printOperandVersions(versions []configv1.OperandVersion) string {
@@ -199,8 +200,13 @@ func (r *ClusterOperatorStatusClient) relatedObjects() []configv1.ObjectReferenc
 }
 
 // syncStatus applies the new condition to the ClusterOperator object.
-func (r *ClusterOperatorStatusClient) syncStatus(ctx context.Context, co *configv1.ClusterOperator, conds []configv1.ClusterOperatorStatusCondition) error {
+func (r *ClusterOperatorStatusClient) syncStatus(ctx context.Context, co *configv1.ClusterOperator, conds, overrides []configv1.ClusterOperatorStatusCondition) error {
 	for _, c := range conds {
+		v1helpers.SetStatusCondition(&co.Status.Conditions, c)
+	}
+
+	// These overrides came from the operator controller and override anything set by the setAvaialble, setProgressing, or setDegraded methods.
+	for _, c := range overrides {
 		v1helpers.SetStatusCondition(&co.Status.Conditions, c)
 	}
 
