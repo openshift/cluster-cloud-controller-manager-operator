@@ -108,7 +108,7 @@ type eventToChannelHandler struct {
 	name       string
 }
 
-func (e *eventToChannelHandler) OnAdd(obj interface{}) {
+func (e *eventToChannelHandler) OnAdd(obj interface{}, isInInitialList bool) {
 	e.queueEventForObject(nil, obj)
 }
 

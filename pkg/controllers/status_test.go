@@ -86,7 +86,7 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 			Scheme: scheme.Scheme,
 		}
 
-		builder := fake.NewClientBuilder()
+		builder := fake.NewClientBuilder().WithStatusSubresource(&configv1.ClusterOperator{})
 		if tc.currentVersion != nil {
 			operator := &configv1.ClusterOperator{}
 			operator.SetName(clusterOperatorName)
@@ -210,7 +210,7 @@ func TestOperatorSetStatusDegraded(t *testing.T) {
 			Scheme: scheme.Scheme,
 		}
 
-		builder := fake.NewClientBuilder()
+		builder := fake.NewClientBuilder().WithStatusSubresource(&configv1.ClusterOperator{})
 		if tc.currentVersion != nil {
 			operator := &configv1.ClusterOperator{}
 			operator.SetName(clusterOperatorName)
@@ -331,7 +331,7 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 			Scheme: scheme.Scheme,
 		}
 
-		builder := fake.NewClientBuilder()
+		builder := fake.NewClientBuilder().WithStatusSubresource(&configv1.ClusterOperator{})
 		if tc.currentVersion != nil {
 			operator := &configv1.ClusterOperator{}
 			operator.SetName(clusterOperatorName)

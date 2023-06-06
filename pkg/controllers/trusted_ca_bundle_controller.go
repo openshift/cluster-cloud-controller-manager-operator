@@ -20,7 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 )
@@ -292,7 +291,7 @@ func (r *TrustedCABundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			),
 		).
 		Watches(
-			&source.Kind{Type: &configv1.Proxy{}},
+			&configv1.Proxy{},
 			&handler.EnqueueRequestForObject{},
 		)
 

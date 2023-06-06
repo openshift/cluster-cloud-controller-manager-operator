@@ -198,7 +198,7 @@ var _ = Describe("toClusterOperator mapping is targeting requests to 'cloud-cont
 				Name: clusterOperatorName,
 			},
 		}}
-		Expect(toClusterOperator(object)).To(Equal(requests))
+		Expect(toClusterOperator(ctx, object)).To(Equal(requests))
 	})
 })
 

@@ -95,9 +95,11 @@ func main() {
 	})
 
 	syncPeriod := 10 * time.Minute
-	cacheBuilder := cache.MultiNamespacedCacheBuilder([]string{
-		*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace,
-	})
+
+	cacheOptions := cache.Options{
+		Namespaces: []string{*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace},
+	}
+
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Namespace:              *managedNamespace,
 		Scheme:                 scheme,
@@ -117,7 +119,7 @@ func main() {
 		LeaseDuration:           &le.LeaseDuration.Duration,
 		RetryPeriod:             &le.RetryPeriod.Duration,
 		RenewDeadline:           &le.RenewDeadline.Duration,
-		NewCache:                cacheBuilder,
+		Cache:                   cacheOptions,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
