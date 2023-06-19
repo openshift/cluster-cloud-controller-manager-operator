@@ -11,12 +11,18 @@ import (
 )
 
 const (
-	clientIDEnvKey     = "AZURE_CLIENT_ID"
-	clientSecretEnvKey = "AZURE_CLIENT_SECRET"
+	clientIDEnvKey       = "AZURE_CLIENT_ID"
+	clientSecretEnvKey   = "AZURE_CLIENT_SECRET"
+	tenantIDEnvKey       = "AZURE_TENANT_ID"
+	federatedTokenEnvKey = "AZURE_FEDERATED_TOKEN_FILE"
 
 	clientIDCloudConfigKey               = "aadClientId"
 	clientSecretCloudConfigKey           = "aadClientSecret"
 	useManagedIdentityExtensionConfigKey = "useManagedIdentityExtension"
+
+	tenantIdConfigKey                              = "tenantId"
+	aadFederatedTokenFileConfigKey                 = "aadFederatedTokenFile"
+	useFederatedWorkloadIdentityExtensionConfigKey = "useFederatedWorkloadIdentityExtension"
 )
 
 var (
@@ -29,6 +35,7 @@ var (
 	injectorOpts struct {
 		cloudConfigFilePath          string
 		outputFilePath               string
+		enableWorkloadIdentity       string
 		disableIdentityExtensionAuth bool
 	}
 )
@@ -39,6 +46,7 @@ func init() {
 	injectorCmd.PersistentFlags().StringVar(&injectorOpts.cloudConfigFilePath, "cloud-config-file-path", "/tmp/cloud-config/cloud.conf", "Location of the original cloud config file.")
 	injectorCmd.PersistentFlags().StringVar(&injectorOpts.outputFilePath, "output-file-path", "/tmp/merged-cloud-config/cloud.conf", "Location of the generated cloud config file with injected credentials.")
 	injectorCmd.PersistentFlags().BoolVar(&injectorOpts.disableIdentityExtensionAuth, "disable-identity-extension-auth", false, "Disable managed identity authentication, if it's set in cloudConfig.")
+	injectorCmd.PersistentFlags().StringVar(&injectorOpts.enableWorkloadIdentity, "enable-azure-workload-identity", "false", "Enable workload identity authentication.")
 }
 
 func main() {
@@ -48,18 +56,39 @@ func main() {
 }
 
 func mergeCloudConfig(_ *cobra.Command, args []string) error {
+	var (
+		azureClientId      string
+		azureClientSecret  string
+		tenantId           string
+		federatedTokenFile string
+		secretFound        bool
+		err                error
+	)
+
 	if _, err := os.Stat(injectorOpts.cloudConfigFilePath); os.IsNotExist(err) {
 		return err
 	}
 
-	azureClientId, found := os.LookupEnv(clientIDEnvKey)
+	azureClientId, found := mustLookupEnvValue(clientIDEnvKey)
 	if !found {
 		return fmt.Errorf("%s env variable should be set up", clientIDEnvKey)
 	}
 
-	azureClientSecret, found := os.LookupEnv(clientSecretEnvKey)
-	if !found {
-		return fmt.Errorf("%s env variable should be set up", clientSecretEnvKey)
+	azureClientSecret, secretFound = mustLookupEnvValue(clientSecretEnvKey)
+
+	// Ensure there is only one authentication method.
+	if injectorOpts.enableWorkloadIdentity == "true" {
+		tenantId, federatedTokenFile, err = lookupWorkloadIdentityEnv(tenantIDEnvKey, federatedTokenEnvKey)
+		if err != nil {
+			return fmt.Errorf("workload identity method failed: %v", err)
+		}
+		if secretFound {
+			return fmt.Errorf("%s env variable is set while workload identity is enabled, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", clientSecretEnvKey)
+		}
+	} else {
+		if !secretFound {
+			return fmt.Errorf("%s env variable should be set up", clientSecretEnvKey)
+		}
 	}
 
 	cloudConfig, err := readCloudConfig(injectorOpts.cloudConfigFilePath)
@@ -67,7 +96,7 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("couldn't read cloud config from file: %w", err)
 	}
 
-	preparedCloudConfig, err := prepareCloudConfig(cloudConfig, azureClientId, azureClientSecret)
+	preparedCloudConfig, err := prepareCloudConfig(cloudConfig, azureClientId, azureClientSecret, tenantId, federatedTokenFile)
 	if err != nil {
 		return fmt.Errorf("couldn't prepare cloud config: %w", err)
 	}
@@ -92,9 +121,9 @@ func readCloudConfig(path string) (map[string]interface{}, error) {
 	return data, nil
 }
 
-func prepareCloudConfig(cloudConfig map[string]interface{}, clientId string, clientSecret string) ([]byte, error) {
+func prepareCloudConfig(cloudConfig map[string]interface{}, clientId, clientSecret, tenantId, federatedTokenFile string) ([]byte, error) {
 	cloudConfig[clientIDCloudConfigKey] = clientId
-	cloudConfig[clientSecretCloudConfigKey] = clientSecret
+
 	if value, found := cloudConfig[useManagedIdentityExtensionConfigKey]; found {
 		if injectorOpts.disableIdentityExtensionAuth {
 			klog.Infof("%s cleared\n", useManagedIdentityExtensionConfigKey)
@@ -104,6 +133,15 @@ func prepareCloudConfig(cloudConfig map[string]interface{}, clientId string, cli
 				klog.Warningf("Warning: %s is set to \"true\", injected credentials may not be used\n", useManagedIdentityExtensionConfigKey)
 			}
 		}
+	}
+
+	if len(tenantId) != 0 && len(federatedTokenFile) != 0 {
+		cloudConfig[tenantIdConfigKey] = tenantId
+		cloudConfig[aadFederatedTokenFileConfigKey] = federatedTokenFile
+		cloudConfig[useFederatedWorkloadIdentityExtensionConfigKey] = true
+	} else {
+		klog.V(4).Info("%s env variable is set, client secret authentication will be used", clientSecretEnvKey)
+		cloudConfig[clientSecretCloudConfigKey] = clientSecret
 	}
 
 	marshalled, err := json.Marshal(cloudConfig)
@@ -119,4 +157,36 @@ func writeCloudConfig(path string, preparedConfig []byte) error {
 		return err
 	}
 	return nil
+}
+
+// lookupWorkloadIdentityEnv loads tenantID and federatedTokenFile values from environment, which are both required for
+// workload identity. Return error if any or both values are missing.
+func lookupWorkloadIdentityEnv(tenantEnvKey, tokenEnvKey string) (tenantId, federatedTokenFile string, err error) {
+	tenantId, tenantIdFound := mustLookupEnvValue(tenantEnvKey)
+	federatedTokenFile, federatedTokenFileFound := mustLookupEnvValue(tokenEnvKey)
+	klog.V(4).Infof("env vars required for workload identity auth are set to: %v=%v and %v=%v", tenantEnvKey, tenantId, tokenEnvKey, federatedTokenFile)
+
+	if !tenantIdFound && !federatedTokenFileFound {
+		err = fmt.Errorf("%v and %v environment variables not found or empty", tenantEnvKey, tokenEnvKey)
+		return
+	}
+
+	if !tenantIdFound {
+		err = fmt.Errorf("%v environment variable not found or empty", tenantEnvKey)
+		return
+	}
+
+	if !federatedTokenFileFound {
+		err = fmt.Errorf("%v environment variable not found or empty", tokenEnvKey)
+	}
+
+	return
+}
+
+func mustLookupEnvValue(key string) (string, bool) {
+	value, found := os.LookupEnv(key)
+	if !found || len(value) == 0 {
+		return "", false
+	}
+	return value, true
 }
