@@ -71,9 +71,9 @@ spec:
             --configure-cloud-routes=false \
             --bind-address=127.0.0.1 \
             --leader-elect=true \
-            --leader-elect-lease-duration=137s \
-            --leader-elect-renew-deadline=107s \
-            --leader-elect-retry-period=26s \
+            --leader-elect-lease-duration=15s \
+            --leader-elect-renew-deadline=12s \
+            --leader-elect-retry-period=3s \
             --leader-elect-resource-namespace=openshift-cloud-controller-manager
           ports:
           - containerPort: 10258

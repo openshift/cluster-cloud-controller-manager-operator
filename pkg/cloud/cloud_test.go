@@ -459,9 +459,9 @@ exec `
 func checkLeaderElection(t *testing.T, podSpec corev1.PodSpec) {
 	const (
 		leaderElect                  = "--leader-elect=true"
-		leaderElectLeaseDuration     = "--leader-elect-lease-duration=137s"
-		leaderElectRenewDeadline     = "--leader-elect-renew-deadline=107s"
-		leaderElectRetryPeriod       = "--leader-elect-retry-period=26s"
+		leaderElectLeaseDuration     = "--leader-elect-lease-duration=15s"
+		leaderElectRenewDeadline     = "--leader-elect-renew-deadline=12s"
+		leaderElectRetryPeriod       = "--leader-elect-retry-period=3s"
 		leaderElectResourceNamesapce = "--leader-elect-resource-namespace=openshift-cloud-controller-manager"
 	)
 
