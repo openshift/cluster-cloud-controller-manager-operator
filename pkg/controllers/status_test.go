@@ -95,7 +95,7 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 		}
 		optr.Client = builder.Build()
 
-		err := optr.setStatusProgressing(context.TODO())
+		err := optr.setStatusProgressing(context.TODO(), nil)
 		assert.NoErrorf(t, err, "Failed to set Progressing status on ClusterOperator")
 
 		gotCO, err := optr.getOrCreateClusterOperator(context.TODO())
@@ -127,7 +127,7 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 			len(tc.expectedConditions) == len(gotCO.Status.Conditions),
 			"test-case %v expected equal number of conditions to %v, got %v", i, len(tc.expectedConditions), len(gotCO.Status.Conditions))
 
-		err = optr.setStatusProgressing(context.TODO())
+		err = optr.setStatusProgressing(context.TODO(), nil)
 		assert.NoErrorf(t, err, "Failed to set Progressing status on ClusterOperator")
 
 		err = optr.Client.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)
@@ -219,7 +219,7 @@ func TestOperatorSetStatusDegraded(t *testing.T) {
 		}
 		optr.Client = builder.Build()
 
-		err := optr.setStatusDegraded(context.TODO(), tc.passErr)
+		err := optr.setStatusDegraded(context.TODO(), tc.passErr, nil)
 		assert.NoErrorf(t, err, "Failed to set Degraded status on ClusterOperator")
 
 		gotCO, err := optr.getOrCreateClusterOperator(context.TODO())
@@ -255,7 +255,7 @@ func TestOperatorSetStatusDegraded(t *testing.T) {
 			len(tc.expectedConditions) == len(gotCO.Status.Conditions),
 			"test-case %v expected equal number of conditions to %v, got %v", i, len(tc.expectedConditions), len(gotCO.Status.Conditions))
 
-		err = optr.setStatusDegraded(context.TODO(), tc.passErr)
+		err = optr.setStatusDegraded(context.TODO(), tc.passErr, nil)
 		assert.NoErrorf(t, err, "Failed to set Degraded status on ClusterOperator")
 
 		err = optr.Client.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)
@@ -292,6 +292,7 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 		currentVersion     []configv1.OperandVersion
 		desiredVersion     string
 		expectedConditions []configv1.ClusterOperatorStatusCondition
+		overrides          []configv1.ClusterOperatorStatusCondition
 	}
 	tCases := []tCase{
 		{
@@ -318,6 +319,25 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 				newClusterOperatorStatusCondition(configv1.OperatorDegraded, configv1.ConditionFalse, ReasonAsExpected, ""),
 			},
 		},
+		{
+			currentVersion: []configv1.OperandVersion{
+				{
+					Name:    "operator",
+					Version: "1.0",
+				},
+			},
+			desiredVersion: "2.0",
+			// This test is checking that if an override is passed in, it will be used instead of the default for the function.
+			overrides: []configv1.ClusterOperatorStatusCondition{
+				newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionFalse, ReasonPlatformTechPreview, "This platform is tech preview and so shouldn't be upgradable"),
+			},
+			expectedConditions: []configv1.ClusterOperatorStatusCondition{
+				newClusterOperatorStatusCondition(configv1.OperatorAvailable, configv1.ConditionTrue, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(configv1.OperatorProgressing, configv1.ConditionFalse, ReasonAsExpected, ""),
+				newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionFalse, ReasonPlatformTechPreview, "This platform is tech preview and so shouldn't be upgradable"),
+				newClusterOperatorStatusCondition(configv1.OperatorDegraded, configv1.ConditionFalse, ReasonAsExpected, ""),
+			},
+		},
 	}
 
 	for i, tc := range tCases {
@@ -340,7 +360,7 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 		}
 		optr.Client = builder.Build()
 
-		err := optr.setStatusAvailable(context.TODO())
+		err := optr.setStatusAvailable(context.TODO(), tc.overrides)
 		assert.NoErrorf(t, err, "Failed to set Available status on ClusterOperator")
 
 		gotCO, err := optr.getOrCreateClusterOperator(context.TODO())
@@ -381,7 +401,7 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 		assert.True(t, equality.Semantic.DeepEqual(gotCO.Status.Versions, desiredVersion),
 			"test-case %v expected equal version for ClusterOperator to %v, got %v", i, desiredVersion, gotCO.Status.Versions)
 
-		err = optr.setStatusAvailable(context.TODO())
+		err = optr.setStatusAvailable(context.TODO(), tc.overrides)
 		assert.NoErrorf(t, err, "Failed to set Available status on ClusterOperator")
 
 		err = optr.Client.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)

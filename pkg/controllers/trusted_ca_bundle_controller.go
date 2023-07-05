@@ -313,7 +313,7 @@ func (r *TrustedCABundleReconciler) setAvailableCondition(ctx context.Context) e
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.V(1).Info("Trusted CA Bundle Controller is available")
-	return r.syncStatus(ctx, co, conds)
+	return r.syncStatus(ctx, co, conds, nil)
 }
 
 func (r *TrustedCABundleReconciler) setDegradedCondition(ctx context.Context) error {
@@ -331,5 +331,5 @@ func (r *TrustedCABundleReconciler) setDegradedCondition(ctx context.Context) er
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.Info("Trusted CA Bundle Controller is degraded")
-	return r.syncStatus(ctx, co, conds)
+	return r.syncStatus(ctx, co, conds, nil)
 }
