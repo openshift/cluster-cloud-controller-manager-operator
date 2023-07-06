@@ -35,6 +35,7 @@ type imagesReference struct {
 var templateValuesValidationMap = map[string]interface{}{
 	"images":            "required",
 	"cloudproviderName": "required,type(string)",
+	"featureGates":      "type(string)",
 }
 
 type openstackAssets struct {
@@ -50,6 +51,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 	values := common.TemplateValues{
 		"images":            images,
 		"cloudproviderName": operatorConfig.GetPlatformNameString(),
+		"featureGates":      operatorConfig.FeatureGates,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {

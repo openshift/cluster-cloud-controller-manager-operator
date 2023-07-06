@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -173,6 +174,7 @@ func TestComposeConfig(t *testing.T) {
 		imagesContent string
 		expectConfig  OperatorConfig
 		expectError   string
+		featureGates  featuregates.FeatureGateAccess
 	}{{
 		name:      "Unmarshal images from file",
 		namespace: defaultManagementNamespace,
@@ -214,11 +216,20 @@ func TestComposeConfig(t *testing.T) {
 				},
 			},
 		},
+		featureGates: featuregates.NewHardcodedFeatureGateAccess(
+			[]configv1.FeatureGateName{"CloudDualStackNodeIPs", "ChocobombVanilla", "ChocobombStrawberry"},
+			[]configv1.FeatureGateName{"ChocobombBlueberry", "ChocobombBanana"},
+		),
 		expectConfig: OperatorConfig{
 			ManagedNamespace: defaultManagementNamespace,
 			ImagesReference:  defaultImagesReference,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
 			IsSingleReplica:  true,
+			// We only see CloudDualStackNodeIPs returned here because kubernetes defines
+			// white-listed features that are allowed to be used by cloud providers. Anything that
+			// is not defined there won't be passed to the cloud provider.
+			// For more details look into k8s.io/controller-manager/pkg/features
+			FeatureGates: "CloudDualStackNodeIPs=true",
 		},
 	}, {
 		name:        "Empty infrastructure should return error",
@@ -275,7 +286,7 @@ func TestComposeConfig(t *testing.T) {
 			_, err = file.WriteString(tc.imagesContent)
 			assert.NoError(t, err)
 
-			config, err := ComposeConfig(tc.infra, tc.clusterProxy, path, tc.namespace)
+			config, err := ComposeConfig(tc.infra, tc.clusterProxy, path, tc.namespace, tc.featureGates)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {

@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 )
 
 // ImagesReference allows build systems to inject ImagesReference for CCCMO components
@@ -36,6 +39,7 @@ type OperatorConfig struct {
 	InfrastructureName string
 	PlatformStatus     *configv1.PlatformStatus
 	ClusterProxy       *configv1.Proxy
+	FeatureGates       string
 }
 
 func (cfg *OperatorConfig) GetPlatformNameString() string {
@@ -74,7 +78,7 @@ func getImagesFromJSONFile(filePath string) (ImagesReference, error) {
 }
 
 // ComposeConfig creates a Config for operator
-func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string) (OperatorConfig, error) {
+func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess) (OperatorConfig, error) {
 	err := checkInfrastructureResource(infrastructure)
 	if err != nil {
 		klog.Errorf("Unable to get platform from infrastructure: %s", err)
@@ -87,6 +91,18 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		return OperatorConfig{}, err
 	}
 
+	featureGatesString := ""
+	upstreamGates, err := util.GetUpstreamCloudFeatureGates()
+	if err != nil {
+		klog.Errorf("Unable to get upstream feature gates: %s", err)
+		return OperatorConfig{}, fmt.Errorf("unable to get upstream feature gates: %w", err)
+	}
+	if featureGateAccessor != nil {
+		features, _ := featureGateAccessor.CurrentFeatureGates()
+		enabled, _ := util.GetEnabledDisabledFeatures(features, upstreamGates)
+		featureGatesString = util.BuildFeatureGateString(enabled, nil)
+	}
+
 	config := OperatorConfig{
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
 		ClusterProxy:       clusterProxy,
@@ -94,6 +110,7 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		ImagesReference:    images,
 		InfrastructureName: infrastructure.Status.InfrastructureName,
 		IsSingleReplica:    infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
+		FeatureGates:       featureGatesString,
 	}
 
 	return config, nil
