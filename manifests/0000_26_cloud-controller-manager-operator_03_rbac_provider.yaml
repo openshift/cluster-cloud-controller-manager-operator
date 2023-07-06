@@ -45,13 +45,64 @@ rules:
     verbs:
       - get
       - list
-      - create
       - update
+  # Create cannot be restricted by resource name
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+  # vSphere needs additional permissions on top of those required by
+  # the cloud-controller-manager.
+  - apiGroups:
+    - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
 
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloud-controller-manager
+  namespace: kube-system
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+roleRef:
+  kind: Role
+  name: cloud-controller-manager
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    namespace: openshift-cloud-controller-manager
+    name: cloud-controller-manager
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloud-controller-manager
+  namespace: kube-system
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+rules:
   - apiGroups:
       - ""
     resources:
-      - events
+      - serviceaccounts
+    verbs:
+      - create
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - serviceaccounts/token
     verbs:
       - create
 
@@ -67,91 +118,33 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - nodes
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - events
   verbs:
   - create
   - patch
-  - update
+# vSphere needs additional permissions on top of those required by
+# the cloud-controller-manager.
 - apiGroups:
   - ""
   resources:
   - nodes
   verbs:
-  - '*'
+  - update
 - apiGroups:
   - ""
   resources:
   - nodes/status
   verbs:
   - patch
-- apiGroups:
-  - ""
-  resources:
-  - services
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - services/status
-  verbs:
-  - patch
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts
-  verbs:
-  - create
-  - get
-  - list
-  - watch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts/token
-  verbs:
-  - create
-- apiGroups:
-  - ""
-  resources:
-  - endpoints
-  verbs:
-  - create
-  - get
-  - list
-  - watch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - "coordination.k8s.io"
-  resources:
-  - leases
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
