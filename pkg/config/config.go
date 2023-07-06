@@ -103,6 +103,8 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		featureGatesString = util.BuildFeatureGateString(enabled, nil)
 	}
 
+	klog.Info("#### ComposeConfig %s", featureGatesString)
+
 	config := OperatorConfig{
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
 		ClusterProxy:       clusterProxy,
