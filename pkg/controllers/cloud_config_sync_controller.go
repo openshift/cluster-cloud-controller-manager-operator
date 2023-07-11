@@ -289,7 +289,7 @@ func (r *CloudConfigReconciler) setAvailableCondition(ctx context.Context) error
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.V(1).Info("Cloud Config Controller is available")
-	return r.syncStatus(ctx, co, conds)
+	return r.syncStatus(ctx, co, conds, nil)
 }
 
 func (r *CloudConfigReconciler) setDegradedCondition(ctx context.Context) error {
@@ -307,5 +307,5 @@ func (r *CloudConfigReconciler) setDegradedCondition(ctx context.Context) error 
 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.Info("Cloud Config Controller is degraded")
-	return r.syncStatus(ctx, co, conds)
+	return r.syncStatus(ctx, co, conds, nil)
 }

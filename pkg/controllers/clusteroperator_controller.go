@@ -61,11 +61,13 @@ type CloudOperatorReconciler struct {
 
 // Reconcile will process the cloud-controller-manager clusterOperator
 func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+	conditionOverrides := []configv1.ClusterOperatorStatusCondition{}
+
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); errors.IsNotFound(err) {
 		klog.Infof("Infrastructure cluster does not exist. Skipping...")
 
-		if err := r.setStatusAvailable(ctx); err != nil {
+		if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 			klog.Errorf("Unable to sync cluster operator status: %s", err)
 			return ctrl.Result{}, err
 		}
@@ -74,14 +76,19 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	} else if err != nil {
 		klog.Errorf("Unable to retrive Infrastructure object: %v", err)
 
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
 		return ctrl.Result{}, err
 	}
 
-	allowedToProvision, err := r.provisioningAllowed(ctx, infra)
+	if infra.Status.PlatformStatus != nil && infra.Status.PlatformStatus.Type == configv1.AlibabaCloudPlatformType {
+		klog.Infof("Alibaba platform type is detected, upgrades are not allowed.")
+		conditionOverrides = append(conditionOverrides, newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionFalse, ReasonPlatformTechPreview, "Alibaba platform is currently tech preview, upgrades are not allowed."))
+	}
+
+	allowedToProvision, err := r.provisioningAllowed(ctx, infra, conditionOverrides)
 	if err != nil {
 		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
 		return ctrl.Result{}, err
@@ -93,7 +100,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	if err := r.Get(ctx, client.ObjectKey{Name: proxyResourceName}, clusterProxy); err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("Unable to retrive Proxy object: %v", err)
 
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
@@ -103,23 +110,23 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	operatorConfig, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
 		return ctrl.Result{}, err
 	}
 
-	if err := r.sync(ctx, operatorConfig); err != nil {
+	if err := r.sync(ctx, operatorConfig, conditionOverrides); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
 		return ctrl.Result{}, err
 	}
 
-	if err := r.setStatusAvailable(ctx); err != nil {
+	if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 		klog.Errorf("Unable to sync cluster operator status: %s", err)
 		return ctrl.Result{}, err
 	}
@@ -132,7 +139,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig) error {
+func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.OperatorConfig, conditionOverrides []configv1.ClusterOperatorStatusCondition) error {
 	// Deploy resources for platform
 	resources, err := cloud.GetResources(config)
 	if err != nil {
@@ -143,7 +150,7 @@ func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.Operat
 		return err
 	}
 	if updated {
-		return r.setStatusProgressing(ctx)
+		return r.setStatusProgressing(ctx, conditionOverrides)
 	}
 
 	return nil
@@ -203,11 +210,11 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return build.Complete(r)
 }
 
-func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra *configv1.Infrastructure) (bool, error) {
+func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra *configv1.Infrastructure, conditionOverrides []configv1.ClusterOperatorStatusCondition) (bool, error) {
 	// Check if dependant controllers are available
 	available, err := r.checkControllerConditions(ctx)
 	if err != nil {
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
@@ -218,7 +225,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	}
 
 	// If CCM already owns cloud controllers, then provision is allowed by default
-	ownedByCCM, err := r.isCloudControllersOwnedByCCM(ctx)
+	ownedByCCM, err := r.isCloudControllersOwnedByCCM(ctx, conditionOverrides)
 	if err != nil {
 		return false, err
 	} else if ownedByCCM {
@@ -229,7 +236,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	if err := r.Get(ctx, client.ObjectKey{Name: externalFeatureGateName}, featureGate); errors.IsNotFound(err) {
 		klog.Infof("FeatureGate cluster does not exist. Skipping...")
 
-		if err := r.setStatusAvailable(ctx); err != nil {
+		if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 			klog.Errorf("Unable to sync cluster operator status: %s", err)
 			return false, err
 		}
@@ -237,7 +244,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	} else if err != nil {
 		klog.Errorf("Unable to retrive FeatureGate object: %v", err)
 
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
@@ -249,7 +256,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	if err != nil {
 		klog.Errorf("Could not determine external cloud provider state: %v", err)
 
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
@@ -257,7 +264,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	} else if !external {
 		klog.Infof("FeatureGate cluster is not specifying external cloud provider requirement. Skipping...")
 
-		if err := r.setStatusAvailable(ctx); err != nil {
+		if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 			klog.Errorf("Unable to sync cluster operator status: %s", err)
 			return false, err
 		}
@@ -265,7 +272,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 		return false, nil
 	}
 
-	ownedByKCM, err := r.isCloudControllersOwnedByKCM(ctx)
+	ownedByKCM, err := r.isCloudControllersOwnedByKCM(ctx, conditionOverrides)
 	if err != nil {
 		return false, err
 	}
@@ -273,7 +280,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 		// KCM resource found and it owns Cloud provider
 		klog.Infof("KubeControllerManager still owns Cloud Controllers. Skipping...")
 
-		if err := r.setStatusAvailable(ctx); err != nil {
+		if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 			klog.Errorf("Unable to sync cluster operator status: %s", err)
 			return false, err
 		}
@@ -284,13 +291,13 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	return true, nil
 }
 
-func (r *CloudOperatorReconciler) isCloudControllersOwnedByKCM(ctx context.Context) (bool, error) {
+func (r *CloudOperatorReconciler) isCloudControllersOwnedByKCM(ctx context.Context, conditionOverrides []configv1.ClusterOperatorStatusCondition) (bool, error) {
 	kcm := &operatorv1.KubeControllerManager{}
 	err := r.Get(ctx, client.ObjectKey{Name: kcmResourceName}, kcm)
 	if err != nil {
 		klog.Errorf("Unable to retrive KubeControllerManager object: %v", err)
 
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
@@ -315,12 +322,12 @@ func (r *CloudOperatorReconciler) isCloudControllersOwnedByKCM(ctx context.Conte
 	return ownedByKCM, nil
 }
 
-func (r *CloudOperatorReconciler) isCloudControllersOwnedByCCM(ctx context.Context) (bool, error) {
+func (r *CloudOperatorReconciler) isCloudControllersOwnedByCCM(ctx context.Context, conditionOverrides []configv1.ClusterOperatorStatusCondition) (bool, error) {
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		klog.Errorf("Unable to retrive ClusterOperator object: %v", err)
 
-		if err := r.setStatusDegraded(ctx, err); err != nil {
+		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
 			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
 			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
 		}
