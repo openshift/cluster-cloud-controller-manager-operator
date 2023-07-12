@@ -61,8 +61,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 }
 
 // createLoadBalancerSection creates a loadBalancer section populated with
-// the enabled key depending on the network type.
-// It returns any error that happens.
+// OpenShift defaults. It returns any error that happens.
 func createLoadBalancerSection(cfg *ini.File, network *configv1.Network) error {
 	loadBalancer, err := cfg.NewSection("LoadBalancer")
 	if err != nil {
@@ -74,11 +73,16 @@ func createLoadBalancerSection(cfg *ini.File, network *configv1.Network) error {
 			return fmt.Errorf("failed to modify the provided configuration: %w", err)
 		}
 	}
+	// Disable shared services by default as a feature that's potentially dangerous if misued.
+	_, err = loadBalancer.NewKey("max-shared-lb", "1")
+	if err != nil {
+		return fmt.Errorf("failed to disable shared LBs: %w", err)
+	}
 	return nil
 }
 
-// updateLoadBalancerSection updates the loadBalancer section with the enabled key
-// depending on the network type. It returns any error that happens.
+// updateLoadBalancerSection updates the loadBalancer section with OpenShift
+// defaults. It returns any error that happens.
 func updateLoadBalancerSection(loadBalancer *ini.Section, network *configv1.Network) error {
 	loadBalancer.DeleteKey("use-octavia") // use-octavia is no longer used, let's make sure it's gone from config
 
@@ -91,6 +95,15 @@ func updateLoadBalancerSection(loadBalancer *ini.Section, network *configv1.Netw
 			}
 		} else {
 			enabledKey.SetValue("false")
+		}
+	}
+	// Disable shared LBs by default if not overriden already
+	_, err := loadBalancer.GetKey("max-shared-lb")
+	if err != nil {
+		// Allow to override this and only modify if it isn't set already.
+		_, err = loadBalancer.NewKey("max-shared-lb", "1")
+		if err != nil {
+			return fmt.Errorf("failed to disable shared LBs: %w", err)
 		}
 	}
 	return nil
