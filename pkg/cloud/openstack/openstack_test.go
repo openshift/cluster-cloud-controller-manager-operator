@@ -179,8 +179,7 @@ use-clouds  = true
 clouds-file = /etc/openstack/secret/clouds.yaml
 cloud       = openstack
 
-[LoadBalancer]
-use-octavia = true`
+[LoadBalancer]`
 				if tc.network.Status.NetworkType == string(operatorv1.NetworkTypeKuryr) {
 					expected = `[Global]
 use-clouds  = true
@@ -188,8 +187,7 @@ clouds-file = /etc/openstack/secret/clouds.yaml
 cloud       = openstack
 
 [LoadBalancer]
-use-octavia = true
-enabled     = false`
+enabled = false`
 				}
 				actual := strings.TrimSpace(actual)
 				g.Expect(actual).Should(Equal(expected))
