@@ -78,6 +78,12 @@ func createLoadBalancerSection(cfg *ini.File, network *configv1.Network) error {
 	if err != nil {
 		return fmt.Errorf("failed to disable shared LBs: %w", err)
 	}
+
+	// Enable manage-security-groups by default to expose NodePorts dynamically.
+	_, err = loadBalancer.NewKey("manage-security-groups", "true")
+	if err != nil {
+		return fmt.Errorf("failed to enable managing LB members SGs: %w", err)
+	}
 	return nil
 }
 
@@ -97,6 +103,7 @@ func updateLoadBalancerSection(loadBalancer *ini.Section, network *configv1.Netw
 			enabledKey.SetValue("false")
 		}
 	}
+
 	// Disable shared LBs by default if not overriden already
 	_, err := loadBalancer.GetKey("max-shared-lb")
 	if err != nil {
@@ -104,6 +111,16 @@ func updateLoadBalancerSection(loadBalancer *ini.Section, network *configv1.Netw
 		_, err = loadBalancer.NewKey("max-shared-lb", "1")
 		if err != nil {
 			return fmt.Errorf("failed to disable shared LBs: %w", err)
+		}
+	}
+
+	// Enable manage-security-groups by default if not overriden already
+	_, err = loadBalancer.GetKey("manage-security-groups")
+	if err != nil {
+		// Allow to override this and only modify if it isn't set already.
+		_, err = loadBalancer.NewKey("manage-security-groups", "true")
+		if err != nil {
+			return fmt.Errorf("failed to enable managing LB members SGs: %w", err)
 		}
 	}
 	return nil
