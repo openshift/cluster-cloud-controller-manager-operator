@@ -11,6 +11,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -73,6 +74,14 @@ func ApplyResource(ctx context.Context, client coreclientv1.Client, recorder rec
 		return applyConfigMap(ctx, client, recorder, t)
 	case *policyv1.PodDisruptionBudget:
 		return applyPodDisruptionBudget(ctx, client, recorder, t)
+	case *rbacv1.Role:
+		return applyRole(ctx, client, recorder, t)
+	case *rbacv1.ClusterRole:
+		return applyClusterRole(ctx, client, recorder, t)
+	case *rbacv1.RoleBinding:
+		return applyRoleBinding(ctx, client, recorder, t)
+	case *rbacv1.ClusterRoleBinding:
+		return applyClusterRoleBinding(ctx, client, recorder, t)
 	default:
 		return false, fmt.Errorf("unhandled type %T", resource)
 	}
@@ -353,6 +362,197 @@ func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, r
 	toWrite.Spec = *required.Spec.DeepCopy()
 
 	if err := client.Update(ctx, toWrite); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, err
+	}
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
+	return true, nil
+}
+
+func applyRole(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *rbacv1.Role) (bool, error) {
+	required := requiredOriginal.DeepCopy()
+
+	existing := &rbacv1.Role{}
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	if apierrors.IsNotFound(err) {
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
+			return false, fmt.Errorf("role creation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
+		return true, nil
+	}
+	if err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, fmt.Errorf("failed to get role for update: %v", err)
+	}
+
+	modified := resourcemerge.BoolPtr(false)
+	existingCopy := existing.DeepCopy()
+
+	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, required.ObjectMeta)
+	contentSame := equality.Semantic.DeepEqual(existingCopy.Rules, required.Rules)
+
+	if !*modified && contentSame {
+		return false, nil
+	}
+
+	existingCopy.Rules = required.Rules
+
+	if err := client.Update(ctx, existingCopy); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, err
+	}
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
+	return true, nil
+}
+
+func applyClusterRole(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *rbacv1.ClusterRole) (bool, error) {
+	required := requiredOriginal.DeepCopy()
+
+	existing := &rbacv1.ClusterRole{}
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	if apierrors.IsNotFound(err) {
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
+			return false, fmt.Errorf("clusterrole creation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
+		return true, nil
+	}
+	if err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, fmt.Errorf("failed to get clusterrole for update: %v", err)
+	}
+
+	modified := resourcemerge.BoolPtr(false)
+	existingCopy := existing.DeepCopy()
+
+	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, required.ObjectMeta)
+	contentSame := equality.Semantic.DeepEqual(existingCopy.Rules, required.Rules)
+
+	if !*modified && contentSame {
+		return false, nil
+	}
+
+	existingCopy.Rules = required.Rules
+	existingCopy.AggregationRule = nil
+
+	if err := client.Update(ctx, existingCopy); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, err
+	}
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
+	return true, nil
+}
+
+func applyRoleBinding(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *rbacv1.RoleBinding) (bool, error) {
+	required := requiredOriginal.DeepCopy()
+
+	existing := &rbacv1.RoleBinding{}
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	if apierrors.IsNotFound(err) {
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
+			return false, fmt.Errorf("rolebinding creation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
+		return true, nil
+	}
+	if err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, fmt.Errorf("failed to get rolebinding for update: %v", err)
+	}
+
+	modified := resourcemerge.BoolPtr(false)
+	existingCopy := existing.DeepCopy()
+	requiredCopy := required.DeepCopy()
+
+	// Enforce apiGroup fields in roleRefs
+	existingCopy.RoleRef.APIGroup = rbacv1.GroupName
+	for i := range existingCopy.Subjects {
+		if existingCopy.Subjects[i].Kind == "User" {
+			existingCopy.Subjects[i].APIGroup = rbacv1.GroupName
+		}
+	}
+
+	requiredCopy.RoleRef.APIGroup = rbacv1.GroupName
+	for i := range requiredCopy.Subjects {
+		if requiredCopy.Subjects[i].Kind == "User" {
+			requiredCopy.Subjects[i].APIGroup = rbacv1.GroupName
+		}
+	}
+
+	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, requiredCopy.ObjectMeta)
+
+	subjectsAreSame := equality.Semantic.DeepEqual(existingCopy.Subjects, requiredCopy.Subjects)
+	roleRefIsSame := equality.Semantic.DeepEqual(existingCopy.RoleRef, requiredCopy.RoleRef)
+
+	if subjectsAreSame && roleRefIsSame && !*modified {
+		return false, nil
+	}
+
+	existingCopy.Subjects = requiredCopy.Subjects
+	existingCopy.RoleRef = requiredCopy.RoleRef
+
+	if err := client.Update(ctx, existingCopy); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, err
+	}
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
+	return true, nil
+}
+
+func applyClusterRoleBinding(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *rbacv1.ClusterRoleBinding) (bool, error) {
+	required := requiredOriginal.DeepCopy()
+
+	existing := &rbacv1.ClusterRoleBinding{}
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(required), existing)
+	if apierrors.IsNotFound(err) {
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
+			return false, fmt.Errorf("clusterrolebinding creation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
+		return true, nil
+	}
+	if err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, fmt.Errorf("failed to get clusterrolebinding for update: %v", err)
+	}
+
+	modified := resourcemerge.BoolPtr(false)
+	existingCopy := existing.DeepCopy()
+	requiredCopy := required.DeepCopy()
+
+	// Enforce apiGroup fields in roleRefs
+	existingCopy.RoleRef.APIGroup = rbacv1.GroupName
+	for i := range existingCopy.Subjects {
+		if existingCopy.Subjects[i].Kind == "User" {
+			existingCopy.Subjects[i].APIGroup = rbacv1.GroupName
+		}
+	}
+
+	requiredCopy.RoleRef.APIGroup = rbacv1.GroupName
+	for i := range requiredCopy.Subjects {
+		if requiredCopy.Subjects[i].Kind == "User" {
+			requiredCopy.Subjects[i].APIGroup = rbacv1.GroupName
+		}
+	}
+
+	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, requiredCopy.ObjectMeta)
+
+	subjectsAreSame := equality.Semantic.DeepEqual(existingCopy.Subjects, requiredCopy.Subjects)
+	roleRefIsSame := equality.Semantic.DeepEqual(existingCopy.RoleRef, requiredCopy.RoleRef)
+
+	if subjectsAreSame && roleRefIsSame && !*modified {
+		return false, nil
+	}
+
+	existingCopy.Subjects = requiredCopy.Subjects
+	existingCopy.RoleRef = requiredCopy.RoleRef
+
+	if err := client.Update(ctx, existingCopy); err != nil {
 		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
 		return false, err
 	}
