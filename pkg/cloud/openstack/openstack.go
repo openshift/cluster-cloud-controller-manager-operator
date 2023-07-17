@@ -61,14 +61,10 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 }
 
 // createLoadBalancerSection creates a loadBalancer section populated with
-// the use-octavia key and depending on the network type also the enabled key.
+// the enabled key depending on the network type.
 // It returns any error that happens.
 func createLoadBalancerSection(cfg *ini.File, network *configv1.Network) error {
 	loadBalancer, err := cfg.NewSection("LoadBalancer")
-	if err != nil {
-		return fmt.Errorf("failed to modify the provided configuration: %w", err)
-	}
-	_, err = loadBalancer.NewKey("use-octavia", "true")
 	if err != nil {
 		return fmt.Errorf("failed to modify the provided configuration: %w", err)
 	}
@@ -81,18 +77,11 @@ func createLoadBalancerSection(cfg *ini.File, network *configv1.Network) error {
 	return nil
 }
 
-// updateLoadBalancerSection updates the loadBalancer section with the use-octavia key
-// and and depending on the network type also the enabled key. It returns any error that happens.
+// updateLoadBalancerSection updates the loadBalancer section with the enabled key
+// depending on the network type. It returns any error that happens.
 func updateLoadBalancerSection(loadBalancer *ini.Section, network *configv1.Network) error {
-	useOctaviaKey, err := loadBalancer.GetKey("use-octavia")
-	if err != nil {
-		_, err = loadBalancer.NewKey("use-octavia", "true")
-		if err != nil {
-			return fmt.Errorf("failed to modify the provided configuration: %w", err)
-		}
-	} else {
-		useOctaviaKey.SetValue("true")
-	}
+	loadBalancer.DeleteKey("use-octavia") // use-octavia is no longer used, let's make sure it's gone from config
+
 	if network.Spec.NetworkType == string(operatorv1.NetworkTypeKuryr) {
 		enabledKey, err := loadBalancer.GetKey("enabled")
 		if err != nil {
