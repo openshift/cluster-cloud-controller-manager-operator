@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vsphere-cloud-controller-manager
+  namespace: openshift-cloud-controller-manager
+rules:
+  # Used to fetch the vCenter credentials.
+  - apiGroups:
+    - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch

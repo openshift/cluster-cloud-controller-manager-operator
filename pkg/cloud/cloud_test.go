@@ -196,17 +196,31 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "VSphere resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.VSpherePlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 8,
 		expectedResourcesKindName: []string{
 			"Deployment/vsphere-cloud-controller-manager",
 			"PodDisruptionBudget/vsphere-cloud-controller-manager",
+			"Role/vsphere-cloud-controller-manager",
+			"RoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
+			"RoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
+			"ClusterRole/vsphere-cloud-controller-manager",
+			"ClusterRoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
+			"ClusterRoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
 		},
 	}, {
-		name:                      "VSphere resources returned as expected with single node",
-		testPlatform:              platformsMap[string(configv1.VSpherePlatformType)],
-		expectedResourceCount:     1,
-		singleReplica:             true,
-		expectedResourcesKindName: []string{"Deployment/vsphere-cloud-controller-manager"},
+		name:                  "VSphere resources returned as expected with single node",
+		testPlatform:          platformsMap[string(configv1.VSpherePlatformType)],
+		expectedResourceCount: 7,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/vsphere-cloud-controller-manager",
+			"Role/vsphere-cloud-controller-manager",
+			"RoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
+			"RoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
+			"ClusterRole/vsphere-cloud-controller-manager",
+			"ClusterRoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
+			"ClusterRoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
+		},
 	}, {
 		name:         "OVirt resources are empty, as the platform is not yet supported",
 		testPlatform: platformsMap[string(configv1.OvirtPlatformType)],
@@ -339,11 +353,7 @@ func TestRenderedResources(t *testing.T) {
 				checkLeaderElection(t, podSpec)
 				checkCloudControllerManagerFlags(t, podSpec)
 				checkTrustedCAMounted(t, podSpec)
-				if platform.platformStatus.Type != configv1.VSpherePlatformType {
-					// we don't use service account credentials on vSphere as its CCM behavior
-					// is different from the in-tree cloud provider.
-					checkUseServiceAccountCredentials(t, podSpec)
-				}
+				checkUseServiceAccountCredentials(t, podSpec)
 			}
 		})
 	}

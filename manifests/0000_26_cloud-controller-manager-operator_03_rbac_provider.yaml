@@ -53,16 +53,6 @@ rules:
       - leases
     verbs:
       - create
-  # vSphere needs additional permissions on top of those required by
-  # the cloud-controller-manager.
-  - apiGroups:
-    - ""
-    resources:
-      - secrets
-    verbs:
-      - get
-      - list
-      - watch
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -130,20 +120,6 @@ rules:
   - events
   verbs:
   - create
-  - patch
-# vSphere needs additional permissions on top of those required by
-# the cloud-controller-manager.
-- apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - nodes/status
-  verbs:
   - patch
 
 ---
