@@ -302,7 +302,7 @@ var _ = Describe("Trusted CA reconciler methods", func() {
 		reconciler := &TrustedCABundleReconciler{
 			trustBundlePath: systemCAValid,
 		}
-		_, err := reconciler.getSystemTrustBundle()
+		_, err := reconciler.getSystemCABundleCerts()
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -310,7 +310,7 @@ var _ = Describe("Trusted CA reconciler methods", func() {
 		reconciler := &TrustedCABundleReconciler{
 			trustBundlePath: systemCAInvalid,
 		}
-		_, err := reconciler.getSystemTrustBundle()
+		_, err := reconciler.getSystemCABundleCerts()
 		Expect(err.Error()).Should(BeEquivalentTo("failed to parse certificate PEM"))
 	})
 
@@ -318,7 +318,7 @@ var _ = Describe("Trusted CA reconciler methods", func() {
 		reconciler := &TrustedCABundleReconciler{
 			trustBundlePath: "/broken/ca/path.pem",
 		}
-		_, err := reconciler.getSystemTrustBundle()
-		Expect(err.Error()).Should(BeEquivalentTo("open /broken/ca/path.pem: no such file or directory"))
+		_, err := reconciler.getSystemCABundleCerts()
+		Expect(err.Error()).Should(BeEquivalentTo("unable to read file \"/broken/ca/path.pem\""))
 	})
 })

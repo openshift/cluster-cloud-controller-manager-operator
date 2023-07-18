@@ -268,7 +268,8 @@ func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&configv1.Network{},
 			handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
-		)
+		).
+		Watches(&configv1.ClusterOperator{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(clusterOperatorPredicates()))
 
 	return build.Complete(r)
 }

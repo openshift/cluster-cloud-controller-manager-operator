@@ -196,6 +196,9 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	build := ctrl.NewControllerManagedBy(mgr).
 		For(&configv1.ClusterOperator{}, builder.WithPredicates(clusterOperatorPredicates())).
+		Watches(&configv1.ClusterOperator{},
+			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
+			builder.WithPredicates(clusterOperatorPredicates())).
 		Watches(&configv1.Infrastructure{},
 			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
 			builder.WithPredicates(infrastructurePredicates())).
