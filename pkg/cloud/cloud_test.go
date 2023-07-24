@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
+	. "github.com/onsi/gomega"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util/testingutils"
 )
@@ -377,10 +378,21 @@ func checkResourceTolerations(t *testing.T, podSpec corev1.PodSpec) {
 		Operator: corev1.TolerationOpExists,
 		Effect:   corev1.TaintEffectNoSchedule,
 	}
+	noScheduleTaint := corev1.Toleration{
+		Operator: corev1.TolerationOpExists,
+		Effect:   corev1.TaintEffectNoSchedule,
+	}
 
 	tolerations := podSpec.Tolerations
-	assert.Contains(t, tolerations, uninitializedTaint, "PodSpec should tolerate the uninitialized taint")
-	assert.Contains(t, tolerations, notReadyTaint, "PodSpec should tolerate the not-ready taint")
+
+	g := NewWithT(t)
+	g.Expect(tolerations).To(SatisfyAny(
+		SatisfyAll(
+			ContainElement(uninitializedTaint),
+			ContainElement(notReadyTaint),
+		),
+		ContainElement(noScheduleTaint),
+	), "PodSpec must either contain the uninitialized and not-ready tolerations, or tolerate any NoSchedule taint")
 }
 
 func checkHostNetwork(t *testing.T, podSpec corev1.PodSpec) {
