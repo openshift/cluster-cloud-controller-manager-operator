@@ -103,6 +103,14 @@ rules:
   verbs:
   - create
   - patch
+# nutanix has a separate node manager that uses the serivce account kube-system/nutanix-cloud-controller-manager.
+# The operator must have these permissions to then grant them to the nutanix node manager. (note it also uses some of the ones requred by vsphere)
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - patch
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
