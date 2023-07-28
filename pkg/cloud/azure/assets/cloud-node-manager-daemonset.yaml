@@ -45,7 +45,7 @@ spec:
       initContainers:
         # Merge /etc/kubernetes/cloud.conf (on the host) with secret "azure-cloud-credentials" into "merged-cloud-config" emptydir.
         - name: azure-inject-credentials
-          image: {{ .images.Operator }}
+          image: {{ .images.CloudControllerManagerOperator }}
           command:
             - /azure-config-credentials-injector
           args:
