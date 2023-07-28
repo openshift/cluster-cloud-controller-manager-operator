@@ -336,7 +336,7 @@ func TestRenderedResources(t *testing.T) {
 					continue
 				}
 
-				checkResourceRunsBeforeCNI(t, podSpec)
+				checkResourceRunsBeforeCNI(t, platformName, podSpec)
 				checkLeaderElection(t, podSpec)
 				checkCloudControllerManagerFlags(t, podSpec)
 				checkTrustedCAMounted(t, podSpec)
@@ -350,7 +350,7 @@ func TestRenderedResources(t *testing.T) {
 	}
 }
 
-func checkResourceRunsBeforeCNI(t *testing.T, podSpec corev1.PodSpec) {
+func checkResourceRunsBeforeCNI(t *testing.T, platformName string, podSpec corev1.PodSpec) {
 	/*
 		As CNI relies on CMM to initialist the Node IP addresses. We must ensure
 		that CCM pods can run before the CNO has been deployed and before the CNI
@@ -363,7 +363,7 @@ func checkResourceRunsBeforeCNI(t *testing.T, podSpec corev1.PodSpec) {
 	checkResourceTolerations(t, podSpec)
 	checkHostNetwork(t, podSpec)
 	checkPorts(t, podSpec)
-	checkVolumes(t, podSpec)
+	checkVolumes(t, platformName, podSpec)
 	checkContainerCommand(t, podSpec)
 }
 
@@ -419,27 +419,54 @@ func checkPorts(t *testing.T, podSpec corev1.PodSpec) {
 	}
 }
 
-func checkVolumes(t *testing.T, podSpec corev1.PodSpec) {
+func checkVolumes(t *testing.T, platformName string, podSpec corev1.PodSpec) {
 	directory := corev1.HostPathDirectory
-	hostVolume := corev1.Volume{
-		Name: "host-etc-kube",
-		VolumeSource: corev1.VolumeSource{
-			HostPath: &corev1.HostPathVolumeSource{
-				Path: "/etc/kubernetes",
-				Type: &directory,
+	var (
+		hostVolume      corev1.Volume
+		hostVolumeMount corev1.VolumeMount
+	)
+	switch platformName {
+	case "Azure":
+		// Azure CCM and node manager use an init-container to merge provided credentials
+		// with the cloud conf in /etc/kubernetes on the host.
+		// For this reason, Azure mounts the merged-cloud-config volume where the generated
+		// cloud conf has been created.
+		hostVolume = corev1.Volume{
+			Name: "merged-cloud-config",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: nil,
 			},
-		},
-	}
-	hostVolumeMount := corev1.VolumeMount{
-		MountPath: "/etc/kubernetes",
-		Name:      "host-etc-kube",
-		ReadOnly:  true,
-	}
+		}
+		hostVolumeMount = corev1.VolumeMount{
+			MountPath: "/etc/kubernetes",
+			Name:      "merged-cloud-config",
+			ReadOnly:  true,
+		}
+		assert.Contains(t, podSpec.Volumes, hostVolume, "PodSpec Volumes should contain merged-cloud-config empty dir volume")
 
-	assert.Contains(t, podSpec.Volumes, hostVolume, "PodSpec Volumes should contain host-etc-kube host path volume")
+		for _, container := range podSpec.Containers {
+			assert.Contains(t, container.VolumeMounts, hostVolumeMount, "Container VolumeMounts should contain merged-cloud-config volume mount")
+		}
+	default:
+		hostVolume = corev1.Volume{
+			Name: "host-etc-kube",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/etc/kubernetes",
+					Type: &directory,
+				},
+			},
+		}
+		hostVolumeMount = corev1.VolumeMount{
+			MountPath: "/etc/kubernetes",
+			Name:      "host-etc-kube",
+			ReadOnly:  true,
+		}
+		assert.Contains(t, podSpec.Volumes, hostVolume, "PodSpec Volumes should contain host-etc-kube host path volume")
 
-	for _, container := range podSpec.Containers {
-		assert.Contains(t, container.VolumeMounts, hostVolumeMount, "Container VolumeMounts should contain host-etc-kube volume mount")
+		for _, container := range podSpec.Containers {
+			assert.Contains(t, container.VolumeMounts, hostVolumeMount, "Container VolumeMounts should contain host-etc-kube volume mount")
+		}
 	}
 }
 

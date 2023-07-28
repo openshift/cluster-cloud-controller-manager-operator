@@ -19,14 +19,15 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 		{
 			name:       "Empty config",
 			config:     config.OperatorConfig{},
-			initErrMsg: "azure: missed images in config: CloudControllerManager: non zero value required;CloudNodeManager: non zero value required",
+			initErrMsg: "azure: missed images in config: CloudControllerManager: non zero value required;CloudControllerManagerOperator: non zero value required;CloudNodeManager: non zero value required",
 		}, {
 			name: "No infra config",
 			config: config.OperatorConfig{
 				ManagedNamespace: "my-cool-namespace",
 				ImagesReference: config.ImagesReference{
-					CloudControllerManagerAzure: "CloudControllerManagerAzure",
-					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
+					CloudControllerManagerAzure:    "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:          "CloudNodeManagerAzure",
+					CloudControllerManagerOperator: "CloudControllerManagerOperator",
 				},
 				PlatformStatus: &configv1.PlatformStatus{Type: configv1.AzurePlatformType},
 			},
@@ -36,8 +37,9 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 			config: config.OperatorConfig{
 				ManagedNamespace: "my-cool-namespace",
 				ImagesReference: config.ImagesReference{
-					CloudControllerManagerAzure: "CloudControllerManagerAzure",
-					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
+					CloudControllerManagerAzure:    "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:          "CloudNodeManagerAzure",
+					CloudControllerManagerOperator: "CloudControllerManagerOperator",
 				},
 				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AzurePlatformType},
 				InfrastructureName: "infra",
@@ -47,8 +49,9 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 			config: config.OperatorConfig{
 				ManagedNamespace: "my-cool-namespace",
 				ImagesReference: config.ImagesReference{
-					CloudControllerManagerAzure: "CloudControllerManagerAzure",
-					CloudNodeManagerAzure:       "CloudNodeManagerAzure",
+					CloudControllerManagerAzure:    "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:          "CloudNodeManagerAzure",
+					CloudControllerManagerOperator: "CloudControllerManagerOperator",
 				},
 				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AlibabaCloudPlatformType},
 				InfrastructureName: "infra",
