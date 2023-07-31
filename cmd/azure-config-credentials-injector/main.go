@@ -76,34 +76,23 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("%s env variable should be set up", clientIDEnvKey)
 	}
 
-	// First check if azureClientSecret is found, azureClientSecret is the default authentication method
+	// Check for environment variables
 	azureClientSecret, secretFound = mustLookupEnvValue(clientSecretEnvKey)
+	federatedTokenFile, federatedTokenFileFound = mustLookupEnvValue(federatedTokenEnvKey)
+	tenantId, tenantIdFound = mustLookupEnvValue(tenantIDEnvKey)
 
-	// When workload identity is enabled, check for tenantId and federatedTokenFile
-	if injectorOpts.enableWorkloadIdentity == "true" {
-		tenantId, tenantIdFound = mustLookupEnvValue(tenantIDEnvKey)
-		federatedTokenFile, federatedTokenFileFound = mustLookupEnvValue(federatedTokenEnvKey)
-
-		if tenantIdFound && !federatedTokenFileFound {
-			return fmt.Errorf("workload identity method failed: %v environment variable not found or empty", federatedTokenEnvKey)
+	// If federatedTokenFile found, workload identity should be used
+	if federatedTokenFileFound {
+		// azureClientSecret should not be set for workload identity auth, report error when secretFound
+		if secretFound {
+			return fmt.Errorf("%s env variable is set while workload identity is enabled using %s env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", clientSecretEnvKey, federatedTokenEnvKey)
 		}
-
-		if federatedTokenFileFound && !tenantIdFound {
-			return fmt.Errorf("workload identity method failed: %v environment variable not found or empty", tenantIDEnvKey)
+		// tenantId is required for workload identity auth, report error when !tenantIdFound
+		if !tenantIdFound {
+			return fmt.Errorf("%s env variable should be set up while workload identity is enabled using %s env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", tenantIDEnvKey, federatedTokenEnvKey)
 		}
-
-		// If tenantId and federatedTokenFile are found, workload identity will be used
-		if tenantIdFound && federatedTokenFileFound {
-			// azureClientSecret should not be set in this scenario, report error when secretFound
-			if secretFound {
-				return fmt.Errorf("%s env variable is set while workload identity is enabled using %s env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", clientSecretEnvKey, federatedTokenEnvKey)
-			}
-		}
-	}
-
-	// When tenantID and federatedTokenFile environment variables are not found azureClientSecret should be set.
-	// Report error when secret not found.
-	if !tenantIdFound && !federatedTokenFileFound {
+	} else {
+		// federatedTokenFile not found, secret will be required
 		if !secretFound {
 			return fmt.Errorf("%s env variable should be set up", clientSecretEnvKey)
 		}
