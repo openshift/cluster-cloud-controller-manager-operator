@@ -161,7 +161,7 @@ func Test_mergeCloudConfig(t *testing.T) {
 			name:           "should fail, client secret is present while workload identity is enabled",
 			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name(), "--disable-identity-extension-auth", "--enable-azure-workload-identity=true"},
 			envVars:        map[string]string{"AZURE_TENANT_ID": "baz", "AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar", "AZURE_FEDERATED_TOKEN_FILE": "baz"},
-			expectedErrMsg: "AZURE_CLIENT_SECRET env variable is set while workload identity is enabled, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com",
+			expectedErrMsg: "AZURE_CLIENT_SECRET env variable is set while workload identity is enabled using AZURE_FEDERATED_TOKEN_FILE env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com",
 		},
 		{
 			name:           "should fail, workload identity can't be enabled because tenant id missing",
