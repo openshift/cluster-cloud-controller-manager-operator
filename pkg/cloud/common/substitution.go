@@ -61,9 +61,6 @@ func SubstituteCommonPartsFromConfig(config config.OperatorConfig, renderedObjec
 	for i, objectTemplate := range renderedObjects {
 		templateCopy := objectTemplate.DeepCopyObject().(client.Object)
 
-		// Set namespaces for all object. Namespace on cluster-wide substitutedObjects is stripped by API server and is not applied
-		templateCopy.SetNamespace(config.ManagedNamespace)
-
 		switch obj := templateCopy.(type) {
 		case *appsv1.Deployment:
 			obj.Spec.Template.Spec = setProxySettings(config, obj.Spec.Template.Spec)

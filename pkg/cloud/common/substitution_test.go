@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -194,96 +193,6 @@ func TestFillConfigValues(t *testing.T) {
 		config          config.OperatorConfig
 		expectedObjects []client.Object
 	}{{
-		name:    "Substitute object namespace",
-		objects: []client.Object{&corev1.ConfigMap{}},
-		expectedObjects: []client.Object{&corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: testManagementNamespace,
-			},
-		}},
-		config: config.OperatorConfig{
-			ManagedNamespace: testManagementNamespace,
-		},
-	}, {
-		name: "Substitute namespace for more objects at once",
-		objects: []client.Object{&corev1.ConfigMap{}, &v1.Deployment{
-			Spec: v1.DeploymentSpec{
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{},
-					},
-				},
-			},
-		}},
-		expectedObjects: []client.Object{
-			&corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testManagementNamespace,
-				},
-			}, &v1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testManagementNamespace,
-				},
-				Spec: v1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{},
-						},
-					},
-				},
-			}},
-		config: config.OperatorConfig{
-			ManagedNamespace: testManagementNamespace,
-		},
-	}, {
-		name: "Substitute namespace for deployment and daemonset",
-		objects: []client.Object{&v1.DaemonSet{
-			Spec: v1.DaemonSetSpec{
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						Containers:     []corev1.Container{},
-						InitContainers: []corev1.Container{},
-					},
-				},
-			},
-		}, &v1.Deployment{
-			Spec: v1.DeploymentSpec{
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{},
-					},
-				},
-			},
-		}},
-		expectedObjects: []client.Object{
-			&v1.DaemonSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testManagementNamespace,
-				},
-				Spec: v1.DaemonSetSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers:     []corev1.Container{},
-							InitContainers: []corev1.Container{},
-						},
-					},
-				},
-			}, &v1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testManagementNamespace,
-				},
-				Spec: v1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{},
-						},
-					},
-				},
-			}},
-		config: config.OperatorConfig{
-			ManagedNamespace: testManagementNamespace,
-		},
-	}, {
 		name: "Substitute Single Replica for deployment",
 		objects: []client.Object{&v1.Deployment{
 			Spec: v1.DeploymentSpec{
@@ -296,9 +205,6 @@ func TestFillConfigValues(t *testing.T) {
 			},
 		}},
 		expectedObjects: []client.Object{&v1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: testManagementNamespace,
-			},
 			Spec: v1.DeploymentSpec{
 				Replicas: pointer.Int32(1),
 				Template: corev1.PodTemplateSpec{
