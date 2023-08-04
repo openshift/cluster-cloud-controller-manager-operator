@@ -57,7 +57,6 @@ spec:
               exec /azure-config-credentials-injector \
                 --cloud-config-file-path=/etc/cloud-config/cloud.conf \
                 --output-file-path=/etc/merged-cloud-config/cloud.conf \
-                # Force disable node's managed identity, azure-cloud-credentials Secret should be used.
                 --disable-identity-extension-auth \
                 --enable-azure-workload-identity=true
           env:
