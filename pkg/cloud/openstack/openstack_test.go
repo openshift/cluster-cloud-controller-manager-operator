@@ -159,7 +159,9 @@ secret-namespace = kube-system
 ignore-volume-az = true
 
 [LoadBalancer]
-use-octavia = false
+manage-security-groups = true
+max-shared-lb          = 1
+use-octavia            = false
 `,
 			infra:   makeInfrastructureResource(configv1.OpenStackPlatformType),
 			network: makeNetworkResource(operatorv1.NetworkTypeKuryr),
@@ -180,7 +182,8 @@ clouds-file = /etc/openstack/secret/clouds.yaml
 cloud       = openstack
 
 [LoadBalancer]
-max-shared-lb = 1`
+max-shared-lb          = 1
+manage-security-groups = true`
 				if tc.network.Status.NetworkType == string(operatorv1.NetworkTypeKuryr) {
 					expected = `[Global]
 use-clouds  = true
@@ -188,8 +191,9 @@ clouds-file = /etc/openstack/secret/clouds.yaml
 cloud       = openstack
 
 [LoadBalancer]
-enabled       = false
-max-shared-lb = 1`
+manage-security-groups = true
+max-shared-lb          = 1
+enabled                = false`
 				}
 				actual := strings.TrimSpace(actual)
 				g.Expect(actual).Should(Equal(expected))
