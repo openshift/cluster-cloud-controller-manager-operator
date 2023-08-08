@@ -428,7 +428,8 @@ func checkVolumes(t *testing.T, platformName string, podSpec corev1.PodSpec) {
 	switch platformName {
 	case "Azure":
 		// Azure CCM and node manager use an init-container to merge provided credentials
-		// with the cloud conf in /etc/kubernetes on the host.
+		// with the cloud conf either from host /etc/kubernetes (node-manager) or from
+		// the accm configmap (cloud-controller-manager).
 		// For this reason, Azure mounts the merged-cloud-config volume where the generated
 		// cloud conf has been created.
 		hostVolume = corev1.Volume{
@@ -437,14 +438,19 @@ func checkVolumes(t *testing.T, platformName string, podSpec corev1.PodSpec) {
 				EmptyDir: nil,
 			},
 		}
-		hostVolumeMount = corev1.VolumeMount{
-			MountPath: "/etc/kubernetes",
-			Name:      "merged-cloud-config",
-			ReadOnly:  true,
-		}
 		assert.Contains(t, podSpec.Volumes, hostVolume, "PodSpec Volumes should contain merged-cloud-config empty dir volume")
 
 		for _, container := range podSpec.Containers {
+			hostVolumeMount = corev1.VolumeMount{
+				Name:     "merged-cloud-config",
+				ReadOnly: true,
+			}
+			switch container.Name {
+			case "cloud-controller-manager":
+				hostVolumeMount.MountPath = "/etc/kubernetes-cloud-config"
+			case "cloud-node-manager":
+				hostVolumeMount.MountPath = "/etc/kubernetes"
+			}
 			assert.Contains(t, container.VolumeMounts, hostVolumeMount, "Container VolumeMounts should contain merged-cloud-config volume mount")
 		}
 	default:
