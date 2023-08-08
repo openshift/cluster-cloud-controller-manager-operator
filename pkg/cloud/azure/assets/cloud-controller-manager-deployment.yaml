@@ -95,7 +95,7 @@ spec:
                   key: azure_federated_token_file
                   optional: true
           volumeMounts:
-            - name: host-etc-kube
+            - name: config-accm
               mountPath: /etc/cloud-config
               readOnly: true
             - name: merged-cloud-config
@@ -141,10 +141,10 @@ spec:
                 --leader-elect-retry-period=26s \
                 --leader-elect-resource-namespace=openshift-cloud-controller-manager
           volumeMounts:
-            - name: merged-cloud-config
+            - name: host-etc-kube
               mountPath: /etc/kubernetes
               readOnly: true
-            - name: config-accm
+            - name: merged-cloud-config
               mountPath: /etc/kubernetes-cloud-config
               readOnly: true
             - name: trusted-ca
