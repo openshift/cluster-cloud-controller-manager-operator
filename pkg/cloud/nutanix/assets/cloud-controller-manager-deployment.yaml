@@ -90,8 +90,13 @@ spec:
                 --cloud-provider=nutanix \
                 --cloud-config=/etc/cloud/nutanix_config.json \
                 --controllers=* \
+                --configure-cloud-routes=false \
                 --cluster-name=$(OCP_INFRASTRUCTURE_NAME) \
+                --use-service-account-credentials=true \
                 --leader-elect=true \
+                --leader-elect-lease-duration=137s \
+                --leader-elect-renew-deadline=107s \
+                --leader-elect-retry-period=26s \
                 --leader-elect-resource-namespace=openshift-cloud-controller-manager
           volumeMounts:
             - name: nutanix-config

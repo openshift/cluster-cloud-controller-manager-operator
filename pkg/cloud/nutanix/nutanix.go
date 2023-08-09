@@ -6,6 +6,7 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	appsv1 "k8s.io/api/apps/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
@@ -24,6 +25,10 @@ var (
 	assetsFs  embed.FS
 	templates = []common.TemplateSource{
 		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/cloud-controller-manager-deployment.yaml"},
+		{ReferenceObject: &rbacv1.Role{}, EmbedFsPath: "assets/nutanix-cloud-controller-manager-role.yaml"},
+		{ReferenceObject: &rbacv1.RoleBinding{}, EmbedFsPath: "assets/nutanix-cloud-controller-manager-rolebinding.yaml"},
+		{ReferenceObject: &rbacv1.ClusterRole{}, EmbedFsPath: "assets/nutanix-cloud-controller-manager-clusterrole.yaml"},
+		{ReferenceObject: &rbacv1.ClusterRoleBinding{}, EmbedFsPath: "assets/nutanix-cloud-controller-manager-clusterrolebinding.yaml"},
 	}
 )
 

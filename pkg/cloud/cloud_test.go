@@ -67,18 +67,19 @@ func getPlatforms() testPlatformsMap {
 	return testPlatformsMap{
 		string(configv1.AlibabaCloudPlatformType): {getDummyPlatformStatus(configv1.AlibabaCloudPlatformType, false)},
 		string(configv1.AWSPlatformType):          {getDummyPlatformStatus(configv1.AWSPlatformType, false)},
-		string(configv1.OpenStackPlatformType):    {getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
-		string(configv1.GCPPlatformType):          {getDummyPlatformStatus(configv1.GCPPlatformType, false)},
 		string(configv1.AzurePlatformType):        {getDummyPlatformStatus(configv1.AzurePlatformType, false)},
-		string(configv1.VSpherePlatformType):      {getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
-		string(configv1.OvirtPlatformType):        {getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
-		string(configv1.IBMCloudPlatformType):     {getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
-		string(configv1.PowerVSPlatformType):      {getDummyPlatformStatus(configv1.PowerVSPlatformType, false)},
-		string(configv1.LibvirtPlatformType):      {getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
-		string(configv1.KubevirtPlatformType):     {getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
-		string(configv1.BareMetalPlatformType):    {getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
-		string(configv1.NonePlatformType):         {getDummyPlatformStatus(configv1.NonePlatformType, false)},
 		"AzureStackHub":                           {getDummyPlatformStatus(configv1.AzurePlatformType, true)},
+		string(configv1.BareMetalPlatformType):    {getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
+		string(configv1.GCPPlatformType):          {getDummyPlatformStatus(configv1.GCPPlatformType, false)},
+		string(configv1.IBMCloudPlatformType):     {getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
+		string(configv1.KubevirtPlatformType):     {getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
+		string(configv1.LibvirtPlatformType):      {getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
+		string(configv1.NonePlatformType):         {getDummyPlatformStatus(configv1.NonePlatformType, false)},
+		string(configv1.NutanixPlatformType):      {getDummyPlatformStatus(configv1.NutanixPlatformType, false)},
+		string(configv1.OpenStackPlatformType):    {getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
+		string(configv1.OvirtPlatformType):        {getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
+		string(configv1.PowerVSPlatformType):      {getDummyPlatformStatus(configv1.PowerVSPlatformType, false)},
+		string(configv1.VSpherePlatformType):      {getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
 	}
 }
 
@@ -197,17 +198,31 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "VSphere resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.VSpherePlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 8,
 		expectedResourcesKindName: []string{
 			"Deployment/vsphere-cloud-controller-manager",
 			"PodDisruptionBudget/vsphere-cloud-controller-manager",
+			"Role/vsphere-cloud-controller-manager",
+			"RoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
+			"RoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
+			"ClusterRole/vsphere-cloud-controller-manager",
+			"ClusterRoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
+			"ClusterRoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
 		},
 	}, {
-		name:                      "VSphere resources returned as expected with single node",
-		testPlatform:              platformsMap[string(configv1.VSpherePlatformType)],
-		expectedResourceCount:     1,
-		singleReplica:             true,
-		expectedResourcesKindName: []string{"Deployment/vsphere-cloud-controller-manager"},
+		name:                  "VSphere resources returned as expected with single node",
+		testPlatform:          platformsMap[string(configv1.VSpherePlatformType)],
+		expectedResourceCount: 7,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/vsphere-cloud-controller-manager",
+			"Role/vsphere-cloud-controller-manager",
+			"RoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
+			"RoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
+			"ClusterRole/vsphere-cloud-controller-manager",
+			"ClusterRoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
+			"ClusterRoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
+		},
 	}, {
 		name:         "OVirt resources are empty, as the platform is not yet supported",
 		testPlatform: platformsMap[string(configv1.OvirtPlatformType)],
@@ -340,11 +355,7 @@ func TestRenderedResources(t *testing.T) {
 				checkLeaderElection(t, podSpec)
 				checkCloudControllerManagerFlags(t, podSpec)
 				checkTrustedCAMounted(t, podSpec)
-				if platform.platformStatus.Type != configv1.VSpherePlatformType {
-					// we don't use service account credentials on vSphere as its CCM behavior
-					// is different from the in-tree cloud provider.
-					checkUseServiceAccountCredentials(t, podSpec)
-				}
+				checkUseServiceAccountCredentials(t, podSpec)
 			}
 		})
 	}
