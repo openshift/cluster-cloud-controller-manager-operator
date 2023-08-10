@@ -42,6 +42,53 @@ spec:
           key: node.kubernetes.io/not-ready
           operator: Exists
           tolerationSeconds: 120
+      initContainers:
+        # Merge /etc/kubernetes/cloud.conf (on the host) with secret "azure-cloud-credentials" into "merged-cloud-config" emptydir.
+        - name: azure-inject-credentials
+          image: {{ .images.CloudControllerManagerOperator }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              #!/bin/bash
+              if [[ -f /etc/cloud-config/apiserver-url.env ]]; then
+                cp /etc/cloud-config/apiserver-url.env /etc/merged-cloud-config/
+              fi
+              exec /azure-config-credentials-injector \
+                --cloud-config-file-path=/etc/cloud-config/cloud.conf \
+                --output-file-path=/etc/merged-cloud-config/cloud.conf \
+                --disable-identity-extension-auth \
+                --enable-azure-workload-identity=true
+          env:
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: azure-cloud-credentials
+                  key: azure_client_id
+            - name: AZURE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: azure-cloud-credentials
+                  key: azure_client_secret
+                  optional: true
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: azure-cloud-credentials
+                  key: azure_tenant_id
+                  optional: true
+            - name: AZURE_FEDERATED_TOKEN_FILE
+              valueFrom:
+                secretKeyRef:
+                  name: azure-cloud-credentials
+                  key: azure_federated_token_file
+                  optional: true
+          volumeMounts:
+            - name: host-etc-kube
+              mountPath: /etc/cloud-config
+              readOnly: true
+            - name: merged-cloud-config
+              mountPath: /etc/merged-cloud-config
       containers:
         - name: cloud-node-manager
           image: {{ .images.CloudNodeManager }}
@@ -69,11 +116,14 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
-            - name: host-etc-kube
+            - name: merged-cloud-config
               mountPath: /etc/kubernetes
               readOnly: true
             - name: trusted-ca
               mountPath: /etc/pki/ca-trust/extracted/pem
+              readOnly: true
+            - name: bound-sa-token
+              mountPath: /var/run/secrets/openshift/serviceaccount
               readOnly: true
           resources:
             requests:
@@ -90,3 +140,11 @@ spec:
           hostPath:
             path: /etc/kubernetes
             type: Directory
+        - name: bound-sa-token
+          projected:
+            sources:
+            - serviceAccountToken:
+                path: token
+                audience: openshift
+        - name: merged-cloud-config
+          emptydir:

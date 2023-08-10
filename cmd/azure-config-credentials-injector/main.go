@@ -57,12 +57,14 @@ func main() {
 
 func mergeCloudConfig(_ *cobra.Command, args []string) error {
 	var (
-		azureClientId      string
-		azureClientSecret  string
-		tenantId           string
-		federatedTokenFile string
-		secretFound        bool
-		err                error
+		azureClientId           string
+		tenantId                string
+		tenantIdFound           bool
+		federatedTokenFile      string
+		federatedTokenFileFound bool
+		azureClientSecret       string
+		secretFound             bool
+		err                     error
 	)
 
 	if _, err := os.Stat(injectorOpts.cloudConfigFilePath); os.IsNotExist(err) {
@@ -74,18 +76,23 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("%s env variable should be set up", clientIDEnvKey)
 	}
 
+	// Check for environment variables
 	azureClientSecret, secretFound = mustLookupEnvValue(clientSecretEnvKey)
+	federatedTokenFile, federatedTokenFileFound = mustLookupEnvValue(federatedTokenEnvKey)
+	tenantId, tenantIdFound = mustLookupEnvValue(tenantIDEnvKey)
 
-	// Ensure there is only one authentication method.
-	if injectorOpts.enableWorkloadIdentity == "true" {
-		tenantId, federatedTokenFile, err = lookupWorkloadIdentityEnv(tenantIDEnvKey, federatedTokenEnvKey)
-		if err != nil {
-			return fmt.Errorf("workload identity method failed: %v", err)
-		}
+	// If federatedTokenFile found, workload identity should be used
+	if federatedTokenFileFound {
+		// azureClientSecret should not be set for workload identity auth, report error when secretFound
 		if secretFound {
-			return fmt.Errorf("%s env variable is set while workload identity is enabled, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", clientSecretEnvKey)
+			return fmt.Errorf("%s env variable is set while workload identity is enabled using %s env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", clientSecretEnvKey, federatedTokenEnvKey)
+		}
+		// tenantId is required for workload identity auth, report error when !tenantIdFound
+		if !tenantIdFound {
+			return fmt.Errorf("%s env variable should be set up while workload identity is enabled using %s env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", tenantIDEnvKey, federatedTokenEnvKey)
 		}
 	} else {
+		// federatedTokenFile not found, secret will be required
 		if !secretFound {
 			return fmt.Errorf("%s env variable should be set up", clientSecretEnvKey)
 		}
@@ -157,30 +164,6 @@ func writeCloudConfig(path string, preparedConfig []byte) error {
 		return err
 	}
 	return nil
-}
-
-// lookupWorkloadIdentityEnv loads tenantID and federatedTokenFile values from environment, which are both required for
-// workload identity. Return error if any or both values are missing.
-func lookupWorkloadIdentityEnv(tenantEnvKey, tokenEnvKey string) (tenantId, federatedTokenFile string, err error) {
-	tenantId, tenantIdFound := mustLookupEnvValue(tenantEnvKey)
-	federatedTokenFile, federatedTokenFileFound := mustLookupEnvValue(tokenEnvKey)
-	klog.V(4).Infof("env vars required for workload identity auth are set to: %v=%v and %v=%v", tenantEnvKey, tenantId, tokenEnvKey, federatedTokenFile)
-
-	if !tenantIdFound && !federatedTokenFileFound {
-		err = fmt.Errorf("%v and %v environment variables not found or empty", tenantEnvKey, tokenEnvKey)
-		return
-	}
-
-	if !tenantIdFound {
-		err = fmt.Errorf("%v environment variable not found or empty", tenantEnvKey)
-		return
-	}
-
-	if !federatedTokenFileFound {
-		err = fmt.Errorf("%v environment variable not found or empty", tokenEnvKey)
-	}
-
-	return
 }
 
 func mustLookupEnvValue(key string) (string, bool) {

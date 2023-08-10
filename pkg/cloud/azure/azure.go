@@ -24,8 +24,9 @@ var (
 )
 
 type imagesReference struct {
-	CloudControllerManager string `valid:"required"`
-	CloudNodeManager       string `valid:"required"`
+	CloudControllerManager         string `valid:"required"`
+	CloudControllerManagerOperator string `valid:"required"`
+	CloudNodeManager               string `valid:"required"`
 }
 
 var templateValuesValidationMap = map[string]interface{}{
@@ -58,8 +59,9 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 
 func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets, error) {
 	images := &imagesReference{
-		CloudControllerManager: config.ImagesReference.CloudControllerManagerAzure,
-		CloudNodeManager:       config.ImagesReference.CloudNodeManagerAzure,
+		CloudControllerManager:         config.ImagesReference.CloudControllerManagerAzure,
+		CloudControllerManagerOperator: config.ImagesReference.CloudControllerManagerOperator,
+		CloudNodeManager:               config.ImagesReference.CloudNodeManagerAzure,
 	}
 	_, err := govalidator.ValidateStruct(images)
 	if err != nil {
