@@ -353,7 +353,7 @@ func (r *CloudOperatorReconciler) checkControllerConditions(ctx context.Context)
 	for _, cond := range co.Status.Conditions {
 		if cond.Type == cloudConfigControllerDegradedCondition || cond.Type == trustedCABundleControllerDegradedCondition {
 			if cond.Status == configv1.ConditionTrue {
-				return false, fmt.Errorf("failed to apply resources because %s condition is set to True", cond.Type)
+				return false, fmt.Errorf("failed to apply resources because %s condition is set to True: %s", cond.Type, cond.Message)
 			}
 		}
 
