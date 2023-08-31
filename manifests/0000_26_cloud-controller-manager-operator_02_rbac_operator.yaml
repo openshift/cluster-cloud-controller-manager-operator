@@ -73,7 +73,7 @@ rules:
   - update
   - patch
 
-# vSphere has a separate node manager that uses the serivce account kube-system/vsphere-cloud-controller-manager.
+# vSphere has a separate node manager that uses the service account kube-system/vsphere-cloud-controller-manager.
 # The operator must have these permissions to then grant them to the vSphere node manager.
 - apiGroups:
   - ""
@@ -103,8 +103,29 @@ rules:
   verbs:
   - create
   - patch
-# nutanix has a separate node manager that uses the serivce account kube-system/nutanix-cloud-controller-manager.
-# The operator must have these permissions to then grant them to the nutanix node manager. (note it also uses some of the ones requred by vsphere)
+
+# alibaba has a separate node manager that uses the service account kube-system/alibaba-cloud-controller-manager.
+# The operator must have these permissions to then grant them to the alibaba node manager. (note it also uses some of the ones requred by vsphere)
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - get
+  - create
+  - list
+  - watch
+  - update  
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - services/status
+  verbs:
+  - patch
+
+# nutanix has a separate node manager that uses the service account kube-system/nutanix-cloud-controller-manager.
+# The operator must have these permissions to then grant them to the nutanix node manager. (note it also uses some of the ones requred by vsphere and alibaba)
 - apiGroups:
   - ""
   resources:
