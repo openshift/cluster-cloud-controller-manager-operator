@@ -66,6 +66,8 @@ spec:
               value: {{ .globalCredsSecretNamespace }}
             - name: VSPHERE_SECRET_NAME
               value: {{ .globalCredsSecretName }}
+            - name: ENABLE_ALPHA_DUAL_STACK
+              value: "true"
           resources:
             requests:
               cpu: 200m
