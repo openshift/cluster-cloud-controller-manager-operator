@@ -16,6 +16,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -154,7 +155,10 @@ var _ = Describe("Cloud config sync controller", func() {
 
 	BeforeEach(func() {
 		By("Setting up a new manager")
-		mgr, err := manager.New(cfg, manager.Options{MetricsBindAddress: "0"})
+		mgr, err := manager.New(cfg, manager.Options{
+			Metrics: metricsserver.Options{
+				BindAddress: "0",
+			}})
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler = &CloudConfigReconciler{
