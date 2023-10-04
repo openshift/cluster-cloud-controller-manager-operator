@@ -8,9 +8,9 @@ Kubernetes is in the process of migrating its cloud controller functionality out
 
 ### Operator Status
 
-**Alpha**
+**Stable**
 
-The operator is being actively developed, with features and testing being added on a regular basis. It is currently available for experimentation and testing but **should not** be used for production.
+This operator is considered stable with unit and end-to-end testing against the latest OpenShift. It is currently available as a released component in OpenShift versions >= 4.7.
 
 ### Supported Platforms
 
@@ -20,10 +20,11 @@ The operator is being actively developed, with features and testing being added 
 | [Azure](https://github.com/openshift/cloud-provider-azure)           | Yes                  | Yes           |
 | [GCP](https://github.com/openshift/cloud-provider-gcp)               | Yes                  | Yes           |
 | [OpenStack](https://github.com/openshift/cloud-provider-openstack)   | Yes                  | Yes           |
-| [vSphere](https://github.com/openshift/cloud-provider-vsphere)       | No                   |               |
+| [vSphere](https://github.com/openshift/cloud-provider-vsphere)       | Yes                  | Yes           |
 | [IBM](https://github.com/openshift/cloud-provider-ibm)               | Yes                  |               |
-| [Alibaba](https://github.com/openshift/cloud-provider-alibaba-cloud) | No                   |               |
+| [Alibaba](https://github.com/openshift/cloud-provider-alibaba-cloud) | Yes                  | Yes           |
 | [Power VS](https://github.com/openshift/cloud-provider-powervs)      | Yes                  |               |
+| [Nutanix](https://github.com/openshift/cloud-provider-nutanix)       | Yes                  | Yes           |
 
 ## Deploying and Running CCCMO
 
@@ -37,7 +38,7 @@ More detailed guide is in [#hacking-guide](./docs/dev/hacking-guide.md)
 
 **Prerequisites**
 
-* Go language 1.16+
+* Go language 1.20+
 * GNU Make
 
 All development related tasks can be run through the `Makefile`. Supplemental scripts can be found in the `hack` directory.
