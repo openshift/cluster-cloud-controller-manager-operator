@@ -16,6 +16,7 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 )
@@ -103,7 +104,10 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 
 	BeforeEach(func() {
 		By("Setting up a new manager")
-		mgr, err := manager.New(cfg, manager.Options{MetricsBindAddress: "0"})
+		mgr, err := manager.New(cfg, manager.Options{
+			Metrics: metricsserver.Options{
+				BindAddress: "0",
+			}})
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler = &TrustedCABundleReconciler{

@@ -37,6 +37,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	configv1 "github.com/openshift/api/config/v1"
 
@@ -97,14 +98,18 @@ func main() {
 	syncPeriod := 10 * time.Minute
 
 	cacheOptions := cache.Options{
-		Namespaces: []string{*managedNamespace, controllers.OpenshiftConfigNamespace, controllers.OpenshiftManagedConfigNamespace},
+		SyncPeriod: &syncPeriod,
+		DefaultNamespaces: map[string]cache.Config{
+			*managedNamespace:                           {},
+			controllers.OpenshiftConfigNamespace:        {},
+			controllers.OpenshiftManagedConfigNamespace: {}},
 	}
 
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
-		Namespace:              *managedNamespace,
-		Scheme:                 scheme,
-		SyncPeriod:             &syncPeriod,
-		MetricsBindAddress:     "0", // we do not expose any metric at this point
+		Scheme: scheme,
+		Metrics: metricsserver.Options{ // we do not expose any metric at this point
+			BindAddress: "0",
+		},
 		HealthProbeBindAddress: *healthAddr,
 		MapperProvider: restmapper.NewPartialRestMapperProvider(
 			restmapper.Or(

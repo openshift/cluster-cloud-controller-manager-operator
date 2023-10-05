@@ -37,7 +37,10 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
@@ -120,11 +123,21 @@ func main() {
 
 	syncPeriod := 10 * time.Minute
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
-		Namespace:               *managedNamespace,
-		Scheme:                  scheme,
-		SyncPeriod:              &syncPeriod,
-		MetricsBindAddress:      *metricsAddr,
-		Port:                    9443,
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: *metricsAddr,
+		},
+		Cache: cache.Options{
+			SyncPeriod: &syncPeriod,
+			DefaultNamespaces: map[string]cache.Config{
+				*managedNamespace: {},
+			},
+		},
+		WebhookServer: &webhook.DefaultServer{
+			Options: webhook.Options{
+				Port: 9443,
+			},
+		},
 		HealthProbeBindAddress:  *healthAddr,
 		LeaderElectionNamespace: leaderElectionConfig.ResourceNamespace,
 		LeaderElection:          leaderElectionConfig.LeaderElect,
