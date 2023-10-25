@@ -69,7 +69,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	cloudConfigTransformerFn, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
+	cloudConfigTransformerFn, needsManagedConfigLookup, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
 	if err != nil {
 		klog.Errorf("unable to get cloud config transformer function; unsupported platform")
 		if err := r.setDegradedCondition(ctx); err != nil {
@@ -89,7 +89,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// CCCMO, allowing us to drop this kinda-sorta reliance on CCO stuff. We
 	// may also wish to merge the use of cloudConfigTransformerFn into the
 	// prepareSourceConfigMap helper function
-	if cloudConfigTransformerFn == nil {
+	if needsManagedConfigLookup {
 		defaultSourceCMObjectKey := client.ObjectKey{
 			Name:      managedCloudConfigMapName,
 			Namespace: OpenshiftManagedConfigNamespace,

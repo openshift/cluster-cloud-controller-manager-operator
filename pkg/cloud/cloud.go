@@ -26,38 +26,43 @@ import (
 type cloudConfigTransformer func(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error)
 
 // GetCloudConfigTransformer returns the function that should be used to transform
-// the cloud configuration config map
-func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudConfigTransformer, error) {
+// the cloud configuration config map, and a boolean to indicate if the config should
+// be synced from the CCO namespace before applying the transformation.
+// TODO: the boolean return value to indicate if the config should be synced can be
+// removed once we migrate the AWS and Azure logic from the CCO to this operator.
+// See the FIXME comments below, and the TODO comment in the Reconcile function
+// inside cloud_config_sync_controller.go.
+func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudConfigTransformer, bool, error) {
 	switch platformStatus.Type {
 	case configv1.AlibabaCloudPlatformType:
-		return common.NoOpTransformer, nil
+		return common.NoOpTransformer, false, nil
 	case configv1.AWSPlatformType:
 		// We intentionally return nil rather than NoOpTransformer since we
 		// want to handle this differently in the caller.
 		// FIXME: We need to implement a transformer for this. Currently we're
 		// relying on CCO to do the heavy lifting for us.
-		return nil, nil
+		return nil, true, nil
 	case configv1.AzurePlatformType:
 		// We intentionally return nil rather than NoOpTransformer since we
 		// want to handle this differently in the caller.
 		// FIXME: We need to implement a transformer for this. Currently we're
 		// relying on CCO to do the heavy lifting for us.
-		return nil, nil
+		return nil, true, nil
 	case configv1.GCPPlatformType:
-		return common.NoOpTransformer, nil
+		return common.NoOpTransformer, false, nil
 	case configv1.IBMCloudPlatformType:
-		return common.NoOpTransformer, nil
+		return common.NoOpTransformer, false, nil
 	case configv1.OpenStackPlatformType:
-		return openstack.CloudConfigTransformer, nil
+		return openstack.CloudConfigTransformer, false, nil
 	case configv1.PowerVSPlatformType:
 		//Power VS platform uses ibm cloud provider
-		return common.NoOpTransformer, nil
+		return common.NoOpTransformer, false, nil
 	case configv1.VSpherePlatformType:
-		return vsphere.CloudConfigTransformer, nil
+		return vsphere.CloudConfigTransformer, false, nil
 	case configv1.NutanixPlatformType:
-		return common.NoOpTransformer, nil
+		return common.NoOpTransformer, false, nil
 	default:
-		return nil, newPlatformNotFoundError(platformStatus.Type)
+		return nil, false, newPlatformNotFoundError(platformStatus.Type)
 	}
 }
 
