@@ -2,10 +2,14 @@ package azurestack
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 
 	"github.com/asaskevich/govalidator"
+	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
@@ -85,4 +89,39 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 		return nil, err
 	}
 	return assets, nil
+}
+
+// IsAzureStackHub inspects the infrastructure config returns true if it is configured for ASH.
+func IsAzureStackHub(platformStatus *configv1.PlatformStatus) bool {
+	return platformStatus.Azure != nil && platformStatus.Azure.CloudName == configv1.AzureStackCloud
+}
+
+// CloudConfigTransformer implements the cloudConfigTransformer. It takes
+// the user-provided, legacy cloud provider-compatible configuration and
+// modifies it to be compatible with the external cloud provider. It returns
+// an error if the platform is not OpenStackPlatformType or if any errors are
+// encountered while attempting to rework the configuration.
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+	if !IsAzureStackHub(infra.Status.PlatformStatus) {
+		return "", fmt.Errorf("invalid platform, expected CloudName to be %s", configv1.AzureStackCloud)
+	}
+
+	var cfg azure.Config
+	if err := json.Unmarshal([]byte(source), &cfg); err != nil {
+		return "", fmt.Errorf("failed to unmarshal the cloud.conf: %w", err)
+	}
+
+	// If the virtual machine type is not set we need to make sure it uses
+	// the "standard" instance type. This is to mitigate an issue in the 1.27
+	// release where the default instance type was changed to VMSS.
+	// see OCPBUGS-20213 for more information.
+	if cfg.VMType == "" {
+		cfg.VMType = azureconsts.VMTypeStandard
+	}
+
+	cfgbytes, err := json.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal the cloud.conf: %w", err)
+	}
+	return string(cfgbytes), nil
 }

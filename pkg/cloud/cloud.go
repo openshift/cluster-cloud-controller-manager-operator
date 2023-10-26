@@ -45,8 +45,14 @@ func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudCo
 	case configv1.AzurePlatformType:
 		// We intentionally return nil rather than NoOpTransformer since we
 		// want to handle this differently in the caller.
+		// Except on Azure Stack Hub, where we need to lookup the cloud config
+		// from the managed namespace and also return a config transformer.
 		// FIXME: We need to implement a transformer for this. Currently we're
-		// relying on CCO to do the heavy lifting for us.
+		// relying on CCO to do the heavy lifting for us. The Azure Stack Hub
+		// transformer is only to fix OCPBUGS-20213.
+		if azurestack.IsAzureStackHub(platformStatus) {
+			return azurestack.CloudConfigTransformer, true, nil
+		}
 		return nil, true, nil
 	case configv1.GCPPlatformType:
 		return common.NoOpTransformer, false, nil
@@ -112,7 +118,7 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 	case configv1.AWSPlatformType:
 		return aws.NewProviderAssets, nil
 	case configv1.AzurePlatformType:
-		if isAzureStackHub(platformStatus) {
+		if azurestack.IsAzureStackHub(platformStatus) {
 			return azurestack.NewProviderAssets, nil
 		}
 		return azure.NewProviderAssets, nil
@@ -131,8 +137,4 @@ func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstr
 	default:
 		return nil, newPlatformNotFoundError(platformStatus.Type)
 	}
-}
-
-func isAzureStackHub(platformStatus *configv1.PlatformStatus) bool {
-	return platformStatus.Azure != nil && platformStatus.Azure.CloudName == configv1.AzureStackCloud
 }
