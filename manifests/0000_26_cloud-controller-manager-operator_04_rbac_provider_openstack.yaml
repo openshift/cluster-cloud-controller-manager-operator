@@ -24,6 +24,13 @@ rules:
   - services
   verbs:
   - patch
+- apiGroups:
+  # Required by occm to create events
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
