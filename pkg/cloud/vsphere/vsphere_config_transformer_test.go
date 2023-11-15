@@ -57,7 +57,7 @@ func (b infraBuilder) withPlatform(platform configv1.PlatformType) infraBuilder 
 	return b
 }
 
-func (b infraBuilder) withVSphereNodeNetworking() infraBuilder {
+func (b infraBuilder) withVSphereDefaultNodeNetworking() infraBuilder {
 	vspereSpecRef := b.platformSpec.VSphere
 
 	vspereSpecRef.NodeNetworking.External.Network = "external-network"
@@ -68,6 +68,21 @@ func (b infraBuilder) withVSphereNodeNetworking() infraBuilder {
 
 	vspereSpecRef.NodeNetworking.Internal.ExcludeNetworkSubnetCIDR = []string{"192.0.2.0/24", "fe80::1/128"}
 	vspereSpecRef.NodeNetworking.Internal.NetworkSubnetCIDR = []string{"192.0.3.0/24", "fe80::4/128"}
+
+	return b
+}
+
+func (b infraBuilder) withVSphereIPv6onlyNodeNetworking() infraBuilder {
+	vspereSpecRef := b.platformSpec.VSphere
+
+	vspereSpecRef.NodeNetworking.External.Network = "external-network"
+	vspereSpecRef.NodeNetworking.Internal.Network = "internal-network"
+
+	vspereSpecRef.NodeNetworking.External.NetworkSubnetCIDR = []string{"fe80::3/128"}
+	vspereSpecRef.NodeNetworking.External.ExcludeNetworkSubnetCIDR = []string{"fe80::2/128"}
+
+	vspereSpecRef.NodeNetworking.Internal.ExcludeNetworkSubnetCIDR = []string{"fe80::1/128"}
+	vspereSpecRef.NodeNetworking.Internal.NetworkSubnetCIDR = []string{"fe80::4/128"}
 
 	return b
 }
@@ -139,6 +154,12 @@ func (b infraBuilder) withPrimaryIPv6VIP() infraBuilder {
 	return b
 }
 
+func (b infraBuilder) withIPv6onlyVIP() infraBuilder {
+	b.platformStatus.VSphere.APIServerInternalIPs = []string{"fd65:a1a8:60ad:271c::200"}
+	b.platformStatus.VSphere.IngressIPs = []string{"fd65:a1a8:60ad:271c::201"}
+	return b
+}
+
 func makeDummyNetworkConfig() *configv1.Network {
 	return &configv1.Network{}
 }
@@ -170,6 +191,20 @@ func withDualStackPrimaryIPv6NetworkConfig() *configv1.Network {
 			ServiceNetwork: []string{
 				"fd65:172:16::/112",
 				"172.30.0.0/16",
+			},
+		},
+	}
+}
+
+func withIPv6onlyNetworkConfig() *configv1.Network {
+	return &configv1.Network{
+		Spec: configv1.NetworkSpec{
+			ClusterNetwork: []configv1.ClusterNetworkEntry{
+				{CIDR: "fd65:10:128::/56", HostPrefix: 64},
+			},
+			NetworkType: "OVNKubernetes",
+			ServiceNetwork: []string{
+				"fd65:172:16::/112",
 			},
 		},
 	}
@@ -300,6 +335,26 @@ nodes:
   excludeInternalNetworkSubnetCidr: 192.0.2.0/24,fe80::1/128,fd65:a1a8:60ad:271c::200/128,192.168.96.3/32,fd65:a1a8:60ad:271c::201/128,192.168.96.4/32,fd69::2/128
   excludeExternalNetworkSubnetCidr: 192.1.2.0/24,fe80::2/128,fd65:a1a8:60ad:271c::200/128,192.168.96.3/32,fd65:a1a8:60ad:271c::201/128,192.168.96.4/32,fd69::2/128`
 
+const yamlConfigNodeNetworkingIPv6only = `
+global:
+  insecureFlag: true
+  secretName: vsphere-creds
+  secretNamespace: kube-system
+vcenter:
+  test-server:
+    server: test-server
+    datacenters:
+    - DC1
+    ipFamily:
+    - ipv6
+nodes:
+  internalNetworkSubnetCidr: fe80::4/128
+  externalNetworkSubnetCidr: fe80::3/128
+  internalVmNetworkName: internal-network
+  externalVmNetworkName: external-network
+  excludeInternalNetworkSubnetCidr: fe80::1/128,fd65:a1a8:60ad:271c::200/128,fd65:a1a8:60ad:271c::201/128,fd69::2/128
+  excludeExternalNetworkSubnetCidr: fe80::2/128,fd65:a1a8:60ad:271c::200/128,fd65:a1a8:60ad:271c::201/128,fd69::2/128`
+
 const iniConfigZonal = `
 [Global]
 secret-name = "vsphere-creds"
@@ -348,7 +403,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "in-tree to external with node networking",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereNodeNetworking(),
+			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking(),
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      iniConfigWithWorkspace,
 			equivalentConfig: iniConfigNodeNetworking,
@@ -383,14 +438,14 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "yaml and ini config parsing results should be the same, node networking",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereNodeNetworking(),
+			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking(),
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfigNodeNetworking,
 			equivalentConfig: iniConfigNodeNetworking,
 		},
 		{
 			name:             "yaml config should contain node networking if it's specified in infra",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereNodeNetworking(),
+			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking(),
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworking,
@@ -404,17 +459,24 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "yaml config should contain ipv4-primary dual-stack config and correct excluded subnets",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereNodeNetworking().withPrimaryIPv4VIP(),
+			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking().withPrimaryIPv4VIP(),
 			networkBuilder:   withDualStackPrimaryIPv4NetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworkingDualStackPrimaryIPv4,
 		},
 		{
 			name:             "yaml config should contain ipv6-primary dual-stack config and correct excluded subnets",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereNodeNetworking().withPrimaryIPv6VIP(),
+			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking().withPrimaryIPv6VIP(),
 			networkBuilder:   withDualStackPrimaryIPv6NetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworkingDualStackPrimaryIPv6,
+		},
+		{
+			name:             "yaml config should contain ipv6-only config and correct excluded subnets",
+			infraBuilder:     newVsphereInfraBuilder().withVSphereIPv6onlyNodeNetworking().withIPv6onlyVIP(),
+			networkBuilder:   withIPv6onlyNetworkConfig(),
+			inputConfig:      yamlConfig,
+			equivalentConfig: yamlConfigNodeNetworkingIPv6only,
 		},
 		{
 			name:           "empty input",
