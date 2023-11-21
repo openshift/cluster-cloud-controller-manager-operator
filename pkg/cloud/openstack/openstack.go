@@ -7,7 +7,6 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	configv1 "github.com/openshift/api/config/v1"
-	operatorv1 "github.com/openshift/api/operator/v1"
 	ini "gopkg.in/ini.v1"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/klog/v2"
@@ -62,16 +61,10 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 
 // createLoadBalancerSection creates a loadBalancer section populated with
 // OpenShift defaults. It returns any error that happens.
-func createLoadBalancerSection(cfg *ini.File, network *configv1.Network) error {
+func createLoadBalancerSection(cfg *ini.File) error {
 	loadBalancer, err := cfg.NewSection("LoadBalancer")
 	if err != nil {
 		return fmt.Errorf("failed to modify the provided configuration: %w", err)
-	}
-	if network.Spec.NetworkType == string(operatorv1.NetworkTypeKuryr) {
-		_, err = loadBalancer.NewKey("enabled", "false")
-		if err != nil {
-			return fmt.Errorf("failed to modify the provided configuration: %w", err)
-		}
 	}
 	// Disable shared services by default as a feature that's potentially dangerous if misued.
 	_, err = loadBalancer.NewKey("max-shared-lb", "1")
@@ -89,20 +82,8 @@ func createLoadBalancerSection(cfg *ini.File, network *configv1.Network) error {
 
 // updateLoadBalancerSection updates the loadBalancer section with OpenShift
 // defaults. It returns any error that happens.
-func updateLoadBalancerSection(loadBalancer *ini.Section, network *configv1.Network) error {
+func updateLoadBalancerSection(loadBalancer *ini.Section) error {
 	loadBalancer.DeleteKey("use-octavia") // use-octavia is no longer used, let's make sure it's gone from config
-
-	if network.Spec.NetworkType == string(operatorv1.NetworkTypeKuryr) {
-		enabledKey, err := loadBalancer.GetKey("enabled")
-		if err != nil {
-			_, err = loadBalancer.NewKey("enabled", "false")
-			if err != nil {
-				return fmt.Errorf("failed to modify the provided configuration: %w", err)
-			}
-		} else {
-			enabledKey.SetValue("false")
-		}
-	}
 
 	// Disable shared LBs by default if not overriden already
 	_, err := loadBalancer.GetKey("max-shared-lb")
@@ -214,11 +195,11 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 
 	loadBalancer, _ := cfg.GetSection("LoadBalancer")
 	if loadBalancer == nil {
-		if err = createLoadBalancerSection(cfg, network); err != nil {
+		if err = createLoadBalancerSection(cfg); err != nil {
 			return "", fmt.Errorf("could not create load balancer section: %w", err)
 		}
 	} else {
-		if err = updateLoadBalancerSection(loadBalancer, network); err != nil {
+		if err = updateLoadBalancerSection(loadBalancer); err != nil {
 			return "", fmt.Errorf("could not update load balancer section: %w", err)
 		}
 	}
