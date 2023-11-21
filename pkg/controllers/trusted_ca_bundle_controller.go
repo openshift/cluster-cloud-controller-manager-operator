@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/openshift/api/annotations"
 	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -217,6 +218,9 @@ func (r *TrustedCABundleReconciler) makeCABundleConfigMap(trustBundle []byte) *c
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      trustedCAConfigMapName,
 			Namespace: r.ManagedNamespace,
+			Annotations: map[string]string{
+				annotations.OpenShiftComponent: "Cloud Compute / Cloud Controller Manager",
+			},
 		},
 		Data: map[string]string{
 			trustedCABundleConfigMapKey: string(trustBundle),
