@@ -119,7 +119,6 @@ spec:
         - containerPort: 9258
           name: https
           protocol: TCP
-        resources: {}
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
         resources:
@@ -130,7 +129,7 @@ spec:
         - mountPath: /etc/kube-rbac-proxy
           name: auth-proxy-config
         - mountPath: /etc/tls/private
-          name: cloud-manager-operator-tls
+          name: cloud-controller-manager-operator-tls
       hostNetwork: true
       nodeSelector:
         node-role.kubernetes.io/master: ""
@@ -167,3 +166,10 @@ spec:
         hostPath:
           path: /etc/kubernetes
           type: Directory
+      - configMap:
+          name: kube-rbac-proxy
+        name: auth-proxy-config
+      - name: cloud-controller-manager-operator-tls
+        secret:
+          secretName: cloud-controller-manager-operator-tls
+          optional: true
