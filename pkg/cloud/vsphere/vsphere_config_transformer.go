@@ -43,7 +43,8 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 	// https://github.com/openshift/enhancements/blob/f6b33eb0cd4ba060af71fee6192297cf6bc31e5a/enhancements/installer/vsphere-ipi-zonal.md
 	// https://github.com/openshift/api/pull/1278
 	if infra.Spec.PlatformSpec.VSphere != nil {
-		setDualStack(cpiCfg, infra.Status.PlatformStatus.VSphere, &infra.Spec.PlatformSpec.VSphere.NodeNetworking, network)
+		setIPFamilies(cpiCfg, infra.Status.PlatformStatus.VSphere, &infra.Spec.PlatformSpec.VSphere.NodeNetworking, network)
+		setExcludeNetworkSubnetCIDR(cpiCfg, infra.Status.PlatformStatus.VSphere, &infra.Spec.PlatformSpec.VSphere.NodeNetworking, network)
 		setNodes(cpiCfg, &infra.Spec.PlatformSpec.VSphere.NodeNetworking)
 		setVirtualCenters(cpiCfg, infra.Spec.PlatformSpec.VSphere)
 
@@ -102,31 +103,68 @@ func setVirtualCenters(cfg *ccmConfig.CPIConfig, vSphereSpec *configv1.VSpherePl
 	}
 }
 
-// setDualStack updates the configuration required by the cloud-provider-vsphere to explicitly set
+// setIPFamilies updates the configuration required by the cloud-provider-vsphere to explicitly set
 // value of IPFamilyPriority instead of using the default which is IPv4. This is needed by the
 // cloud provider in order to properly filter IP addresses that feed the instance metadata.
 //
-// We rely on the Service Networks configuration that initially comes from o/installer and later
-// from the Cluster Network Operator as those two components take care of validating that clusters
-// with dual-stack configuration have exactly 2 of them and that they match the required order.
+// We use Service Networks as a way to determine IP stack of the cluster as this field is already
+// well-defined and validated by o/installer in the following way
 //
-// We are mangling with the ExcludeNetworkSubnetCIDR param here because VM agent by default detects
-// also IP addresses that are used by us internally and which should never be exposed as node IPs
-// (i.e. API VIP and Ingress VIP for IPI installations and fd69::2 which is internal to OVN-K8s).
+//   - for single Service Network, its IP stack determines IP stack of the cluster
+//   - for 2 entries in Service Network list, cluster is a dual-stack cluster; order of networks
+//     determines order of IP stacks for the cluster
+//   - number of subnets in Service Network list must be 1 or 2
 //
 // Ref.: https://issues.redhat.com/browse/OCPBUGS-18641
-func setDualStack(cfg *ccmConfig.CPIConfig, status *configv1.VSpherePlatformStatus, nodeNetworking *configv1.VSpherePlatformNodeNetworking, network *configv1.Network) {
-	if network != nil && len(network.Spec.ServiceNetwork) == 2 {
+func setIPFamilies(cfg *ccmConfig.CPIConfig, status *configv1.VSpherePlatformStatus, nodeNetworking *configv1.VSpherePlatformNodeNetworking, network *configv1.Network) {
+	if network != nil {
 		// Extensive validations are performed by o/installer so that here we already know that
 		// if the configuration is dual-stack, we will have exactly 2 service networks and if
 		// single-stack then 1 service network. Simplified logic here is applied to avoid code
 		// duplication.
 		//
 		// Ref.: https://github.com/openshift/installer/blob/6471b31/pkg/types/validation/installconfig.go#L241
-		if net.IsIPv4CIDRString(network.Spec.ServiceNetwork[0]) {
-			cfg.Global.IPFamilyPriority = []string{"ipv4", "ipv6"}
-		} else {
-			cfg.Global.IPFamilyPriority = []string{"ipv6", "ipv4"}
+		if len(network.Spec.ServiceNetwork) == 1 {
+			if net.IsIPv6CIDRString(network.Spec.ServiceNetwork[0]) {
+				cfg.Global.IPFamilyPriority = []string{"ipv6"}
+			}
+			return
+		}
+		if len(network.Spec.ServiceNetwork) == 2 {
+			if net.IsIPv4CIDRString(network.Spec.ServiceNetwork[0]) {
+				cfg.Global.IPFamilyPriority = []string{"ipv4", "ipv6"}
+			} else {
+				cfg.Global.IPFamilyPriority = []string{"ipv6", "ipv4"}
+			}
+			return
+		}
+	}
+}
+
+// setExcludeNetworkSubnetCIDR updates ExcludeNetworkSubnetCIDR param because VM agent by default
+// uses IP addresses that are used by internally and which should never be exposed as node IPs
+// (i.e. API VIP and Ingress VIP for IPI installations and fd69::2 which is internal to OVN-K8s).
+//
+// For comaptibility reasons we are running this only for IPv6-only and dual-stack clusters. We
+// could run it also for IPv4-only clusters for completeness but this issue was never observed in
+// those, so to avoid any potential regression we are not changing IPv4-only setups
+//
+// Ref.: https://issues.redhat.com/browse/OCPBUGS-18641
+func setExcludeNetworkSubnetCIDR(cfg *ccmConfig.CPIConfig, status *configv1.VSpherePlatformStatus, nodeNetworking *configv1.VSpherePlatformNodeNetworking, network *configv1.Network) {
+	ipv6 := false
+	if network != nil {
+		for _, addr := range network.Spec.ServiceNetwork {
+			if net.IsIPv6CIDRString(addr) {
+				ipv6 = true
+				break
+			}
+		}
+
+		// If none of Service Networks is an IPv6 subnet then the cluster is IPv4-only then we do
+		// not change any configuration. We simply stop and remaning code will run only for dual-stack
+		// and IPv6-only setups.
+		if !ipv6 {
+			return
 		}
 
 		if status != nil {
