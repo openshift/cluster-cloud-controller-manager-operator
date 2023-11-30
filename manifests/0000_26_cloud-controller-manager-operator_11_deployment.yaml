@@ -46,7 +46,7 @@ spec:
           --leader-elect-retry-period=26s \
           --leader-elect-resource-namespace=openshift-cloud-controller-manager-operator \
           "--images-json=/etc/cloud-controller-manager-config/images.json" \
-          --metrics-bind-address=:127.0.0.1:9257 \
+          --metrics-bind-address=127.0.0.1:9257 \
           --health-addr=127.0.0.1:9259
         ports:
         - containerPort: 9257
