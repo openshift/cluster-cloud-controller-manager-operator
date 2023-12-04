@@ -46,3 +46,7 @@ spec:
     from:
       kind: DockerImage
       name: quay.io/openshift/origin-nutanix-cloud-controller-manager
+  - name: kube-rbac-proxy
+    from:
+      kind: DockerImage
+      name: placeholder.url.oc.will.replace.this.org/placeholdernamespace:kube-rbac-proxy
