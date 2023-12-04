@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-controller-manager-operator
+  namespace: openshift-cloud-controller-manager-operator
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+    service.alpha.openshift.io/serving-cert-secret-name: cloud-controller-manager-operator-tls
+  labels:
+    app: cloud-manager-operator
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: https
+    port: 9258
+    targetPort: https
+  selector:
+    app: cloud-manager-operator
+  sessionAffinity: None
