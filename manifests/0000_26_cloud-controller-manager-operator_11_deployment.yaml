@@ -46,10 +46,10 @@ spec:
           --leader-elect-retry-period=26s \
           --leader-elect-resource-namespace=openshift-cloud-controller-manager-operator \
           "--images-json=/etc/cloud-controller-manager-config/images.json" \
-          --metrics-bind-address=:9258 \
+          --metrics-bind-address=127.0.0.1:9257 \
           --health-addr=127.0.0.1:9259
         ports:
-        - containerPort: 9258
+        - containerPort: 9257
           name: metrics
           protocol: TCP
         - containerPort: 9259
@@ -103,6 +103,33 @@ spec:
           - mountPath: /etc/kubernetes
             name: host-etc-kube
             readOnly: true
+      - args:
+        - --secure-listen-address=0.0.0.0:9258
+        - --upstream=http://127.0.0.1:9257/
+        - --tls-cert-file=/etc/tls/private/tls.crt
+        - --tls-private-key-file=/etc/tls/private/tls.key
+        - --config-file=/etc/kube-rbac-proxy/config-file.yaml
+        - --tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
+        - --logtostderr=true
+        - --v=3
+        image: placeholder.url.oc.will.replace.this.org/placeholdernamespace:kube-rbac-proxy
+        imagePullPolicy: IfNotPresent
+        name: kube-rbac-proxy
+        ports:
+        - containerPort: 9258
+          name: https
+          protocol: TCP
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        resources:
+          requests:
+            memory: 20Mi
+            cpu: 10m
+        volumeMounts:
+        - mountPath: /etc/kube-rbac-proxy
+          name: auth-proxy-config
+        - mountPath: /etc/tls/private
+          name: cloud-controller-manager-operator-tls
       hostNetwork: true
       nodeSelector:
         node-role.kubernetes.io/master: ""
@@ -139,3 +166,10 @@ spec:
         hostPath:
           path: /etc/kubernetes
           type: Directory
+      - configMap:
+          name: kube-rbac-proxy
+        name: auth-proxy-config
+      - name: cloud-controller-manager-operator-tls
+        secret:
+          secretName: cloud-controller-manager-operator-tls
+          optional: true
