@@ -1,5 +1,5 @@
 # Cluster Cloud Controller Manager Operator
-
+ 
 The Cluster Cloud Controller Manager operator (CCCMO) manages and updates the various [Cloud Controller Managers](https://kubernetes.io/docs/concepts/architecture/cloud-controller/) deployed on top of [OpenShift](https://openshift.io). The operator is based on the [Kubebuilder](https://kubebuilder.io/) framework and [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) libraries. It is installed via [Cluster Version Operator](https://github.com/openshift/cluster-version-operator) (CVO).
 
 ## Operator Status and Supported Platforms
