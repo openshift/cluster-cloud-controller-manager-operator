@@ -157,17 +157,23 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "GCP resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.GCPPlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 4,
 		expectedResourcesKindName: []string{
 			"Deployment/gcp-cloud-controller-manager",
 			"PodDisruptionBudget/gcp-cloud-controller-manager",
+			"ClusterRole/gcp-cloud-controller-manager",
+			"ClusterRoleBinding/gcp-cloud-controller-manager:cloud-provider",
 		},
 	}, {
-		name:                      "GCP resources returned as expected with single node cluster",
-		testPlatform:              platformsMap[string(configv1.GCPPlatformType)],
-		expectedResourceCount:     1,
-		singleReplica:             true,
-		expectedResourcesKindName: []string{"Deployment/gcp-cloud-controller-manager"},
+		name:                  "GCP resources returned as expected with single node cluster",
+		testPlatform:          platformsMap[string(configv1.GCPPlatformType)],
+		expectedResourceCount: 3,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/gcp-cloud-controller-manager",
+			"ClusterRole/gcp-cloud-controller-manager",
+			"ClusterRoleBinding/gcp-cloud-controller-manager:cloud-provider",
+		},
 	}, {
 		name:                  "Azure resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
