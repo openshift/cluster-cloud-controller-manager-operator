@@ -68,14 +68,22 @@ func makeInfraCloudConfig() *corev1.ConfigMap {
 	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 		Name:      infraCloudConfName,
 		Namespace: OpenshiftConfigNamespace,
-	}, Data: map[string]string{infraCloudConfKey: "bar"}}
+	}, Data: map[string]string{infraCloudConfKey: `{
+    "cloud":"AzurePublicCloud",
+    "tenantId": "0000000-0000-0000-0000-000000000000",
+    "subscriptionId": "0000000-0000-0000-0000-000000000000"
+}`}}
 }
 
 func makeManagedCloudConfig() *corev1.ConfigMap {
 	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 		Name:      managedCloudConfigMapName,
 		Namespace: OpenshiftManagedConfigNamespace,
-	}, Data: map[string]string{"cloud.conf": "bar"}}
+	}, Data: map[string]string{"cloud.conf": `{
+    "cloud":"AzurePublicCloud",
+    "tenantId": "0000000-0000-0000-0000-000000000000",
+    "subscriptionId": "0000000-0000-0000-0000-000000000000"
+}`}}
 }
 
 var _ = Describe("isCloudConfigEqual reconciler method", func() {

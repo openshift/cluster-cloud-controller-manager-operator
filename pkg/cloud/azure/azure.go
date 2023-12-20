@@ -2,11 +2,16 @@ package azure
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 
 	"github.com/asaskevich/govalidator"
+	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -84,4 +89,24 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 		return nil, err
 	}
 	return assets, nil
+}
+
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+	var cfg azure.Config
+	if err := json.Unmarshal([]byte(source), &cfg); err != nil {
+		return "", fmt.Errorf("failed to unmarshal the cloud.conf: %w", err)
+	}
+
+	// If the virtual machine type is not set we need to make sure it uses the
+	// "standard" instance type. See OCPBUGS-25483 and OCPBUGS-20213 for more
+	// information
+	if cfg.VMType == "" {
+		cfg.VMType = azureconsts.VMTypeStandard
+	}
+
+	cfgbytes, err := json.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal the cloud.conf: %w", err)
+	}
+	return string(cfgbytes), nil
 }
