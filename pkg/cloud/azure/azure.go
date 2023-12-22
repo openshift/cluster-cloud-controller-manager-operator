@@ -113,7 +113,8 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 
 func IsAzure(infra *configv1.Infrastructure) bool {
 	if infra.Status.PlatformStatus != nil &&
-		infra.Status.PlatformStatus.Type == configv1.AzurePlatformType {
+		infra.Status.PlatformStatus.Type == configv1.AzurePlatformType &&
+		infra.Status.PlatformStatus.Azure.CloudName != configv1.AzureStackCloud {
 		return true
 	}
 	return false
@@ -121,7 +122,7 @@ func IsAzure(infra *configv1.Infrastructure) bool {
 
 func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
 	if !IsAzure(infra) {
-		return "", fmt.Errorf("invalid platform, expected to be Azure")
+		return "", fmt.Errorf("invalid platform, expected CloudName to be %s", configv1.AzurePublicCloud)
 	}
 
 	var cfg azure.Config
