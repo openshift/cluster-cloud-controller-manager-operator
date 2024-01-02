@@ -53,7 +53,6 @@ func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudCo
 		if azurestack.IsAzureStackHub(platformStatus) {
 			return azurestack.CloudConfigTransformer, true, nil
 		}
-		// We need to use the azure CloudConfigTransformer to fix OCPBUGS-25483
 		return azure.CloudConfigTransformer, true, nil
 	case configv1.GCPPlatformType:
 		return common.NoOpTransformer, false, nil
