@@ -54,6 +54,20 @@ func makeNetworkResource() *configv1.Network {
 }
 
 func makeInfraStatus(platform configv1.PlatformType) configv1.InfrastructureStatus {
+	if platform == configv1.AzurePlatformType {
+		return configv1.InfrastructureStatus{
+			PlatformStatus: &configv1.PlatformStatus{
+				Type: platform,
+				Azure: &configv1.AzurePlatformStatus{
+					CloudName: configv1.AzurePublicCloud,
+				},
+			},
+			Platform:               platform,
+			InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
+			ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
+		}
+	}
+
 	return configv1.InfrastructureStatus{
 		PlatformStatus: &configv1.PlatformStatus{
 			Type: platform,

@@ -112,10 +112,11 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 }
 
 func IsAzure(infra *configv1.Infrastructure) bool {
-	if infra.Status.PlatformStatus != nil &&
-		infra.Status.PlatformStatus.Type == configv1.AzurePlatformType &&
-		infra.Status.PlatformStatus.Azure.CloudName != configv1.AzureStackCloud {
-		return true
+	if infra.Status.PlatformStatus != nil {
+		if infra.Status.PlatformStatus.Type == configv1.AzurePlatformType &&
+			(infra.Status.PlatformStatus.Azure.CloudName != configv1.AzureStackCloud) {
+			return true
+		}
 	}
 	return false
 }
