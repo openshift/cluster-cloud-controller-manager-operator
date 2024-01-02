@@ -11,8 +11,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	ratelimitconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
+
+	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 )
 
 const (
