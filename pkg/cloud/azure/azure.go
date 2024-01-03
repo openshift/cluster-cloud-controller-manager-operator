@@ -151,7 +151,7 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		}
 	}
 
-	// Ensure Cloud is set in cloud.conf matches what is set in infra
+	// Ensure cloud set in cloud.conf matches infra
 	if cfg.Cloud != "" {
 		if !strings.EqualFold(string(cloud), cfg.Cloud) {
 			return "",
@@ -160,12 +160,10 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		}
 	}
 
+	cfg.Cloud = string(cloud)
+
 	// TODO: Remove when you work this out (before merging)
 	// Why is cfg.Cloud not typed: type AzureCloudEnvironment string
-
-	// At this point these should always be the same
-	// comparrison
-	cfg.Cloud = string(cloud)
 
 	// If the virtual machine type is not set we need to make sure it uses the
 	// "standard" instance type. See OCPBUGS-25483 and OCPBUGS-20213 for more
