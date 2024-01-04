@@ -31,12 +31,12 @@ var (
 )
 
 var (
-	validAzureCloudNames = map[configv1.AzureCloudEnvironment]bool{
-		configv1.AzurePublicCloud:       true,
-		configv1.AzureUSGovernmentCloud: true,
-		configv1.AzureChinaCloud:        true,
-		configv1.AzureGermanCloud:       true,
-		configv1.AzureStackCloud:        true,
+	validAzureCloudNames = map[configv1.AzureCloudEnvironment]struct{}{
+		configv1.AzurePublicCloud:       struct{}{},
+		configv1.AzureUSGovernmentCloud: struct{}{},
+		configv1.AzureChinaCloud:        struct{}{},
+		configv1.AzureGermanCloud:       struct{}{},
+		configv1.AzureStackCloud:        struct{}{},
 	}
 
 	validAzureCloudNameValues = func() []string {
@@ -111,6 +111,9 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 	return assets, nil
 }
 
+// IsAzure ensures that the underlying platform is Azure. It will fail if the
+// CloudName is AzureStack as we handle it separately with it's own
+// CloudConfigTransformer.
 func IsAzure(infra *configv1.Infrastructure) bool {
 	if infra.Status.PlatformStatus != nil {
 		if infra.Status.PlatformStatus.Type == configv1.AzurePlatformType &&
@@ -144,7 +147,7 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 	cloud := configv1.AzurePublicCloud
 	if azurePlatform := infra.Status.PlatformStatus.Azure; azurePlatform != nil {
 		if c := azurePlatform.CloudName; c != "" {
-			if !validAzureCloudNames[c] {
+			if _, ok := validAzureCloudNames[c]; !ok {
 				return "", field.NotSupported(field.NewPath("status", "platformStatus", "azure", "cloudName"), c, validAzureCloudNameValues)
 			}
 			cloud = c
@@ -159,11 +162,7 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 				cloud.conf conflicts with infrastructure object`)
 		}
 	}
-
 	cfg.Cloud = string(cloud)
-
-	// TODO: Remove when you work this out (before merging)
-	// Why is cfg.Cloud not typed: type AzureCloudEnvironment string
 
 	// If the virtual machine type is not set we need to make sure it uses the
 	// "standard" instance type. See OCPBUGS-25483 and OCPBUGS-20213 for more
