@@ -142,8 +142,8 @@ func TestCloudConfigTransformer(t *testing.T) {
 			infra:  makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureStackCloud),
 			errMsg: fmt.Sprintf("invalid platform, expected CloudName to be %s", configv1.AzurePublicCloud),
 		},
-		{ // extend this to include Cloud so we don't duplicate
-			name:     "Azure sets the vmType to standard",
+		{
+			name:     "Azure sets the vmType to standard and cloud to AzurePublicCloud when neither is set",
 			source:   azure.Config{},
 			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
@@ -152,18 +152,6 @@ func TestCloudConfigTransformer(t *testing.T) {
 			name:     "Azure doesn't modify vmType if user set",
 			source:   azure.Config{VMType: "vmss"},
 			expected: azure.Config{VMType: "vmss", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
-			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
-		},
-		{
-			name:     "Azure sets the cloud to AzurePublicCloud",
-			source:   azure.Config{},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
-			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
-		},
-		{
-			name:     "Azure sets the cloud to AzurePublicCloud",
-			source:   azure.Config{},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
 		},
 		{
@@ -198,15 +186,11 @@ func TestCloudConfigTransformer(t *testing.T) {
 			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzureGermanCloud)}},
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureGermanCloud),
 		},
-		// The matcher should assert err.Error == errMsg - but is not for some
-		// reason? According to:
-		// https://onsi.github.io/gomega/#matcherrorexpected-interface the matcher
-		// asserts that ACTUAL.Error() == EXPECTED
 		{
 			name:   "Azure throws an error if the infra has an invalid cloud",
 			source: azure.Config{},
 			infra:  makeInfrastructureResource(configv1.AzurePlatformType, "AzureAnotherCloud"),
-			errMsg: "status.platformStatus.azure.cloudName: Unsupported value: \"AzureAnotherCloud\": supported values: \"AzurePublicCloud\", \"AzureUSGovernmentCloud\", \"AzureChinaCloud\", \"AzureGermanCloud\", \"AzureStackCloud\"",
+			errMsg: "status.platformStatus.azure.cloudName: Unsupported value: \"AzureAnotherCloud\": supported values: \"AzureChinaCloud\", \"AzureGermanCloud\", \"AzurePublicCloud\", \"AzureStackCloud\", \"AzureUSGovernmentCloud\"",
 		},
 		{
 			name:     "Azure keeps the cloud set in the source when there is not one set in infrastructure",
@@ -249,8 +233,6 @@ func TestCloudConfigTransformer(t *testing.T) {
 
 			actual, err := CloudConfigTransformer(string(src), tc.infra, nil)
 			if tc.errMsg != "" {
-				// TODO: Remove once the above error case is working correctly
-				fmt.Printf("\n\n err.Error():%s:\n\n", err.Error())
 				g.Expect(err).Should(MatchError(tc.errMsg))
 				g.Expect(actual).Should(Equal(""))
 			} else {
