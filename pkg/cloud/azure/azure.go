@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/asaskevich/govalidator"
@@ -44,6 +45,7 @@ var (
 		for n := range validAzureCloudNames {
 			v = append(v, string(n))
 		}
+		slices.Sort(v)
 		return v
 	}()
 )
