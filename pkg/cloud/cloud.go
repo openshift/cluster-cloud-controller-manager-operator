@@ -53,7 +53,7 @@ func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudCo
 		if azurestack.IsAzureStackHub(platformStatus) {
 			return azurestack.CloudConfigTransformer, true, nil
 		}
-		return nil, true, nil
+		return azure.CloudConfigTransformer, true, nil
 	case configv1.GCPPlatformType:
 		return common.NoOpTransformer, false, nil
 	case configv1.IBMCloudPlatformType:
