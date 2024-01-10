@@ -59,10 +59,6 @@ spec:
         image: {{ .images.CloudControllerManager }}
         imagePullPolicy: IfNotPresent
         env:
-          - name: POD_IP_ADDRESS
-            valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
           - name: VPCCTL_CLOUD_CONFIG
             value: /etc/ibm/cloud.conf
           - name: ENABLE_VPC_PUBLIC_ENDPOINT
@@ -77,7 +73,7 @@ spec:
               source /etc/kubernetes/apiserver-url.env
             fi
             exec /bin/ibm-cloud-controller-manager \
-            --bind-address=$(POD_IP_ADDRESS) \
+            --bind-address=127.0.0.1 \
             --use-service-account-credentials=true \
             --configure-cloud-routes=false \
             --cloud-provider=ibm \
