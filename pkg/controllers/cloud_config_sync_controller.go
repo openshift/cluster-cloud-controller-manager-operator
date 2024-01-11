@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 
-	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,6 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
+	configv1 "github.com/openshift/api/config/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 )
@@ -190,7 +191,6 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 	case configv1.AzurePlatformType,
 		configv1.GCPPlatformType,
 		configv1.VSpherePlatformType,
-		configv1.AlibabaCloudPlatformType,
 		configv1.IBMCloudPlatformType,
 		configv1.PowerVSPlatformType,
 		configv1.OpenStackPlatformType,

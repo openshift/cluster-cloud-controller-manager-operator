@@ -44,7 +44,6 @@ func (tp *testPlatform) getOperatorConfig() config.OperatorConfig {
 		ManagedNamespace: "openshift-cloud-controller-manager",
 		ImagesReference: config.ImagesReference{
 			CloudControllerManagerOperator:  "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-			CloudControllerManagerAlibaba:   "quay.io/repository/openshift/origin-alibaba-cloud-controller-manager",
 			CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
 			CloudControllerManagerAzure:     "quay.io/openshift/origin-azure-cloud-controller-manager",
 			CloudNodeManagerAzure:           "quay.io/openshift/origin-azure-cloud-node-manager",
@@ -64,21 +63,20 @@ type testPlatformsMap map[string]testPlatform
 
 func getPlatforms() testPlatformsMap {
 	return testPlatformsMap{
-		string(configv1.AlibabaCloudPlatformType): {getDummyPlatformStatus(configv1.AlibabaCloudPlatformType, false)},
-		string(configv1.AWSPlatformType):          {getDummyPlatformStatus(configv1.AWSPlatformType, false)},
-		string(configv1.AzurePlatformType):        {getDummyPlatformStatus(configv1.AzurePlatformType, false)},
-		"AzureStackHub":                           {getDummyPlatformStatus(configv1.AzurePlatformType, true)},
-		string(configv1.BareMetalPlatformType):    {getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
-		string(configv1.GCPPlatformType):          {getDummyPlatformStatus(configv1.GCPPlatformType, false)},
-		string(configv1.IBMCloudPlatformType):     {getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
-		string(configv1.KubevirtPlatformType):     {getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
-		string(configv1.LibvirtPlatformType):      {getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
-		string(configv1.NonePlatformType):         {getDummyPlatformStatus(configv1.NonePlatformType, false)},
-		string(configv1.NutanixPlatformType):      {getDummyPlatformStatus(configv1.NutanixPlatformType, false)},
-		string(configv1.OpenStackPlatformType):    {getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
-		string(configv1.OvirtPlatformType):        {getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
-		string(configv1.PowerVSPlatformType):      {getDummyPlatformStatus(configv1.PowerVSPlatformType, false)},
-		string(configv1.VSpherePlatformType):      {getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
+		string(configv1.AWSPlatformType):       {getDummyPlatformStatus(configv1.AWSPlatformType, false)},
+		string(configv1.AzurePlatformType):     {getDummyPlatformStatus(configv1.AzurePlatformType, false)},
+		"AzureStackHub":                        {getDummyPlatformStatus(configv1.AzurePlatformType, true)},
+		string(configv1.BareMetalPlatformType): {getDummyPlatformStatus(configv1.BareMetalPlatformType, false)},
+		string(configv1.GCPPlatformType):       {getDummyPlatformStatus(configv1.GCPPlatformType, false)},
+		string(configv1.IBMCloudPlatformType):  {getDummyPlatformStatus(configv1.IBMCloudPlatformType, false)},
+		string(configv1.KubevirtPlatformType):  {getDummyPlatformStatus(configv1.KubevirtPlatformType, false)},
+		string(configv1.LibvirtPlatformType):   {getDummyPlatformStatus(configv1.LibvirtPlatformType, false)},
+		string(configv1.NonePlatformType):      {getDummyPlatformStatus(configv1.NonePlatformType, false)},
+		string(configv1.NutanixPlatformType):   {getDummyPlatformStatus(configv1.NutanixPlatformType, false)},
+		string(configv1.OpenStackPlatformType): {getDummyPlatformStatus(configv1.OpenStackPlatformType, false)},
+		string(configv1.OvirtPlatformType):     {getDummyPlatformStatus(configv1.OvirtPlatformType, false)},
+		string(configv1.PowerVSPlatformType):   {getDummyPlatformStatus(configv1.PowerVSPlatformType, false)},
+		string(configv1.VSpherePlatformType):   {getDummyPlatformStatus(configv1.VSpherePlatformType, false)},
 	}
 }
 
@@ -99,30 +97,6 @@ func TestGetResources(t *testing.T) {
 		singleReplica             bool
 		expectedResourcesKindName []string
 	}{{
-		name:                  "Alibaba resources returned as expected",
-		testPlatform:          platformsMap[string(configv1.AlibabaCloudPlatformType)],
-		singleReplica:         false,
-		expectedResourceCount: 6,
-		expectedResourcesKindName: []string{
-			"Deployment/alibaba-cloud-controller-manager",
-			"Role/alibaba-cloud-controller-manager",
-			"RoleBinding/alibaba-cloud-controller-manager:alibaba-cloud-controller-manager",
-			"ClusterRole/alibaba-cloud-controller-manager",
-			"ClusterRoleBinding/alibaba-cloud-controller-manager:alibaba-cloud-controller-manager",
-			"PodDisruptionBudget/alibabacloud-cloud-controller-manager",
-		},
-	}, {
-		name:                  "Alibaba resources returned as expected with single node cluster",
-		testPlatform:          platformsMap[string(configv1.AlibabaCloudPlatformType)],
-		expectedResourceCount: 5,
-		singleReplica:         true,
-		expectedResourcesKindName: []string{
-			"Deployment/alibaba-cloud-controller-manager",
-			"Role/alibaba-cloud-controller-manager",
-			"RoleBinding/alibaba-cloud-controller-manager:alibaba-cloud-controller-manager",
-			"ClusterRole/alibaba-cloud-controller-manager",
-			"ClusterRoleBinding/alibaba-cloud-controller-manager:alibaba-cloud-controller-manager"},
-	}, {
 		name:                  "AWS resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AWSPlatformType)],
 		expectedResourceCount: 2,
