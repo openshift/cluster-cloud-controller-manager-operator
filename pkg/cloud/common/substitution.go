@@ -5,7 +5,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -65,7 +65,7 @@ func SubstituteCommonPartsFromConfig(config config.OperatorConfig, renderedObjec
 		case *appsv1.Deployment:
 			obj.Spec.Template.Spec = setProxySettings(config, obj.Spec.Template.Spec)
 			if config.IsSingleReplica {
-				obj.Spec.Replicas = pointer.Int32(1)
+				obj.Spec.Replicas = ptr.To[int32](1)
 			}
 		case *appsv1.DaemonSet:
 			obj.Spec.Template.Spec = setProxySettings(config, obj.Spec.Template.Spec)

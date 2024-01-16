@@ -147,7 +147,7 @@ func prepareCloudConfig(cloudConfig map[string]interface{}, clientId, clientSecr
 		cloudConfig[aadFederatedTokenFileConfigKey] = federatedTokenFile
 		cloudConfig[useFederatedWorkloadIdentityExtensionConfigKey] = true
 	} else {
-		klog.V(4).Info("%s env variable is set, client secret authentication will be used", clientSecretEnvKey)
+		klog.V(4).Infof("%s env variable is set, client secret authentication will be used", clientSecretEnvKey)
 		cloudConfig[clientSecretCloudConfigKey] = clientSecret
 	}
 

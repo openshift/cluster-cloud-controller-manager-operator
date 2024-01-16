@@ -154,7 +154,7 @@ func applyConfigMap(ctx context.Context, client coreclientv1.Client, recorder re
 func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *appsv1.Deployment) (bool, error) {
 	required := requiredOriginal.DeepCopy()
 	if err := annotatePodSpecWithRelatedConfigsHash(ctx, client, required.Namespace, &required.Spec.Template); err != nil {
-		klog.V(3).Infof("Can not check related configs for %s/%s: %w", required.GetObjectKind(), required.GetName(), err)
+		klog.V(3).Infof("Can not check related configs for %s/%s: %v", required.GetObjectKind(), required.GetName(), err)
 		recorder.Event(required, corev1.EventTypeWarning, ConfigCheckFailedEvent, err.Error())
 	}
 	if err := setSpecHashAnnotation(&required.ObjectMeta, required.Spec); err != nil {
@@ -243,7 +243,7 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, requiredOriginal *appsv1.DaemonSet) (bool, error) {
 	required := requiredOriginal.DeepCopy()
 	if err := annotatePodSpecWithRelatedConfigsHash(ctx, client, required.Namespace, &required.Spec.Template); err != nil {
-		klog.V(3).Infof("Can not check related configs for %s/%s: %w", required.GetObjectKind(), required.GetName(), err)
+		klog.V(3).Infof("Can not check related configs for %s/%s: %v", required.GetObjectKind(), required.GetName(), err)
 		recorder.Event(required, corev1.EventTypeWarning, ConfigCheckFailedEvent, err.Error())
 	}
 	if err := setSpecHashAnnotation(&required.ObjectMeta, required.Spec); err != nil {

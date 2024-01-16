@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -103,7 +103,7 @@ var _ = Describe("isCloudConfigEqual reconciler method", func() {
 
 	It("should return 'false' if ConfigMaps content are not equal", func() {
 		changedManagedCloudConfig := makeManagedCloudConfig()
-		changedManagedCloudConfig.Immutable = pointer.Bool(true)
+		changedManagedCloudConfig.Immutable = ptr.To[bool](true)
 		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConfig())).Should(BeFalse())
 
 		changedManagedCloudConfig = makeManagedCloudConfig()
@@ -233,7 +233,7 @@ var _ = Describe("Cloud config sync controller", func() {
 
 		By("Cleanup resources")
 		deleteOptions := &client.DeleteOptions{
-			GracePeriodSeconds: pointer.Int64(0),
+			GracePeriodSeconds: ptr.To[int64](0),
 		}
 
 		allCMs := &corev1.ConfigMapList{}
@@ -467,7 +467,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 
 	AfterEach(func() {
 		deleteOptions := &client.DeleteOptions{
-			GracePeriodSeconds: pointer.Int64(0),
+			GracePeriodSeconds: ptr.To[int64](0),
 		}
 
 		co := &configv1.ClusterOperator{}

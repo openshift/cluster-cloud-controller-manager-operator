@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -734,7 +734,7 @@ var _ = Describe("Apply resources should", func() {
 		Expect(updated).To(BeTrue())
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
-		dep.Spec.Replicas = pointer.Int32(20)
+		dep.Spec.Replicas = ptr.To[int32](20)
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
