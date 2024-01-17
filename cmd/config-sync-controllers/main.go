@@ -32,8 +32,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
-	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
+	"k8s.io/klog/v2/textlogger"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -65,7 +64,8 @@ func init() {
 }
 
 func main() {
-	klog.InitFlags(nil)
+	textLoggerCfg := textlogger.NewConfig()
+	textLoggerCfg.AddFlags(flag.CommandLine)
 
 	healthAddr := flag.String(
 		"health-addr",
@@ -85,7 +85,7 @@ func main() {
 	options.BindLeaderElectionFlags(&leaderElectionConfig, pflag.CommandLine)
 	pflag.Parse()
 
-	ctrl.SetLogger(klogr.New().WithName("CCCMOConfigSyncControllers"))
+	ctrl.SetLogger(textlogger.NewLogger(textLoggerCfg).WithName("CCCMOConfigSyncControllers"))
 
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionDefaults(restConfig, configv1.LeaderElection{

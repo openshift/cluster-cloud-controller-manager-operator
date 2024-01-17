@@ -7,7 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -196,7 +197,7 @@ func TestFillConfigValues(t *testing.T) {
 		name: "Substitute Single Replica for deployment",
 		objects: []client.Object{&v1.Deployment{
 			Spec: v1.DeploymentSpec{
-				Replicas: pointer.Int32(2),
+				Replicas: ptr.To[int32](2),
 				Template: corev1.PodTemplateSpec{
 					Spec: corev1.PodSpec{
 						Containers: []corev1.Container{},
@@ -206,7 +207,7 @@ func TestFillConfigValues(t *testing.T) {
 		}},
 		expectedObjects: []client.Object{&v1.Deployment{
 			Spec: v1.DeploymentSpec{
-				Replicas: pointer.Int32(1),
+				Replicas: ptr.To[int32](1),
 				Template: corev1.PodTemplateSpec{
 					Spec: corev1.PodSpec{
 						Containers: []corev1.Container{},

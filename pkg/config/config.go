@@ -87,7 +87,7 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 
 	images, err := getImagesFromJSONFile(imagesFile)
 	if err != nil {
-		klog.Errorf("Unable to decode images file from location %s", imagesFile, err)
+		klog.Errorf("Unable to decode images file from location %s: %v", imagesFile, err)
 		return OperatorConfig{}, err
 	}
 
