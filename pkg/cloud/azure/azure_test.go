@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
-	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+
+	configv1 "github.com/openshift/api/config/v1"
 
 	ratelimitconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 
@@ -65,7 +66,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 					CloudNodeManagerAzure:          "CloudNodeManagerAzure",
 					CloudControllerManagerOperator: "CloudControllerManagerOperator",
 				},
-				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AlibabaCloudPlatformType},
+				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AzurePlatformType},
 				InfrastructureName: "infra",
 				ClusterProxy: &configv1.Proxy{
 					Status: configv1.ProxyStatus{

@@ -1,14 +1,14 @@
 package cloud
 
 import (
-	configv1 "github.com/openshift/api/config/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	configv1 "github.com/openshift/api/config/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/alibaba"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azurestack"
@@ -34,8 +34,6 @@ type cloudConfigTransformer func(source string, infra *configv1.Infrastructure, 
 // inside cloud_config_sync_controller.go.
 func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudConfigTransformer, bool, error) {
 	switch platformStatus.Type {
-	case configv1.AlibabaCloudPlatformType:
-		return common.NoOpTransformer, false, nil
 	case configv1.AWSPlatformType:
 		// We intentionally return nil rather than NoOpTransformer since we
 		// want to handle this differently in the caller.
@@ -113,8 +111,6 @@ type assetsConstructor func(config config.OperatorConfig) (common.CloudProviderA
 // for given PlatformStatus. Intended to be a single place across operator logic where platform dependent choice happen.
 func getAssetsConstructor(platformStatus *configv1.PlatformStatus) (assetsConstructor, error) {
 	switch platformStatus.Type {
-	case configv1.AlibabaCloudPlatformType:
-		return alibaba.NewProviderAssets, nil
 	case configv1.AWSPlatformType:
 		return aws.NewProviderAssets, nil
 	case configv1.AzurePlatformType:
