@@ -24,7 +24,7 @@ const (
 	infraCloudConfName = "test-config"
 	infraCloudConfKey  = "foo"
 
-	defaultAzureConfig = `{"cloud":"AzurePublicCloud","tenantId":"0000000-0000-0000-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false}`
+	defaultAzureConfig = `{"cloud":"AzurePublicCloud","tenantId":"0000000-0000-0000-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 )
 
 func makeInfrastructureResource(platform configv1.PlatformType) *configv1.Infrastructure {
@@ -264,30 +264,26 @@ var _ = Describe("Cloud config sync controller", func() {
 	})
 
 	It("config should be synced up after first reconcile", func() {
-		Eventually(func() (bool, error) {
+		Eventually(func(g Gomega) (string, error) {
 			syncedCloudConfigMap := &corev1.ConfigMap{}
 			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			if err != nil {
-				return false, err
-			}
-			return syncedCloudConfigMap.Data[defaultConfigKey] == defaultAzureConfig, nil
-		}).Should(BeTrue())
+			g.Expect(err).NotTo(HaveOccurred())
+			return syncedCloudConfigMap.Data[defaultConfigKey], nil
+		}).Should(Equal(defaultAzureConfig))
 	})
 
 	It("config should be synced up if managed cloud config changed", func() {
-		changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false}`
+		changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 		changedManagedConfig := managedCloudConfig.DeepCopy()
 		changedManagedConfig.Data = map[string]string{"cloud.conf": changedConfigString}
 		Expect(cl.Update(ctx, changedManagedConfig)).To(Succeed())
 
-		Eventually(func() (bool, error) {
+		Eventually(func(g Gomega) (string, error) {
 			syncedCloudConfigMap := &corev1.ConfigMap{}
 			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			if err != nil {
-				return false, err
-			}
-			return syncedCloudConfigMap.Data[defaultConfigKey] == changedConfigString, nil
-		}).Should(BeTrue())
+			g.Expect(err).NotTo(HaveOccurred())
+			return syncedCloudConfigMap.Data[defaultConfigKey], nil
+		}).Should(Equal(changedConfigString))
 	})
 
 	It("config should be synced up if own cloud-config deleted or changed", func() {
@@ -296,16 +292,14 @@ var _ = Describe("Cloud config sync controller", func() {
 			return cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
 		}, timeout).Should(Succeed())
 
-		changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false}`
+		changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 		syncedCloudConfigMap.Data = map[string]string{"foo": changedConfigString}
 		Expect(cl.Update(ctx, syncedCloudConfigMap)).To(Succeed())
-		Eventually(func() (bool, error) {
+		Eventually(func(g Gomega) (string, error) {
 			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			if err != nil {
-				return false, err
-			}
-			return syncedCloudConfigMap.Data[defaultConfigKey] == defaultAzureConfig, nil
-		}).Should(BeTrue())
+			g.Expect(err).NotTo(HaveOccurred())
+			return syncedCloudConfigMap.Data[defaultConfigKey], nil
+		}).Should(Equal(defaultAzureConfig))
 
 		Expect(cl.Delete(ctx, syncedCloudConfigMap)).To(Succeed())
 		Eventually(func() (bool, error) {
@@ -336,24 +330,22 @@ var _ = Describe("Cloud config sync controller", func() {
 		Expect(cl.Delete(ctx, managedCloudConfig)).Should(Succeed())
 		managedCloudConfig = nil
 
-		changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false}`
+		changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 		changedInfraConfig := infraCloudConfig.DeepCopy()
 		changedInfraConfig.Data = map[string]string{infraCloudConfKey: changedInfraConfigString}
 		Expect(cl.Update(ctx, changedInfraConfig)).Should(Succeed())
 
-		Eventually(func() (bool, error) {
+		Eventually(func(g Gomega) (string, error) {
 			syncedCloudConfigMap := &corev1.ConfigMap{}
 			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			if err != nil {
-				return false, err
-			}
-			return syncedCloudConfigMap.Data[defaultConfigKey] == changedInfraConfigString, nil
-		}).Should(BeTrue())
+			g.Expect(err).NotTo(HaveOccurred())
+			return syncedCloudConfigMap.Data[defaultConfigKey], nil
+		}).Should(Equal(changedInfraConfigString))
 	})
 
 	It("all keys from cloud-config should be synced", func() {
 
-		changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false}`
+		changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 		changedManagedConfig := managedCloudConfig.DeepCopy()
 		changedManagedConfig.Data = map[string]string{
 			infraCloudConfKey: changedInfraConfigString, cloudProviderConfigCABundleConfigMapKey: "some pem there",
@@ -361,14 +353,12 @@ var _ = Describe("Cloud config sync controller", func() {
 		}
 		Expect(cl.Update(ctx, changedManagedConfig)).Should(Succeed())
 
-		Eventually(func() (bool, error) {
+		Eventually(func(g Gomega) (int, error) {
 			syncedCloudConfigMap := &corev1.ConfigMap{}
 			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			if err != nil {
-				return false, err
-			}
-			return len(syncedCloudConfigMap.Data) == 3, nil
-		}).Should(BeTrue())
+			g.Expect(err).NotTo(HaveOccurred())
+			return len(syncedCloudConfigMap.Data), nil
+		}).Should(Equal(3))
 	})
 })
 
