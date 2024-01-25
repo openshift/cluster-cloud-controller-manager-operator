@@ -6,11 +6,14 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	ratelimitconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -122,6 +125,25 @@ func makeInfrastructureResource(platform configv1.PlatformType, cloudName config
 	return &cfg
 }
 
+// makeExpectedConfig sets some repetitive default fields for tests, assuming that they are not already set.
+func makeExpectedConfig(config *azure.Config, cloud configv1.AzureCloudEnvironment) azure.Config {
+	if config.ClusterServiceLoadBalancerHealthProbeMode == "" {
+		config.ClusterServiceLoadBalancerHealthProbeMode = azureconsts.ClusterServiceLoadBalancerHealthProbeModeShared
+	}
+
+	if config.VMType == "" {
+		config.VMType = "standard"
+	}
+
+	config.AzureAuthConfig = ratelimitconfig.AzureAuthConfig{
+		ARMClientConfig: azclient.ARMClientConfig{
+			Cloud: string(cloud),
+		},
+	}
+
+	return *config
+}
+
 // This test is a little complicated with all the JSON marshalling and
 // unmarshalling, but it is necessary due to the nature of how this data
 // is stored in Kuberenetes. The ConfigMaps containing the cloud config
@@ -145,13 +167,13 @@ func TestCloudConfigTransformer(t *testing.T) {
 		{
 			name:     "Azure sets the vmType to standard and cloud to AzurePublicCloud when neither is set",
 			source:   azure.Config{},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzurePublicCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
 		},
 		{
 			name:     "Azure doesn't modify vmType if user set",
 			source:   azure.Config{VMType: "vmss"},
-			expected: azure.Config{VMType: "vmss", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
+			expected: makeExpectedConfig(&azure.Config{VMType: "vmss"}, configv1.AzurePublicCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
 		},
 		{
@@ -159,31 +181,31 @@ func TestCloudConfigTransformer(t *testing.T) {
 			source: azure.Config{
 				ResourceGroup: "test-rg",
 			},
-			expected: azure.Config{VMType: "standard", ResourceGroup: "test-rg", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
+			expected: makeExpectedConfig(&azure.Config{ResourceGroup: "test-rg"}, configv1.AzurePublicCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
 		},
 		{
 			name:     "Azure keeps the cloud set to AzurePublicCloud",
-			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
+			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: string(configv1.AzurePublicCloud)}}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzurePublicCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
 		},
 		{
 			name:     "Azure keeps the cloud set to US Gov cloud",
-			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzureUSGovernmentCloud)}},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzureUSGovernmentCloud)}},
+			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: string(configv1.AzureUSGovernmentCloud)}}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzureUSGovernmentCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureUSGovernmentCloud),
 		},
 		{
 			name:     "Azure keeps the cloud set to China cloud",
-			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzureChinaCloud)}},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzureChinaCloud)}},
+			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: string(configv1.AzureChinaCloud)}}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzureChinaCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureChinaCloud),
 		},
 		{
 			name:     "Azure keeps the cloud set to German cloud",
-			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzureGermanCloud)}},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzureGermanCloud)}},
+			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: string(configv1.AzureGermanCloud)}}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzureGermanCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureGermanCloud),
 		},
 		{
@@ -194,35 +216,39 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:     "Azure keeps the cloud set in the source when there is not one set in infrastructure",
-			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
+			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: string(configv1.AzurePublicCloud)}}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzurePublicCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, ""),
 		},
 		{
 			name:     "Azure sets the cloud to match the infrastructure if an empty string is provided in source",
-			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: ""}},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
+			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: ""}}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzurePublicCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
 		},
 		{
 			name:     "Azure sets the cloud to match the infrastructure if an empty string is provided in source and the infrastructure is non standard",
-			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: ""}},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzureUSGovernmentCloud)}},
+			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: ""}}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzureUSGovernmentCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureUSGovernmentCloud),
 		},
 		{
 			name:   "Azure returns an error if the source config conflicts with the infrastructure",
-			source: azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
+			source: azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: string(configv1.AzurePublicCloud)}}},
 			infra:  makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureUSGovernmentCloud),
 			errMsg: "invalid user-provided cloud.conf: \\\"cloud\\\" field in user-provided\n\t\t\t\tcloud.conf conflicts with infrastructure object",
 		},
 		{
 			name:     "Azure keeps the cloud set to AzurePublicCloud if the source is upper case",
-			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: "AZUREPUBLICCLOUD"}},
-			expected: azure.Config{VMType: "standard", AzureAuthConfig: ratelimitconfig.AzureAuthConfig{Cloud: string(configv1.AzurePublicCloud)}},
+			source:   azure.Config{AzureAuthConfig: ratelimitconfig.AzureAuthConfig{ARMClientConfig: azclient.ARMClientConfig{Cloud: "AZUREPUBLICCLOUD"}}},
+			expected: makeExpectedConfig(&azure.Config{}, configv1.AzurePublicCloud),
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
 		},
 	}
+
+	format.CharactersAroundMismatchToInclude = 300
+	format.TruncatedDiff = false
+	format.MaxLength = 10_000
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {

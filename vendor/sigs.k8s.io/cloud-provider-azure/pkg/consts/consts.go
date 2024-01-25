@@ -157,8 +157,6 @@ const (
 
 	// NonVmssUniformNodesCacheTTLDefaultInSeconds is the TTL of the non vmss uniform node cache
 	NonVmssUniformNodesCacheTTLDefaultInSeconds = 900
-	// AvailabilitySetNodesCacheTTLDefaultInSeconds is the TTL of the availabilitySet node cache
-	AvailabilitySetNodesCacheTTLDefaultInSeconds = 900
 	// VMSSCacheTTLDefaultInSeconds is the TTL of the vmss cache
 	VMSSCacheTTLDefaultInSeconds = 600
 	// VMSSVirtualMachinesCacheTTLDefaultInSeconds is the TTL of the vmss vm cache
@@ -284,10 +282,15 @@ const (
 	// ServiceAnnotationIPTagsForPublicIP specifies the iptags used when dynamically creating a public ip
 	ServiceAnnotationIPTagsForPublicIP = "service.beta.kubernetes.io/azure-pip-ip-tags"
 
-	// ServiceAnnotationAllowedServiceTag is the annotation used on the service
+	// ServiceAnnotationAllowedServiceTags is the annotation used on the service
 	// to specify a list of allowed service tags separated by comma
 	// Refer https://docs.microsoft.com/en-us/azure/virtual-network/security-overview#service-tags for all supported service tags.
-	ServiceAnnotationAllowedServiceTag = "service.beta.kubernetes.io/azure-allowed-service-tags"
+	ServiceAnnotationAllowedServiceTags = "service.beta.kubernetes.io/azure-allowed-service-tags"
+
+	// ServiceAnnotationAllowedIPRanges is the annotation used on the service
+	// to specify a list of allowed IP Ranges separated by comma.
+	// It is compatible with both IPv4 and IPV6 CIDR formats.
+	ServiceAnnotationAllowedIPRanges = "service.beta.kubernetes.io/azure-allowed-ip-ranges"
 
 	// ServiceAnnotationDenyAllExceptLoadBalancerSourceRanges  denies all traffic to the load balancer except those
 	// within the service.Spec.LoadBalancerSourceRanges. Ref: https://github.com/kubernetes-sigs/cloud-provider-azure/issues/374.
@@ -374,6 +377,8 @@ const (
 	FrontendIPConfigNameMaxLength = 80
 	// LoadBalancerRuleNameMaxLength is the max length of the load balancing rule
 	LoadBalancerRuleNameMaxLength = 80
+	// PIPPrefixNameMaxLength is the max length of the PIP prefix name
+	PIPPrefixNameMaxLength = 80
 	// IPFamilySuffixLength is the length of suffix length of IP family ("-IPv4", "-IPv6")
 	IPFamilySuffixLength = 5
 
@@ -557,4 +562,13 @@ const (
 	DefaultLoadBalancerBackendPoolUpdateIntervalInSeconds = 30
 
 	ServiceNameLabel = "kubernetes.io/service-name"
+)
+
+// Load Balancer health probe mode
+const (
+	ClusterServiceLoadBalancerHealthProbeModeServiceNodePort = "servicenodeport"
+	ClusterServiceLoadBalancerHealthProbeModeShared          = "shared"
+	ClusterServiceLoadBalancerHealthProbeDefaultPort         = 10256
+	ClusterServiceLoadBalancerHealthProbeDefaultPath         = "/healthz"
+	SharedProbeName                                          = "cluster-service-shared-health-probe"
 )
