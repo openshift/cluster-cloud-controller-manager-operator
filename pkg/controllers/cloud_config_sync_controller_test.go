@@ -224,12 +224,16 @@ var _ = Describe("Cloud config sync controller", func() {
 		co := &configv1.ClusterOperator{}
 		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
 		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() bool {
-				err := cl.Delete(context.Background(), co)
-				return err == nil || apierrors.IsNotFound(err)
-			}).Should(BeTrue())
+			Eventually(func() error {
+				return cl.Delete(context.Background(), co)
+			}).Should(SatisfyAny(
+				Not(HaveOccurred()),
+				MatchError(apierrors.IsNotFound, "IsNotFound"),
+			))
 		}
-		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+		Eventually(func() error {
+			return cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 
 		By("Cleanup resources")
 		deleteOptions := &client.DeleteOptions{
@@ -240,9 +244,9 @@ var _ = Describe("Cloud config sync controller", func() {
 		Expect(cl.List(ctx, allCMs)).To(Succeed())
 		for _, cm := range allCMs.Items {
 			Expect(cl.Delete(ctx, cm.DeepCopy(), deleteOptions)).To(Succeed())
-			Eventually(
-				apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})),
-			).Should(BeTrue())
+			Eventually(func() error {
+				return cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})
+			}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 		}
 
 		infraCloudConfig = nil
@@ -250,17 +254,16 @@ var _ = Describe("Cloud config sync controller", func() {
 
 		infra := makeInfrastructureResource(configv1.AzurePlatformType)
 		Expect(cl.Delete(ctx, infra)).To(Succeed())
-		Eventually(
-			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)),
-		).Should(BeTrue())
+		Eventually(func() error {
+			return cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 
 		networkResource := makeNetworkResource()
 		Expect(cl.Delete(ctx, networkResource)).To(Succeed())
 
-		Eventually(func() bool {
-			err := cl.Get(ctx, client.ObjectKeyFromObject(networkResource), networkResource)
-			return apierrors.IsNotFound(err)
-		}).Should(BeTrue(), "Expected not found error")
+		Eventually(func() error {
+			return cl.Get(ctx, client.ObjectKeyFromObject(networkResource), networkResource)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 	})
 
 	It("config should be synced up after first reconcile", func() {
@@ -302,13 +305,11 @@ var _ = Describe("Cloud config sync controller", func() {
 		}).Should(Equal(defaultAzureConfig))
 
 		Expect(cl.Delete(ctx, syncedCloudConfigMap)).To(Succeed())
-		Eventually(func() (bool, error) {
+		Eventually(func(g Gomega) string {
 			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			if err != nil {
-				return false, err
-			}
-			return syncedCloudConfigMap.Data[defaultConfigKey] == defaultAzureConfig, nil
-		}).Should(BeTrue())
+			g.Expect(err).NotTo(HaveOccurred())
+			return syncedCloudConfigMap.Data[defaultConfigKey]
+		}).Should(Equal(defaultAzureConfig))
 	})
 
 	It("config should not be updated if source and target config content are identical", func() {
@@ -463,12 +464,16 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		co := &configv1.ClusterOperator{}
 		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
 		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() bool {
-				err := cl.Delete(context.Background(), co)
-				return err == nil || apierrors.IsNotFound(err)
-			}).Should(BeTrue())
+			Eventually(func() error {
+				return cl.Delete(context.Background(), co)
+			}).Should(SatisfyAny(
+				Not(HaveOccurred()),
+				MatchError(apierrors.IsNotFound, "IsNotFound"),
+			))
 		}
-		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+		Eventually(func() error {
+			return cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 
 		infra := &configv1.Infrastructure{
 			ObjectMeta: metav1.ObjectMeta{
@@ -477,25 +482,24 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		}
 		// omitted error intentionally, 404 might be there for some cases
 		cl.Delete(ctx, infra) //nolint:errcheck
-		Eventually(
-			apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)),
-		).Should(BeTrue())
+		Eventually(func() error {
+			return cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 
 		networkResource := makeNetworkResource()
 		Expect(cl.Delete(ctx, networkResource)).To(Succeed())
 
-		Eventually(func() bool {
-			err := cl.Get(ctx, client.ObjectKeyFromObject(networkResource), networkResource)
-			return apierrors.IsNotFound(err)
-		}).Should(BeTrue(), "Expected not found error")
+		Eventually(func() error {
+			return cl.Get(ctx, client.ObjectKeyFromObject(networkResource), networkResource)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 
 		allCMs := &corev1.ConfigMapList{}
 		Expect(cl.List(ctx, allCMs)).To(Succeed())
 		for _, cm := range allCMs.Items {
 			Expect(cl.Delete(ctx, cm.DeepCopy(), deleteOptions)).To(Succeed())
-			Eventually(
-				apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})),
-			).Should(BeTrue())
+			Eventually(func() error {
+				return cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})
+			}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 		}
 	})
 })
