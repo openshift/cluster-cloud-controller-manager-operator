@@ -130,6 +130,7 @@ spec:
                 --v=3 \
                 --cloud-config=$(CLOUD_CONFIG) \
                 --cloud-provider=azure \
+                --concurrent-service-syncs=10 \
                 --controllers=*,-cloud-node \
                 --configure-cloud-routes=false \
                 --use-service-account-credentials=true \
