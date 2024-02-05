@@ -85,6 +85,7 @@ spec:
                 --v=3 \
                 --cloud-config=$(CLOUD_CONFIG) \
                 --cloud-provider=gce \
+                --concurrent-service-syncs=10 \
                 --controllers=*,-nodeipam \
                 --configure-cloud-routes=false \
                 --use-service-account-credentials=true \
