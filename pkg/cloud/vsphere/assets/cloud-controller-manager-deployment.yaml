@@ -100,6 +100,7 @@ spec:
                 --leader-elect-resource-namespace=openshift-cloud-controller-manager \
                 --feature-gates={{ .featureGates }} \
                 --use-service-account-credentials=true
+          terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: host-etc-kube
               mountPath: /etc/kubernetes

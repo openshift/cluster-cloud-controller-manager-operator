@@ -68,6 +68,7 @@ spec:
                 secretKeyRef:
                   name: azure-cloud-credentials
                   key: azure_client_secret
+          terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: config-accm
               mountPath: /tmp/cloud-config
@@ -106,6 +107,7 @@ spec:
               value: /etc/cloud-config-original/endpoints.conf
             - name: CLOUD_CONFIG
               value: /etc/cloud-config/cloud.conf
+          terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: host-etc-kube
               mountPath: /etc/kubernetes

@@ -83,6 +83,7 @@ spec:
                   name: azure-cloud-credentials
                   key: azure_federated_token_file
                   optional: true
+          terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: host-etc-kube
               mountPath: /etc/cloud-config
@@ -115,6 +116,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: merged-cloud-config
               mountPath: /etc/kubernetes
