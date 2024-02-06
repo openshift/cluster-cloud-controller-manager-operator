@@ -72,6 +72,7 @@ spec:
                 secretKeyRef:
                   name: azure-cloud-credentials
                   key: azure_client_secret
+          terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: config-accm
               mountPath: /tmp/cloud-config
@@ -120,6 +121,7 @@ spec:
                 --leader-elect-renew-deadline=107s \
                 --leader-elect-retry-period=26s \
                 --leader-elect-resource-namespace=openshift-cloud-controller-manager
+          terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: host-etc-kube
               mountPath: /etc/kubernetes
