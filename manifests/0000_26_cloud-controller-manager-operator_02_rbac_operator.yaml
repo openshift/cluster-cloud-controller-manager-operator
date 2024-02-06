@@ -148,6 +148,17 @@ rules:
   verbs:
   - update
 
+# azure requires additional permissions on the openshift-cloud-controller-manager/cloud-controller-manager service account.
+# The operator must have these permissions to then grant them to the azure cloud controller manager.
+- apiGroups:
+  - "discovery.k8s.io"
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - watch
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

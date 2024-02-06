@@ -177,20 +177,24 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "Azure resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 3,
+		expectedResourceCount: 5,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
+			"ClusterRole/azure-cloud-controller-manager",
+			"ClusterRoleBinding/cloud-controller-manager:azure-cloud-controller-manager",
 			"PodDisruptionBudget/azure-cloud-controller-manager",
 		},
 	}, {
 		name:                  "Azure resources returned as expected with single node cluster",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 4,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
+			"ClusterRole/azure-cloud-controller-manager",
+			"ClusterRoleBinding/cloud-controller-manager:azure-cloud-controller-manager",
 		},
 	}, {
 		name:                  "Azure Stack resources returned as expected",
