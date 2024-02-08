@@ -10,6 +10,7 @@ import (
 	"github.com/asaskevich/govalidator"
 	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -28,6 +29,8 @@ var (
 	templates = []common.TemplateSource{
 		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/cloud-controller-manager-deployment.yaml"},
 		{ReferenceObject: &appsv1.DaemonSet{}, EmbedFsPath: "assets/cloud-node-manager-daemonset.yaml"},
+		{ReferenceObject: &rbacv1.ClusterRole{}, EmbedFsPath: "assets/azure-cloud-controller-manager-clusterrole.yaml"},
+		{ReferenceObject: &rbacv1.ClusterRoleBinding{}, EmbedFsPath: "assets/azure-cloud-controller-manager-clusterrolebinding.yaml"},
 	}
 )
 
