@@ -110,6 +110,12 @@ spec:
               value: /etc/kubernetes-cloud-config/cloud.conf
             - name: OCP_INFRASTRUCTURE_NAME
               value: {{ .infrastructureName }}
+            - name: AZURE_FEDERATED_TOKEN_FILE
+              valueFrom:
+                secretKeyRef:
+                  name: azure-cloud-credentials
+                  key: azure_federated_token_file
+                  optional: true
           resources:
             requests:
               cpu: 200m
