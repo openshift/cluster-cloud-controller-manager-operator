@@ -119,6 +119,11 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		cfg.VMType = azureconsts.VMTypeStandard
 	}
 
+	// Unsets ResourceManagerEndpoint in order to use endpoints.conf rather than
+	// the ResourceManagerEndpoint to build the cloud config see OCPBUGS-28244
+	// for more information
+	cfg.ResourceManagerEndpoint = ""
+
 	cfgbytes, err := json.Marshal(cfg)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal the cloud.conf: %w", err)
