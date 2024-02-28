@@ -244,7 +244,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	}
 
 	// Verify FeatureGate ExternalCloudProvider is enabled for operator to work in TP phase
-	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus, r.FeatureGateAccess)
+	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus)
 	if err != nil {
 		klog.Errorf("Could not determine external cloud provider state: %v", err)
 
@@ -254,7 +254,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 		}
 		return false, err
 	} else if !external {
-		klog.Infof("FeatureGate cluster is not specifying external cloud provider requirement. Skipping...")
+		klog.Infof("Platform does not require an external cloud provider. Skipping...")
 
 		if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 			klog.Errorf("Unable to sync cluster operator status: %s", err)

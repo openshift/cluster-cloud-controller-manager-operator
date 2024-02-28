@@ -228,11 +228,6 @@ var _ = Describe("Component sync controller", func() {
 	var operands []client.Object
 	var watcher mockedWatcher
 
-	externalFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccess(
-		[]configv1.FeatureGateName{configv1.FeatureGateExternalCloudProvider},
-		nil,
-	)
-
 	kcmStatus := &operatorv1.KubeControllerManagerStatus{
 		StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
 			OperatorStatus: operatorv1.OperatorStatus{
@@ -363,7 +358,6 @@ var _ = Describe("Component sync controller", func() {
 
 	type testCase struct {
 		status            *configv1.InfrastructureStatus
-		featureGate       featuregates.FeatureGateAccess
 		kcmStatus         *operatorv1.KubeControllerManagerStatus
 		coStatus          *configv1.ClusterOperatorStatus
 		expectProvisioned bool
@@ -376,9 +370,7 @@ var _ = Describe("Component sync controller", func() {
 			infra.Status = *tc.status
 			Expect(cl.Status().Update(context.Background(), infra.DeepCopy())).To(Succeed())
 
-			if tc.featureGate != nil {
-				operatorController.FeatureGateAccess = tc.featureGate
-			}
+			operatorController.FeatureGateAccess = featuregates.NewHardcodedFeatureGateAccess(nil, nil)
 
 			if tc.kcmStatus != nil {
 				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(kcm), kcm)).To(Succeed())
@@ -400,7 +392,7 @@ var _ = Describe("Component sync controller", func() {
 
 			watchMap := watcher.getWatchedResources()
 
-			operatorConfig := getOperatorConfigForPlatform(tc.status.PlatformStatus, tc.featureGate)
+			operatorConfig := getOperatorConfigForPlatform(tc.status.PlatformStatus, operatorController.FeatureGateAccess)
 
 			clusterOperator, err := operatorController.getOrCreateClusterOperator(context.Background())
 			Expect(err).To(Succeed())
@@ -452,7 +444,6 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.AWSPlatformType,
 				},
 			},
-			featureGate:       externalFeatureGateAccessor,
 			kcmStatus:         kcmStatus,
 			coStatus:          coStatus,
 			expectProvisioned: true,
@@ -466,7 +457,6 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.OpenStackPlatformType,
 				},
 			},
-			featureGate:       externalFeatureGateAccessor,
 			kcmStatus:         kcmStatus,
 			coStatus:          coStatus,
 			expectProvisioned: true,
@@ -480,7 +470,6 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.AWSPlatformType,
 				},
 			},
-			featureGate:       externalFeatureGateAccessor,
 			kcmStatus:         &operatorv1.KubeControllerManagerStatus{},
 			coStatus:          coStatus,
 			expectProvisioned: true,
@@ -494,23 +483,9 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.KubevirtPlatformType,
 				},
 			},
-			featureGate:       externalFeatureGateAccessor,
 			kcmStatus:         kcmStatus,
 			coStatus:          coStatus,
 			expectProvisioned: false,
-		}),
-		Entry("Should provision resources for AWS if external FeatureGate is not present", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-			kcmStatus:         kcmStatus,
-			coStatus:          coStatus,
-			expectProvisioned: true,
 		}),
 		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
 			status: &configv1.InfrastructureStatus{
@@ -532,7 +507,6 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.AWSPlatformType,
 				},
 			},
-			featureGate: externalFeatureGateAccessor,
 			kcmStatus: &operatorv1.KubeControllerManagerStatus{
 				StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
 					OperatorStatus: operatorv1.OperatorStatus{
@@ -558,7 +532,6 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.AWSPlatformType,
 				},
 			},
-			featureGate: externalFeatureGateAccessor,
 			kcmStatus: &operatorv1.KubeControllerManagerStatus{
 				StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
 					OperatorStatus: operatorv1.OperatorStatus{
@@ -584,8 +557,7 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.AWSPlatformType,
 				},
 			},
-			featureGate: externalFeatureGateAccessor,
-			kcmStatus:   kcmStatus,
+			kcmStatus: kcmStatus,
 			coStatus: &configv1.ClusterOperatorStatus{
 				Conditions: []configv1.ClusterOperatorStatusCondition{
 					{
@@ -622,8 +594,7 @@ var _ = Describe("Component sync controller", func() {
 					Type: configv1.AWSPlatformType,
 				},
 			},
-			featureGate: externalFeatureGateAccessor,
-			kcmStatus:   kcmStatus,
+			kcmStatus: kcmStatus,
 			coStatus: &configv1.ClusterOperatorStatus{
 				Conditions: []configv1.ClusterOperatorStatusCondition{
 					{
