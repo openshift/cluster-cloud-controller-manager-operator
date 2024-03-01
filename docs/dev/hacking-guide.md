@@ -130,32 +130,8 @@ OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=quay.io/<your-repo>/release:<your-branc
 
 However, in order for the cluster to run the CCM from the start, you need to add an additional step to the installation.
 
-By specifying the `CustomNoUpgrade` feature gate in the cluster with `ExternalCloudProvider` you are enabling CCCMO logic for providers, which are currently in Technical Preview state.
-
 ```bash
 export OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=quay.io/<your-repo>/release:<your-branch> 
-
-# This step would stop after creation of ./manifests folder. All resources placed there will be created in the cluster
-# during bootstrap and would override the default state of the resource in the cluster.
-openshift-install create manifests
-
-cat <<EOF > manifests/manifest_feature_gate.yaml
-apiVersion: config.openshift.io/v1
-kind: FeatureGate
-metadata:
-  annotations:
-    include.release.openshift.io/self-managed-high-availability: "true"
-    include.release.openshift.io/single-node-developer: "true"
-    release.openshift.io/create-only: "true"
-  name: cluster
-spec:
-  customNoUpgrade:
-    enabled:
-    - ExternalCloudProvider
-    - CSIMigrationAWS
-    - CSIMigrationOpenStack
-  featureSet: CustomNoUpgrade
-EOF
 
 # Now you could create a cluster with your custom release image
 openshift-install create cluster
