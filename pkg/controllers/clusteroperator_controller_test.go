@@ -2,23 +2,16 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"time"
-
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
-	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
@@ -30,7 +23,6 @@ import (
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers/resourceapply"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 )
 
 const (
@@ -118,6 +110,7 @@ var _ = Describe("Cluster Operator status controller", func() {
 			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorDegraded).Reason).To(Equal(ReasonAsExpected))
 			Expect(v1helpers.IsStatusConditionFalse(getOp.Status.Conditions, configv1.OperatorProgressing)).To(BeTrue())
 			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorProgressing).Reason).To(Equal(ReasonAsExpected))
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, cloudControllerOwnershipCondition)).To(BeNil())
 
 			// check related objects.
 			Expect(getOp.Status.RelatedObjects).To(Equal(operatorController.relatedObjects()))
@@ -188,6 +181,44 @@ var _ = Describe("Cluster Operator status controller", func() {
 				},
 			},
 		}),
+		Entry("when there's a CloudControllerOwner condition with True status", testCase{
+			releaseVersionEnvVariableValue: "another_cvo_given_version",
+			existingCO: &configv1.ClusterOperator{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterOperatorName,
+				},
+				Status: configv1.ClusterOperatorStatus{
+					Conditions: []configv1.ClusterOperatorStatusCondition{
+						{
+							Type:               cloudControllerOwnershipCondition,
+							Status:             configv1.ConditionTrue,
+							LastTransitionTime: metav1.Now(),
+							Reason:             "",
+							Message:            "",
+						},
+					},
+				},
+			},
+		}),
+		Entry("when there's a CloudControllerOwner condition with False status", testCase{
+			releaseVersionEnvVariableValue: "another_cvo_given_version",
+			existingCO: &configv1.ClusterOperator{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterOperatorName,
+				},
+				Status: configv1.ClusterOperatorStatus{
+					Conditions: []configv1.ClusterOperatorStatusCondition{
+						{
+							Type:               cloudControllerOwnershipCondition,
+							Status:             configv1.ConditionFalse,
+							LastTransitionTime: metav1.Now(),
+							Reason:             "",
+							Message:            "",
+						},
+					},
+				},
+			},
+		}),
 	)
 })
 
@@ -201,427 +232,6 @@ var _ = Describe("toClusterOperator mapping is targeting requests to 'cloud-cont
 		}}
 		Expect(toClusterOperator(ctx, object)).To(Equal(requests))
 	})
-})
-
-type mockedWatcher struct {
-	watcher *objectWatcher
-}
-
-func (m *mockedWatcher) getWatchedResources() map[string]struct{} {
-	return m.watcher.watchedResources
-}
-
-// pkg/controllers/cache.go:94
-func constructKeyForWatchedObject(object client.Object, scheme *runtime.Scheme) (string, error) {
-	gvk, err := apiutil.GVKForObject(object, scheme)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s/%s", gvk.GroupKind().String(), object.GetName()), nil
-}
-
-var _ = Describe("Component sync controller", func() {
-	var infra *configv1.Infrastructure
-	var kcm *operatorv1.KubeControllerManager
-	var co *configv1.ClusterOperator
-	var operatorController *CloudOperatorReconciler
-	var operands []client.Object
-	var watcher mockedWatcher
-
-	kcmStatus := &operatorv1.KubeControllerManagerStatus{
-		StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
-			OperatorStatus: operatorv1.OperatorStatus{
-				Conditions: []operatorv1.OperatorCondition{
-					{
-						Type:               cloudControllerOwnershipCondition,
-						Status:             operatorv1.ConditionFalse,
-						LastTransitionTime: metav1.Now(),
-					},
-				},
-			},
-		},
-	}
-
-	coStatus := &configv1.ClusterOperatorStatus{
-		Conditions: []configv1.ClusterOperatorStatusCondition{
-			{
-				Type:               cloudConfigControllerAvailableCondition,
-				Status:             configv1.ConditionTrue,
-				LastTransitionTime: metav1.Now(),
-			},
-			{
-				Type:               trustedCABundleControllerAvailableCondition,
-				Status:             configv1.ConditionTrue,
-				LastTransitionTime: metav1.Now(),
-			},
-			{
-				Type:               cloudConfigControllerDegradedCondition,
-				Status:             configv1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-			},
-			{
-				Type:               trustedCABundleControllerDegradedCondition,
-				Status:             configv1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-			},
-		},
-	}
-
-	getOperatorConfigForPlatform := func(status *configv1.PlatformStatus, featureGate featuregates.FeatureGateAccess) config.OperatorConfig {
-		featureGatesString := ""
-		if featureGate != nil {
-			upstreamGates, _ := util.GetUpstreamCloudFeatureGates()
-			features, _ := featureGate.CurrentFeatureGates()
-			enabled, _ := util.GetEnabledDisabledFeatures(features, upstreamGates)
-			featureGatesString = util.BuildFeatureGateString(enabled, nil)
-		}
-
-		return config.OperatorConfig{
-			ManagedNamespace: DefaultManagedNamespace,
-			ImagesReference: config.ImagesReference{
-				CloudControllerManagerOperator:  "registry.ci.openshift.org/openshift:cluster-cloud-controller-manager-operator",
-				CloudControllerManagerAWS:       "registry.ci.openshift.org/openshift:aws-cloud-controller-manager",
-				CloudControllerManagerAzure:     "quay.io/openshift/origin-azure-cloud-controller-manager",
-				CloudNodeManagerAzure:           "quay.io/openshift/origin-azure-cloud-node-manager",
-				CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
-			},
-			PlatformStatus: status,
-			FeatureGates:   featureGatesString,
-		}
-	}
-
-	BeforeEach(func() {
-		c, err := cache.New(cfg, cache.Options{})
-		Expect(err).To(Succeed())
-		w, err := NewObjectWatcher(WatcherOptions{Cache: c})
-		Expect(err).To(Succeed())
-
-		infra = &configv1.Infrastructure{}
-		infra.SetName(infrastructureResourceName)
-
-		kcm = &operatorv1.KubeControllerManager{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: kcmResourceName,
-			},
-			Spec: operatorv1.KubeControllerManagerSpec{
-				StaticPodOperatorSpec: operatorv1.StaticPodOperatorSpec{
-					OperatorSpec: operatorv1.OperatorSpec{
-						ManagementState: operatorv1.Managed,
-					},
-				},
-			},
-		}
-
-		co = &configv1.ClusterOperator{}
-		co.SetName(clusterOperatorName)
-
-		operands = nil
-
-		operatorController = &CloudOperatorReconciler{
-			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
-				Client:           cl,
-				ManagedNamespace: testManagedNamespace,
-				Recorder:         record.NewFakeRecorder(32),
-			},
-			Scheme:            scheme.Scheme,
-			watcher:           w,
-			ImagesFile:        testImagesFilePath,
-			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccess(nil, nil),
-		}
-		originalWatcher, _ := w.(*objectWatcher)
-		watcher = mockedWatcher{watcher: originalWatcher}
-
-		Expect(cl.Create(context.Background(), infra.DeepCopy())).To(Succeed())
-		Expect(cl.Create(context.Background(), kcm.DeepCopy())).To(Succeed())
-		Expect(cl.Create(context.Background(), co.DeepCopy())).To(Succeed())
-	})
-
-	AfterEach(func() {
-		Expect(cl.Delete(context.Background(), infra.DeepCopy())).To(Succeed())
-		Expect(cl.Delete(context.Background(), kcm.DeepCopy())).To(Succeed())
-		Expect(cl.Delete(context.Background(), co.DeepCopy())).To(Succeed())
-
-		Eventually(func() bool {
-			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra.DeepCopy())) &&
-				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(co), co.DeepCopy())) &&
-				apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(kcm), kcm.DeepCopy()))
-		}, timeout).Should(BeTrue())
-
-		for _, operand := range operands {
-			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
-
-			Eventually(func() bool {
-				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
-			}, timeout).Should(BeTrue())
-		}
-	})
-
-	type testCase struct {
-		status            *configv1.InfrastructureStatus
-		kcmStatus         *operatorv1.KubeControllerManagerStatus
-		coStatus          *configv1.ClusterOperatorStatus
-		expectProvisioned bool
-		expectError       bool
-	}
-
-	DescribeTable("should ensure resources are provisioned",
-		func(tc testCase) {
-			Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(infra), infra)).To(Succeed())
-			infra.Status = *tc.status
-			Expect(cl.Status().Update(context.Background(), infra.DeepCopy())).To(Succeed())
-
-			operatorController.FeatureGateAccess = featuregates.NewHardcodedFeatureGateAccess(nil, nil)
-
-			if tc.kcmStatus != nil {
-				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(kcm), kcm)).To(Succeed())
-				kcm.Status = *tc.kcmStatus
-				Expect(cl.Status().Update(context.Background(), kcm.DeepCopy())).To(Succeed())
-			}
-
-			if tc.coStatus != nil {
-				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(co), co)).To(Succeed())
-				co.Status = *tc.coStatus
-				Expect(cl.Status().Update(context.Background(), co.DeepCopy())).To(Succeed())
-			}
-
-			_, err := operatorController.Reconcile(context.Background(), reconcile.Request{})
-			if tc.expectError {
-				Expect(err).Should(HaveOccurred())
-				return
-			}
-
-			watchMap := watcher.getWatchedResources()
-
-			operatorConfig := getOperatorConfigForPlatform(tc.status.PlatformStatus, operatorController.FeatureGateAccess)
-
-			clusterOperator, err := operatorController.getOrCreateClusterOperator(context.Background())
-			Expect(err).To(Succeed())
-			if tc.expectProvisioned == true {
-				ownedByCCM := false
-				for _, cond := range clusterOperator.Status.Conditions {
-					if cond.Type == cloudControllerOwnershipCondition {
-						ownedByCCM = cond.Status == configv1.ConditionTrue
-					}
-				}
-				Expect(ownedByCCM).To(BeTrue())
-			}
-
-			if tc.expectProvisioned == false {
-				Expect(len(watchMap)).To(BeZero())
-				return
-			}
-
-			operands, err = cloud.GetResources(operatorConfig)
-			Expect(err).To(Succeed())
-			Expect(len(watchMap)).To(BeEquivalentTo(len(operands)))
-			for _, obj := range operands {
-				watchKey, err := constructKeyForWatchedObject(obj, operatorController.Scheme)
-				Expect(err).To(Succeed())
-				_, watchExists := watchMap[watchKey]
-				Expect(watchExists).To(BeTrue())
-
-				original, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
-				Expect(err).To(Succeed())
-
-				// Purge fields which are only required by SSA
-				delete(original, "kind")
-				delete(original, "apiVersion")
-
-				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(obj), obj)).To(Succeed())
-				applied, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
-				Expect(err).To(Succeed())
-
-				// Enforced fields should be equal
-				Expect(equality.Semantic.DeepDerivative(original, applied)).To(BeTrue())
-			}
-		},
-		Entry("Should provision AWS resources", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-			kcmStatus:         kcmStatus,
-			coStatus:          coStatus,
-			expectProvisioned: true,
-		}),
-		Entry("Should provision OpenStack resources", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.OpenStackPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.OpenStackPlatformType,
-				},
-			},
-			kcmStatus:         kcmStatus,
-			coStatus:          coStatus,
-			expectProvisioned: true,
-		}),
-		Entry("Should provision resources if FG is set and KCM object doesn't exist", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-			kcmStatus:         &operatorv1.KubeControllerManagerStatus{},
-			coStatus:          coStatus,
-			expectProvisioned: true,
-		}),
-		Entry("Should not provision resources for currently unsupported platform", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.KubevirtPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.KubevirtPlatformType,
-				},
-			},
-			kcmStatus:         kcmStatus,
-			coStatus:          coStatus,
-			expectProvisioned: false,
-		}),
-		Entry("Should not provision resources for OpenStack if external FeatureGate is not present", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.OpenStackPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.OpenStackPlatformType,
-				},
-			},
-			expectProvisioned: false,
-		}),
-		Entry("Should not provision resources because KCM still owns the controllers", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-			kcmStatus: &operatorv1.KubeControllerManagerStatus{
-				StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
-					OperatorStatus: operatorv1.OperatorStatus{
-						Conditions: []operatorv1.OperatorCondition{
-							{
-								Type:               cloudControllerOwnershipCondition,
-								Status:             operatorv1.ConditionTrue,
-								LastTransitionTime: metav1.Now(),
-							},
-						},
-					},
-				},
-			},
-			coStatus:          coStatus,
-			expectProvisioned: false,
-		}),
-		Entry("Should not provision resources because KCMO hasn't set CloudControllerOwner condition", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-			kcmStatus: &operatorv1.KubeControllerManagerStatus{
-				StaticPodOperatorStatus: operatorv1.StaticPodOperatorStatus{
-					OperatorStatus: operatorv1.OperatorStatus{
-						Conditions: []operatorv1.OperatorCondition{
-							{
-								Type:               "StaticPodsAvailable",
-								Status:             operatorv1.ConditionTrue,
-								LastTransitionTime: metav1.Now(),
-							},
-						},
-					},
-				},
-			},
-			coStatus:          coStatus,
-			expectProvisioned: false,
-		}),
-		Entry("Should not provision resources because one controller is degraded", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-			kcmStatus: kcmStatus,
-			coStatus: &configv1.ClusterOperatorStatus{
-				Conditions: []configv1.ClusterOperatorStatusCondition{
-					{
-						Type:               cloudConfigControllerAvailableCondition,
-						Status:             configv1.ConditionFalse,
-						LastTransitionTime: metav1.Now(),
-					},
-					{
-						Type:               trustedCABundleControllerAvailableCondition,
-						Status:             configv1.ConditionTrue,
-						LastTransitionTime: metav1.Now(),
-					},
-					{
-						Type:               cloudConfigControllerDegradedCondition,
-						Status:             configv1.ConditionTrue,
-						LastTransitionTime: metav1.Now(),
-					},
-					{
-						Type:               trustedCABundleControllerDegradedCondition,
-						Status:             configv1.ConditionFalse,
-						LastTransitionTime: metav1.Now(),
-					},
-				},
-			},
-			expectProvisioned: false,
-			expectError:       true,
-		}),
-		Entry("Should not provision resources because one controller is not available", testCase{
-			status: &configv1.InfrastructureStatus{
-				InfrastructureTopology: configv1.HighlyAvailableTopologyMode,
-				ControlPlaneTopology:   configv1.HighlyAvailableTopologyMode,
-				Platform:               configv1.AWSPlatformType,
-				PlatformStatus: &configv1.PlatformStatus{
-					Type: configv1.AWSPlatformType,
-				},
-			},
-			kcmStatus: kcmStatus,
-			coStatus: &configv1.ClusterOperatorStatus{
-				Conditions: []configv1.ClusterOperatorStatusCondition{
-					{
-						Type:               cloudConfigControllerAvailableCondition,
-						Status:             configv1.ConditionFalse,
-						LastTransitionTime: metav1.Now(),
-					},
-					{
-						Type:               trustedCABundleControllerAvailableCondition,
-						Status:             configv1.ConditionTrue,
-						LastTransitionTime: metav1.Now(),
-					},
-					{
-						Type:               cloudConfigControllerDegradedCondition,
-						Status:             configv1.ConditionFalse,
-						LastTransitionTime: metav1.Now(),
-					},
-					{
-						Type:               trustedCABundleControllerDegradedCondition,
-						Status:             configv1.ConditionFalse,
-						LastTransitionTime: metav1.Now(),
-					},
-				},
-			},
-			expectProvisioned: false,
-		}),
-	)
 })
 
 var _ = Describe("Apply resources should", func() {

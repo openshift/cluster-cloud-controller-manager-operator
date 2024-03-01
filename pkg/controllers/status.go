@@ -129,21 +129,30 @@ func (r *ClusterOperatorStatusClient) setStatusAvailable(ctx context.Context, ov
 	return r.syncStatus(ctx, co, conds, overrides)
 }
 
-// setCloudControllerOwnerCondition sets the CloudControllerOwner condition to True, with the given reason and message.
-func (r *CloudOperatorReconciler) setCloudControllerOwnerCondition(ctx context.Context) error {
+// clearCloudControllerOwnerCondition clears the CloudControllerOwner condition. This condition
+// is not used for OpenShift version 4.16 and later as all cloud controllers are external by
+// default, and cannot be rolled back to in-tree.
+func (r *CloudOperatorReconciler) clearCloudControllerOwnerCondition(ctx context.Context) error {
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		return err
 	}
 
-	conds := []configv1.ClusterOperatorStatusCondition{
-		newClusterOperatorStatusCondition("CloudControllerOwner", configv1.ConditionTrue, ReasonAsExpected,
-			fmt.Sprintf("Cluster Cloud Controller Manager Operator owns cloud controllers at %s", r.ReleaseVersion)),
+	if co.Status.Conditions == nil {
+		// no condtions, nothing to do.
+		return nil
 	}
 
+	if v1helpers.FindStatusCondition(co.Status.Conditions, cloudControllerOwnershipCondition) == nil {
+		// condition is not present, nothing to do.
+		return nil
+	}
+
+	// if we get here, that means the condition exists and we want to remove it
+	v1helpers.RemoveStatusCondition(&co.Status.Conditions, cloudControllerOwnershipCondition)
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
-	klog.V(2).Info("Setting condition CloudControllerOwner to True")
-	return r.syncStatus(ctx, co, conds, nil)
+	klog.V(2).Info("Removing CloudControllerOwner condition")
+	return r.syncStatus(ctx, co, nil, nil)
 }
 
 func printOperandVersions(versions []configv1.OperandVersion) string {

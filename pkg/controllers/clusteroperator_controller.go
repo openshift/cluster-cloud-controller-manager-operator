@@ -133,8 +133,8 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if err := r.setCloudControllerOwnerCondition(ctx); err != nil {
-		klog.Errorf("Unable to sync cluster operator status: %s", err)
+	if err := r.clearCloudControllerOwnerCondition(ctx); err != nil {
+		klog.Errorf("Unable to clear CloudControllerOwner condition: %s", err)
 		return ctrl.Result{}, err
 	}
 
@@ -264,54 +264,7 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 		return false, nil
 	}
 
-	ownedByKCM, err := r.isCloudControllersOwnedByKCM(ctx, conditionOverrides)
-	if err != nil {
-		return false, err
-	}
-	if ownedByKCM {
-		// KCM resource found and it owns Cloud provider
-		klog.Infof("KubeControllerManager still owns Cloud Controllers. Skipping...")
-
-		if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
-			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return false, err
-		}
-
-		return false, nil
-	}
-
 	return true, nil
-}
-
-func (r *CloudOperatorReconciler) isCloudControllersOwnedByKCM(ctx context.Context, conditionOverrides []configv1.ClusterOperatorStatusCondition) (bool, error) {
-	kcm := &operatorv1.KubeControllerManager{}
-	err := r.Get(ctx, client.ObjectKey{Name: kcmResourceName}, kcm)
-	if err != nil {
-		klog.Errorf("Unable to retrive KubeControllerManager object: %v", err)
-
-		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
-		return false, err
-	}
-
-	if len(kcm.Status.Conditions) == 0 {
-		// If KCM Conditions object doesn't exist, we assume that we are in bootstrapping process and
-		// the controllers are not owned by KCM.
-		klog.Info("KubeControllerManager status not found, cluster is bootstrapping with external cloud providers")
-		return false, nil
-	}
-
-	// If there is no condition, we assume that KCM owns the Cloud Controllers
-	ownedByKCM := true
-	for _, cond := range kcm.Status.Conditions {
-		if cond.Type == cloudControllerOwnershipCondition {
-			ownedByKCM = cond.Status == operatorv1.ConditionTrue
-		}
-	}
-
-	return ownedByKCM, nil
 }
 
 func (r *CloudOperatorReconciler) isCloudControllersOwnedByCCM(ctx context.Context, conditionOverrides []configv1.ClusterOperatorStatusCondition) (bool, error) {
