@@ -3,6 +3,7 @@ kind: ClusterOperator
 metadata:
   name: cloud-controller-manager
   annotations:
+    capability.openshift.io/name: CloudControllerManager
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
     exclude.release.openshift.io/internal-openshift-hosted: "true"
