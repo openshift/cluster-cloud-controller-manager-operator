@@ -16,6 +16,8 @@ Pay attention to the status of auxiliary controllers: Cloud Config Sync and Trus
 
 ## Migration from KCM to CCM got stuck
 
+**Please note that KCM to CCM migration is only relevent for OpenShift version 4.14 and earlier.**
+
 To troubleshoot the issue we need to understand how the migration works. When `ExternalCloudProvider` feature gate is set, Kube Controller Manager Operator updates all Kube Controller Manager (KCM) pods by setting `--cloud-provider external` there, and starts observing the pods statuses. If all of them started successfully, the operator sets condition `CloudControllerOwner: False` to the `kubecontrollermanager` resource. You can check it with `oc get kubecontrollermanager cluster -o yaml`.
 
 In parallel with that CCCMO also monitors the `kubecontrollermanager` resource. It doesn't provision any Cloud Controller Manager related resources until the condition is set to False there.
