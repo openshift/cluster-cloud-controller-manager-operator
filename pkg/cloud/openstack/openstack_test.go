@@ -31,6 +31,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 		}, {
 			name: "Minimal allowed config",
 			config: config.OperatorConfig{
+				InfrastructureName: "infra-name",
 				ImagesReference: config.ImagesReference{
 					CloudControllerManagerOpenStack: "CloudControllerManagerOpenstack",
 				},
