@@ -9,6 +9,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	ini "gopkg.in/ini.v1"
 	appsv1 "k8s.io/api/apps/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -24,6 +25,8 @@ var (
 
 	templates = []common.TemplateSource{
 		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/deployment.yaml"},
+		{ReferenceObject: &rbacv1.ClusterRole{}, EmbedFsPath: "assets/openstack-cloud-controller-manager-clusterrole.yaml"},
+		{ReferenceObject: &rbacv1.ClusterRoleBinding{}, EmbedFsPath: "assets/openstack-cloud-controller-manager-clusterrolebinding.yaml"},
 	}
 )
 

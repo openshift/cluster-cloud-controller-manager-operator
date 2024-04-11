@@ -141,18 +141,22 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "OpenStack resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.OpenStackPlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 4,
 		expectedResourcesKindName: []string{
 			"Deployment/openstack-cloud-controller-manager",
 			"PodDisruptionBudget/openstack-cloud-controller-manager",
+			"ClusterRole/openstack-cloud-controller-manager",
+			"ClusterRoleBinding/cloud-controller-manager:openstack-cloud-controller-manager",
 		},
 	}, {
 		name:                  "OpenStack resources returned as expected with signle node cluster",
 		testPlatform:          platformsMap[string(configv1.OpenStackPlatformType)],
-		expectedResourceCount: 1,
+		expectedResourceCount: 3,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/openstack-cloud-controller-manager",
+			"ClusterRole/openstack-cloud-controller-manager",
+			"ClusterRoleBinding/cloud-controller-manager:openstack-cloud-controller-manager",
 		},
 	}, {
 		name:                  "GCP resources returned as expected",
