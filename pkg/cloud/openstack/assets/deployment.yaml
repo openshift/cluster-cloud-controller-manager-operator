@@ -54,6 +54,8 @@ spec:
           env:
             - name: CLOUD_CONFIG
               value: /etc/openstack/config/cloud.conf
+            - name: OCP_INFRASTRUCTURE_NAME
+              value: {{ .infrastructureName }}
           command:
           - /bin/bash
           - -c
@@ -67,6 +69,7 @@ spec:
             --v=1 \
             --cloud-config=$(CLOUD_CONFIG) \
             --cloud-provider=openstack \
+            --cluster-name=$(OCP_INFRASTRUCTURE_NAME) \
             --use-service-account-credentials=true \
             --configure-cloud-routes=false \
             --bind-address=127.0.0.1 \
