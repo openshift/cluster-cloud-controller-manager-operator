@@ -412,6 +412,10 @@ func checkResourceTolerations(t *testing.T, podSpec corev1.PodSpec) {
 		Operator: corev1.TolerationOpExists,
 		Effect:   corev1.TaintEffectNoSchedule,
 	}
+	noExecuteTaint := corev1.Toleration{
+		Operator: corev1.TolerationOpExists,
+		Effect:   corev1.TaintEffectNoExecute,
+	}
 
 	tolerations := podSpec.Tolerations
 
@@ -422,7 +426,8 @@ func checkResourceTolerations(t *testing.T, podSpec corev1.PodSpec) {
 			ContainElement(notReadyTaint),
 		),
 		ContainElement(noScheduleTaint),
-	), "PodSpec must either contain the uninitialized and not-ready tolerations, or tolerate any NoSchedule taint")
+		ContainElement(noExecuteTaint),
+	), "PodSpec must either contain the uninitialized and not-ready tolerations, or tolerate any NoSchedule/NoExecute taints")
 }
 
 func checkHostNetwork(t *testing.T, podSpec corev1.PodSpec) {
