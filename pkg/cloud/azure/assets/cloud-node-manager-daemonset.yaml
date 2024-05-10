@@ -35,6 +35,9 @@ spec:
         - effect: NoSchedule
           operator: Exists
         - effect: NoExecute
+          key: node-role.kubernetes.io/infra
+          operator: Exists
+        - effect: NoExecute
           key: node.kubernetes.io/unreachable
           operator: Exists
           tolerationSeconds: 120
