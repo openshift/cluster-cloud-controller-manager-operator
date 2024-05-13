@@ -395,6 +395,7 @@ func checkResourceRunsBeforeCNI(t *testing.T, platformName string, podSpec corev
 	checkPorts(t, podSpec)
 	checkVolumes(t, platformName, podSpec)
 	checkContainerCommand(t, podSpec)
+	checkContainerTerminationMessagePolicy(t, podSpec)
 }
 
 func checkResourceTolerations(t *testing.T, podSpec corev1.PodSpec) {
@@ -528,6 +529,12 @@ exec `
 		assert.Equal(t, command[0], binBash, "Container Command first element should equal %q", binBash)
 		assert.Equal(t, command[1], dashC, "Container Command second element should equal %q", dashC)
 		assert.True(t, strings.HasPrefix(command[2], setAPIEnv), "Container Command third (%q) element should start with %q", command[2], setAPIEnv)
+	}
+}
+
+func checkContainerTerminationMessagePolicy(t *testing.T, podSpec corev1.PodSpec) {
+	for _, container := range append(podSpec.Containers, podSpec.InitContainers...) {
+		assert.Equal(t, container.TerminationMessagePolicy, corev1.TerminationMessageFallbackToLogsOnError, "Container TerminationMessagePolicy should be set to %q", corev1.TerminationMessageFallbackToLogsOnError)
 	}
 }
 
