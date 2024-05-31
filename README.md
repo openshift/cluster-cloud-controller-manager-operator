@@ -68,3 +68,4 @@ To invoke the unit tests, run `make unit`. If you wish to also run the code gene
 #### End to End Tests
 
 The CCCMO e2e tests are configured and deployed from the [OpenShift Release repository](https://github.com/openshift/release). You will find the CCCMO specific configurations in the [`release/ci-operator/config/openshift/cluster-cloud-controller-manager-operator`](https://github.com/openshift/release/tree/master/ci-operator/config/openshift/cluster-cloud-controller-manager-operator) directory. For more information about these tests and how they are run and configured, please see the [OpenShift CI Docs](https://docs.ci.openshift.org/docs/).
+
