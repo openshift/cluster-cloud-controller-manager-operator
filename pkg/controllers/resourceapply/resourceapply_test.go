@@ -53,6 +53,7 @@ func cleanupResources(t *testing.T, g *WithT, ctx context.Context, cl client.Cli
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Eventually(
 			apierrors.IsNotFound(cl.Get(ctx, key, obj)),
+			"10s",
 		).Should(BeTrue(), "Can not cleanup resources")
 	}
 
