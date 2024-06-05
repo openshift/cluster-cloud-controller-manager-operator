@@ -34,7 +34,7 @@ verify: fmt vet lint
 test: generate verify manifests unit
 
 unit:
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path --bin-dir $(PROJECT_DIR)/bin)" ./hack/ci-test.sh
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path --bin-dir $(PROJECT_DIR)/bin --remote-bucket openshift-kubebuilder-tools)" ./hack/ci-test.sh
 
 # Build operator binaries
 build: operator config-sync-controllers azure-config-credentials-injector
