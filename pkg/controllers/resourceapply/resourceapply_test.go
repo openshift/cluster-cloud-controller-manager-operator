@@ -1,543 +1,858 @@
 package resourceapply
 
 import (
-	"context"
-	"testing"
+	"fmt"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift/cluster-api-actuator-pkg/testutils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	appsclientv1 "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
-func setupEnvtest(t *testing.T) (client.Client, func(t *testing.T)) {
-	t.Log("Setup envtest")
-	g := NewWithT(t)
-	testEnv := &envtest.Environment{}
-	cfg, err := testEnv.Start()
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(cfg).NotTo(BeNil())
+const (
+	namespaceNamePrefix = "resource-apply-test-"
+)
 
-	cl, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(cl).NotTo(BeNil())
-
-	teardownFunc := func(t *testing.T) {
-		t.Log("Stop envtest")
-		g.Expect(testEnv.Stop()).To(Succeed())
-	}
-	return cl, teardownFunc
+type applyConfigMapArguments struct {
+	existing       *corev1.ConfigMap
+	input          *corev1.ConfigMap
+	expectModified bool
 }
 
-func cleanupResources(t *testing.T, g *WithT, ctx context.Context, cl client.Client, listObject client.ObjectList) {
-	g.Expect(cl.List(ctx, listObject)).To(Succeed())
-	deleteResouce := func(g *WithT, obj client.Object) {
-		key := client.ObjectKeyFromObject(obj)
-		obj.SetFinalizers([]string{})
-		g.Expect(cl.Update(ctx, obj)).To(Succeed())
-		err := cl.Delete(ctx, obj)
-		if apierrors.IsNotFound(err) {
-			return
-		}
-		g.Expect(err).ToNot(HaveOccurred())
-		g.Eventually(
-			apierrors.IsNotFound(cl.Get(ctx, key, obj)),
-		).Should(BeTrue(), "Can not cleanup resources")
-	}
+var _ = Describe("applyConfigMap", func() {
+	var namespaceName string
 
-	switch typedList := listObject.(type) {
-	case *appsv1.DeploymentList:
-		for _, obj := range typedList.Items {
-			deleteResouce(g, &obj)
-		}
-	case *corev1.ConfigMapList:
-		for _, obj := range typedList.Items {
-			deleteResouce(g, &obj)
-		}
-	case *corev1.SecretList:
-		for _, obj := range typedList.Items {
-			deleteResouce(g, &obj)
-		}
-	case *appsv1.DaemonSetList:
-		for _, obj := range typedList.Items {
-			deleteResouce(g, &obj)
-		}
-	case *policyv1.PodDisruptionBudgetList:
-		for _, obj := range typedList.Items {
-			deleteResouce(g, &obj)
-		}
-	default:
-		t.Fatal("can not cast list type for cleanup")
-	}
-}
+	BeforeEach(func() {
+		By("Setting up a namespace for the test")
+		ns := &corev1.Namespace{}
+		ns.SetGenerateName(namespaceNamePrefix)
+		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+		namespaceName = ns.GetName()
+	})
 
-func createNamespace(g *WithT, ctx context.Context, cl client.Client) string {
-	ns := &corev1.Namespace{}
-	ns.SetGenerateName("resource-apply-test-")
-	g.Expect(cl.Create(ctx, ns)).To(Succeed())
-	return ns.GetName()
-}
+	AfterEach(func() {
+		testutils.CleanupResources(Default, ctx, cfg, k8sClient, namespaceName,
+			&corev1.ConfigMap{},
+		)
+	})
 
-func TestApplyConfigMap(t *testing.T) {
-	cl, tearDownFn := setupEnvtest(t)
-	defer tearDownFn(t)
-	namespace := createNamespace(NewWithT(t), context.TODO(), cl)
-
-	tests := []struct {
-		name     string
-		existing *corev1.ConfigMap
-		input    *corev1.ConfigMap
-
-		expectedModified bool
-	}{
-		{
-			name: "create",
-			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo"},
-			},
-
-			expectedModified: true,
-		},
-		{
-			name: "skip on extra label",
-			existing: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
-			},
-			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo"},
-			},
-
-			expectedModified: false,
-		},
-		{
-			name: "update on missing label",
-			existing: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
-			},
-			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"new": "merge"}},
-			},
-
-			expectedModified: true,
-		},
-		{
-			name: "update on mismatch data",
-			existing: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
-			},
-			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo"},
-				Data: map[string]string{
-					"configmap": "value",
-				},
-			},
-
-			expectedModified: true,
-		},
-		{
-			name: "update on mismatch binary data",
-			existing: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo", Labels: map[string]string{"extra": "leave-alone"}},
-				Data: map[string]string{
-					"configmap": "value",
-				},
-			},
-			input: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "foo"},
-				Data: map[string]string{
-					"configmap": "value",
-				},
-				BinaryData: map[string][]byte{
-					"binconfigmap": []byte("value"),
-				},
-			},
-
-			expectedModified: true,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			g := NewWithT(t)
-			ctx := context.TODO()
-			defer cleanupResources(t, g, ctx, cl, &corev1.ConfigMapList{})
-
-			if test.existing != nil {
-				g.Expect(cl.Create(ctx, test.existing)).To(Succeed())
+	DescribeTable("Updates configuration when expected",
+		func(args applyConfigMapArguments) {
+			// we need to set the namespace name in the test because ginkgo does not know it when the Entry calls are defined
+			if args.existing != nil {
+				args.existing.Namespace = namespaceName
+				Expect(k8sClient.Create(ctx, args.existing)).To(Succeed())
 			}
-			actualModified, err := applyConfigMap(ctx, cl, record.NewFakeRecorder(1000), test.input)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(test.expectedModified).To(BeEquivalentTo(actualModified), "Resource was modified")
-		})
-	}
-}
-
-func simpleSecret(namespace string, name string) *corev1.Secret {
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
+			args.input.Namespace = namespaceName
+			actualModified, err := applyConfigMap(ctx, k8sClient, record.NewFakeRecorder(1000), args.input)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(args.expectModified).To(BeEquivalentTo(actualModified), "Resource was modified")
 		},
-		Data: map[string][]byte{"foo": []byte("bar")},
-	}
-}
-
-func simpleConfigMap(namespace string, name string) *corev1.ConfigMap {
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-		Data: map[string]string{"foo": "bar"},
-	}
-}
-
-func addSecretVolumeToPodSpec(spec *corev1.PodSpec, secretName string, volumeName string) {
-	volume := corev1.Volume{
-		Name: volumeName,
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
-		},
-	}
-
-	spec.Volumes = append(spec.Volumes, volume)
-}
-
-func addConfigMapVolumeToPodSpec(spec *corev1.PodSpec, cmName string, volumeName string) {
-	volume := corev1.Volume{
-		Name: volumeName,
-		VolumeSource: corev1.VolumeSource{
-			ConfigMap: &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{Name: cmName},
+		Entry("When created it is updated",
+			applyConfigMapArguments{
+				existing: nil,
+				input: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "foo",
+					},
+				},
+				expectModified: true,
 			},
-		},
-	}
+		),
+		Entry("When an extra label is present it is not updated",
+			applyConfigMapArguments{
+				existing: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "foo",
+						Labels: map[string]string{"extra": "leave-alone"},
+					},
+				},
+				input: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "foo",
+					},
+				},
+				expectModified: false,
+			},
+		),
+		Entry("When a label is missing it is updated",
+			applyConfigMapArguments{
+				existing: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "foo",
+						Labels: map[string]string{"extra": "leave-alone"},
+					},
+				},
+				input: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "foo",
+						Labels: map[string]string{"new": "merge"},
+					},
+				},
+				expectModified: true,
+			},
+		),
+		Entry("When there is a data mismatch it is updated",
+			applyConfigMapArguments{
+				existing: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "foo",
+						Labels: map[string]string{"extra": "leave-alone"},
+					},
+				},
+				input: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "foo",
+					},
+					Data: map[string]string{
+						"configmap": "value",
+					},
+				},
+				expectModified: true,
+			},
+		),
+		Entry("When there is a binary data mismatch it is updated",
+			applyConfigMapArguments{
+				existing: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "foo",
+						Labels: map[string]string{"extra": "leave-alone"},
+					},
+					Data: map[string]string{
+						"configmap": "value",
+					},
+				},
+				input: &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "foo",
+					},
+					Data: map[string]string{
+						"configmap": "value",
+					},
+					BinaryData: map[string][]byte{
+						"binconfigmap": []byte("value"),
+					},
+				},
+				expectModified: true,
+			},
+		),
+	)
+})
 
-	spec.Volumes = append(spec.Volumes, volume)
+type deploymentSupplier func(string) *appsv1.Deployment
+
+type applyDeploymentArguments struct {
+	desiredFn    deploymentSupplier
+	actualFn     deploymentSupplier
+	expectedFn   deploymentSupplier
+	expectError  bool
+	expectUpdate bool
+	errorMsg     string
+	updConfigsFn func(*corev1.Secret, *corev1.ConfigMap)
 }
 
-func TestApplyDeployment(t *testing.T) {
-	cl, tearDownFn := setupEnvtest(t)
-	defer tearDownFn(t)
-	namespace := createNamespace(NewWithT(t), context.TODO(), cl)
+var _ = Describe("applyDeployment", func() {
+	var namespaceName string
 
-	tests := []struct {
-		name              string
-		desiredDeployment *appsv1.Deployment
-		actualDeployment  *appsv1.Deployment
+	BeforeEach(func() {
+		By("Setting up a namespace for the test")
+		ns := &corev1.Namespace{}
+		ns.SetGenerateName(namespaceNamePrefix)
+		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+		namespaceName = ns.GetName()
+	})
 
-		expectError        bool
-		expectedUpdate     bool
-		expectedDeployment *appsv1.Deployment
-	}{
-		{
-			name:               "the deployment is created because it doesn't exist",
-			desiredDeployment:  workloadDeployment(namespace),
-			expectedDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-			expectedUpdate:     true,
-		},
+	AfterEach(func() {
+		testutils.CleanupResources(Default, ctx, cfg, k8sClient, namespaceName,
+			&appsv1.Deployment{},
+			&corev1.ConfigMap{},
+			&corev1.Secret{},
+		)
+	})
 
-		{
-			name:               "the deployment already exists and it's up to date",
-			desiredDeployment:  workloadDeployment(namespace),
-			actualDeployment:   workloadDeploymentWithDefaultSpecHash(namespace),
-			expectedDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-		},
-
-		{
-			name: "the deployment is updated due to a change in the spec",
-			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment(namespace)
-				w.Spec.Template.Finalizers = []string{"newFinalizer"}
-				return w
-			}(),
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-			expectedDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment(namespace)
-				w.Annotations["operator.openshift.io/spec-hash"] = "a188738eb8e2da21166bc0bfaeb7c87a9c7422f426591e7e3cd52f300cb0785d"
-				w.Spec.Template.Finalizers = []string{"newFinalizer"}
-				return w
-			}(),
-			expectedUpdate: true,
-		},
-
-		{
-			name: "the deployment is updated due to a change in Labels field",
-			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment(namespace)
-				w.Labels["newLabel"] = "newValue"
-				return w
-			}(),
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-			expectedDeployment: func() *appsv1.Deployment {
-				w := workloadDeploymentWithDefaultSpecHash(namespace)
-				w.Labels["newLabel"] = "newValue"
-				return w
-			}(),
-			expectedUpdate: true,
-		},
-
-		{
-			name: "the deployment is updated due to a change in Annotations field",
-			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment(namespace)
-				w.Annotations["newAnnotation"] = "newValue"
-				return w
-			}(),
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-			expectedDeployment: func() *appsv1.Deployment {
-				w := workloadDeploymentWithDefaultSpecHash(namespace)
-				w.Annotations["newAnnotation"] = "newValue"
-				return w
-			}(),
-			expectedUpdate: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			g := NewWithT(t)
+	DescribeTable("Updates deployment when expected",
+		func(args applyDeploymentArguments) {
 			eventRecorder := record.NewFakeRecorder(1000)
-			ctx := context.TODO()
-			defer cleanupResources(t, g, ctx, cl, &appsv1.DeploymentList{})
 
-			if tt.actualDeployment != nil {
-				g.Expect(cl.Create(ctx, tt.actualDeployment)).To(Succeed())
+			desiredDeployment := args.desiredFn(namespaceName)
+
+			if args.actualFn != nil {
+				actualDeployment := args.actualFn(namespaceName)
+				Expect(k8sClient.Create(ctx, actualDeployment)).To(Succeed())
 			}
 
-			updated, err := applyDeployment(ctx, cl, eventRecorder, tt.desiredDeployment)
-			if tt.expectError {
-				g.Expect(err).To(HaveOccurred(), "expected error")
+			updated, err := applyDeployment(ctx, k8sClient, eventRecorder, desiredDeployment)
+			// TODO (elmiko) add some test cases to exercise the error failure modes
+			if args.expectError {
+				Expect(err).To(HaveOccurred(), "expected error")
+			} else {
+				Expect(err).NotTo(HaveOccurred(), "expected no error")
 			}
-			if !tt.expectError {
-				g.Expect(err).NotTo(HaveOccurred(), "expected no error")
-			}
-			if tt.expectedUpdate {
-				g.Expect(updated).To(BeTrue(), "expect deployment to be updated")
-			}
-			if !tt.expectedUpdate {
-				g.Expect(updated).To(BeFalse(), "expect deployment not to be updated")
+			if args.expectUpdate {
+				Expect(updated).To(BeTrue(), "expect deployment to be updated")
+			} else {
+				Expect(updated).To(BeFalse(), "expect deployment not to be updated")
 			}
 
 			updatedDeployment := &appsv1.Deployment{}
-			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(tt.desiredDeployment)
-			g.Expect(cl.Get(ctx, deploymentObjectKey, updatedDeployment)).To(Succeed())
+			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(desiredDeployment)
+			Expect(k8sClient.Get(ctx, deploymentObjectKey, updatedDeployment)).To(Succeed())
 
-			if !equality.Semantic.DeepDerivative(tt.expectedDeployment.Spec, updatedDeployment.Spec) {
-				t.Fatalf("Expected deployment: %+v, got %+v", tt.expectedDeployment, updatedDeployment)
-			}
-			g.Expect(tt.expectedDeployment.Annotations[specHashAnnotation]).Should(BeEquivalentTo(updatedDeployment.Annotations[specHashAnnotation]))
-		})
-	}
-
-	updateSelectorTests := []struct {
-		name               string
-		desiredDeployment  *appsv1.Deployment
-		expectedDeployment *appsv1.Deployment
-		actualDeployment   *appsv1.Deployment
-
-		expectError      bool
-		errorMsg         string
-		expectedRecreate bool
-	}{
-		{
-			name:             "the deployment is recreated due to a change in match labels field",
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-
-			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment(namespace)
-				w.Spec.Selector = &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"bar": "baz",
-					},
-				}
-				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-				return w
-			}(),
-			expectedDeployment: func() *appsv1.Deployment {
-				w := workloadDeploymentWithDefaultSpecHash(namespace)
-				w.Spec.Selector = &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"bar": "baz",
-					},
-				}
-				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-				w.Annotations[specHashAnnotation] = "ad5da8e55a1a2c05026368f3b68f5625f7fd038b38ac8a4aa1358e2e1a07a85d"
-				return w
-			}(),
-			expectedRecreate: true,
+			expectedDeployment := args.expectedFn(namespaceName)
+			Expect(equality.Semantic.DeepDerivative(expectedDeployment.Spec, updatedDeployment.Spec)).To(BeTrue(), fmt.Sprintf("Expected deployment: %+v, got %+v", expectedDeployment, updatedDeployment))
+			Expect(expectedDeployment.Annotations[specHashAnnotation]).Should(BeEquivalentTo(updatedDeployment.Annotations[specHashAnnotation]))
 		},
+		Entry("When the deployment is created because it doesn't exist it is updated",
+			applyDeploymentArguments{
+				desiredFn:    workloadDeployment,
+				actualFn:     nil,
+				expectedFn:   workloadDeploymentWithDefaultSpecHash,
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+		Entry("When the deployment already exists and it is up to date it is not updated",
+			applyDeploymentArguments{
+				desiredFn:    workloadDeployment,
+				actualFn:     workloadDeploymentWithDefaultSpecHash,
+				expectedFn:   workloadDeploymentWithDefaultSpecHash,
+				expectError:  false,
+				expectUpdate: false,
+			},
+		),
+		Entry("When the deployment is updated due to a change in the spec it is updated",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeployment(namespace)
+					w.Spec.Template.Finalizers = []string{"newFinalizer"}
+					return w
+				},
+				actualFn: workloadDeploymentWithDefaultSpecHash,
+				expectedFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeployment(namespace)
+					w.Annotations["operator.openshift.io/spec-hash"] = "a188738eb8e2da21166bc0bfaeb7c87a9c7422f426591e7e3cd52f300cb0785d"
+					w.Spec.Template.Finalizers = []string{"newFinalizer"}
+					return w
+				},
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+		Entry("When the deployment is updated due to a change in the labels field it is updated",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeployment(namespace)
+					w.Labels["newLabel"] = "newValue"
+					return w
+				},
+				actualFn: workloadDeploymentWithDefaultSpecHash,
+				expectedFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeploymentWithDefaultSpecHash(namespace)
+					w.Labels["newLabel"] = "newValue"
+					return w
+				},
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+		Entry("When the deployment is updated due to a change in the Annotations field",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeployment(namespace)
+					w.Annotations["newAnnotation"] = "newValue"
+					return w
+				},
+				actualFn: workloadDeploymentWithDefaultSpecHash,
+				expectedFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeploymentWithDefaultSpecHash(namespace)
+					w.Annotations["newAnnotation"] = "newValue"
+					return w
+				},
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+	)
 
-		{
-			name:             "resourceapply should report an error in case if resource is malformed",
-			actualDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-
-			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment(namespace)
-				w.Spec.Selector = &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"bar": "baz",
-					},
-				}
-				w.Spec.Template.Labels = map[string]string{"fiz": "baz"}
-				return w
-			}(),
-			expectedDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-			errorMsg:           "`selector` does not match template `labels`",
-			expectError:        true,
-		},
-		{
-			name: "resourceapply should report an error in case if resource deletion stucked",
-			actualDeployment: func() *appsv1.Deployment {
-				d := workloadDeploymentWithDefaultSpecHash(namespace)
-				d.Finalizers = []string{"foo.bar/baz"}
-				return d
-			}(),
-
-			desiredDeployment: func() *appsv1.Deployment {
-				w := workloadDeployment(namespace)
-				w.Spec.Selector = &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"bar": "baz",
-					},
-				}
-				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-				return w
-			}(),
-			expectedDeployment: workloadDeploymentWithDefaultSpecHash(namespace),
-			errorMsg:           "object is being deleted: deployments.apps \"apiserver\" already exists",
-			expectError:        true,
-		},
-	}
-	for _, tt := range updateSelectorTests {
-		t.Run(tt.name, func(t *testing.T) {
-			g := NewWithT(t)
+	DescribeTable("Recreates deployment after selector change when expected",
+		func(args applyDeploymentArguments) {
 			eventRecorder := record.NewFakeRecorder(1000)
-			ctx := context.TODO()
-			defer cleanupResources(t, g, ctx, cl, &appsv1.DeploymentList{})
 
-			g.Expect(cl.Create(ctx, tt.actualDeployment)).To(Succeed())
-			g.Expect(tt.actualDeployment.UID).NotTo(BeNil())
+			actualDeployment := args.actualFn(namespaceName)
+			Expect(k8sClient.Create(ctx, actualDeployment)).To(Succeed())
+			Expect(actualDeployment.UID).NotTo(BeNil())
 
-			_, err := applyDeployment(ctx, cl, eventRecorder, tt.desiredDeployment)
-			if tt.expectError {
-				g.Expect(err).To(HaveOccurred(), "expected error")
-				g.Expect(tt.errorMsg).ToNot(BeEmpty())
-				g.Expect(err.Error()).To(ContainSubstring(tt.errorMsg))
-			}
-			if !tt.expectError {
-				g.Expect(err).NotTo(HaveOccurred(), "expected no error")
+			desiredDeployment := args.desiredFn(namespaceName)
+			_, err := applyDeployment(ctx, k8sClient, eventRecorder, desiredDeployment)
+			if args.expectError {
+				Expect(err).To(HaveOccurred(), "expected error")
+				Expect(args.errorMsg).ToNot(BeEmpty(), "expected error string is empty")
+				Expect(err).To(MatchError(ContainSubstring(args.errorMsg)))
+			} else {
+				Expect(err).NotTo(HaveOccurred(), "expected no error")
 			}
 
 			updatedDeployment := &appsv1.Deployment{}
-			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(tt.desiredDeployment)
-			g.Expect(cl.Get(ctx, deploymentObjectKey, updatedDeployment)).To(Succeed())
-			if tt.expectedRecreate {
-				g.Expect(tt.actualDeployment.UID).ShouldNot(BeEquivalentTo(updatedDeployment.UID))
-			}
-			if !tt.expectedRecreate {
-				g.Expect(tt.actualDeployment.UID).Should(BeEquivalentTo(updatedDeployment.UID))
+			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(desiredDeployment)
+			Expect(k8sClient.Get(ctx, deploymentObjectKey, updatedDeployment)).To(Succeed())
+			if args.expectUpdate {
+				Expect(actualDeployment.UID).ShouldNot(BeEquivalentTo(updatedDeployment.UID))
+			} else {
+				Expect(actualDeployment.UID).Should(BeEquivalentTo(updatedDeployment.UID))
 			}
 
-			if !equality.Semantic.DeepDerivative(tt.expectedDeployment.Spec, updatedDeployment.Spec) {
-				t.Fatalf("Expected deployment: %+v, got %+v", tt.expectedDeployment, updatedDeployment)
-			}
-			g.Expect(tt.expectedDeployment.Annotations[specHashAnnotation]).To(BeEquivalentTo(updatedDeployment.Annotations[specHashAnnotation]))
+			expectedDeployment := args.expectedFn(namespaceName)
+			Expect(equality.Semantic.DeepDerivative(expectedDeployment.Spec, updatedDeployment.Spec)).To(BeTrue(), fmt.Sprintf("Expected deployment: %+v, got %+v", expectedDeployment, updatedDeployment))
+
+			Expect(expectedDeployment.Annotations[specHashAnnotation]).To(BeEquivalentTo(updatedDeployment.Annotations[specHashAnnotation]))
 
 			deployments := &appsv1.DeploymentList{}
-			g.Expect(cl.List(ctx, deployments)).To(Succeed())
-			g.Expect(len(deployments.Items)).To(BeEquivalentTo(1))
-		})
-	}
-
-	updateDependentConfigsTest := []struct {
-		name             string
-		deployment       *appsv1.Deployment
-		initialSecret    *corev1.Secret
-		initialConfigMap *corev1.ConfigMap
-		updConfigsFunc   func(secret *corev1.Secret, configMap *corev1.ConfigMap)
-		expectedUpdate   bool
-	}{
-		{
-			name:           "should not update if related config specified in volumes did not change",
-			expectedUpdate: false,
-			updConfigsFunc: nil,
-			deployment: func() *appsv1.Deployment {
-				d := workloadDeployment(namespace)
-				addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "secret", "secret")
-				addConfigMapVolumeToPodSpec(&d.Spec.Template.Spec, "configmap", "configmap")
-				return d
-			}(),
-			initialSecret:    simpleSecret(namespace, "secret"),
-			initialConfigMap: simpleConfigMap(namespace, "configmap"),
+			Expect(k8sClient.List(ctx, deployments)).To(Succeed())
+			Expect(len(deployments.Items)).To(BeEquivalentTo(1))
 		},
-		{
-			name:           "should update if related config changed",
-			expectedUpdate: true,
-			updConfigsFunc: func(secret *corev1.Secret, configMap *corev1.ConfigMap) {
-				secret.Data = map[string][]byte{"bar": []byte("bazz")}
+		Entry("When the deployment is recreated due to a change in the match labels field",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeployment(namespace)
+					w.Spec.Selector = &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"bar": "baz",
+						},
+					}
+					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+					return w
+				},
+				actualFn: workloadDeploymentWithDefaultSpecHash,
+				expectedFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeploymentWithDefaultSpecHash(namespace)
+					w.Spec.Selector = &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"bar": "baz",
+						},
+					}
+					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+					w.Annotations[specHashAnnotation] = "ad5da8e55a1a2c05026368f3b68f5625f7fd038b38ac8a4aa1358e2e1a07a85d"
+					return w
+				},
+				expectError:  false,
+				expectUpdate: true,
 			},
-			deployment: func() *appsv1.Deployment {
-				d := workloadDeployment(namespace)
-				addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "secret", "secret")
-				addConfigMapVolumeToPodSpec(&d.Spec.Template.Spec, "configmap", "configmap")
-				return d
-			}(),
-			initialSecret:    simpleSecret(namespace, "secret"),
-			initialConfigMap: simpleConfigMap(namespace, "configmap"),
-		},
-		{
-			name:           "non existent config should not prevent resourceapply",
-			expectedUpdate: false,
-			updConfigsFunc: nil,
-			deployment: func() *appsv1.Deployment {
-				d := workloadDeployment(namespace)
-				addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "non-existed", "non-existed")
-				return d
-			}(),
-			initialSecret:    simpleSecret(namespace, "secret"),
-			initialConfigMap: simpleConfigMap(namespace, "configmap"),
-		},
-	}
-	for _, tt := range updateDependentConfigsTest {
-		t.Run(tt.name, func(t *testing.T) {
-			g := NewWithT(t)
+		),
+		Entry("When a resource is malformed an error is reported",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeployment(namespace)
+					w.Spec.Selector = &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"bar": "baz",
+						},
+					}
+					w.Spec.Template.Labels = map[string]string{"fiz": "baz"}
+					return w
+				},
+				actualFn:     workloadDeploymentWithDefaultSpecHash,
+				expectedFn:   workloadDeploymentWithDefaultSpecHash,
+				expectError:  true,
+				errorMsg:     "`selector` does not match template `labels`",
+				expectUpdate: false,
+			},
+		),
+		Entry("When resource deletion is stuck an error is reported",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					w := workloadDeployment(namespace)
+					w.Spec.Selector = &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"bar": "baz",
+						},
+					}
+					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+					return w
+				},
+				actualFn: func(namespace string) *appsv1.Deployment {
+					d := workloadDeploymentWithDefaultSpecHash(namespace)
+					d.Finalizers = []string{"foo.bar/baz"}
+					return d
+				},
+				expectedFn:   workloadDeploymentWithDefaultSpecHash,
+				expectError:  true,
+				errorMsg:     "object is being deleted: deployments.apps \"apiserver\" already exists",
+				expectUpdate: false,
+			},
+		),
+	)
+
+	DescribeTable("Updates deployment after configuration change when expected",
+		func(args applyDeploymentArguments) {
 			eventRecorder := record.NewFakeRecorder(1000)
-			ctx := context.TODO()
-			defer cleanupResources(t, g, ctx, cl, &appsv1.DeploymentList{})
-			defer cleanupResources(t, g, ctx, cl, &corev1.ConfigMapList{})
-			defer cleanupResources(t, g, ctx, cl, &corev1.SecretList{})
 
-			g.Expect(cl.Create(ctx, tt.initialSecret)).To(Succeed())
-			g.Expect(tt.initialSecret.UID).NotTo(BeNil())
-			g.Expect(cl.Create(ctx, tt.initialConfigMap)).To(Succeed())
-			g.Expect(tt.initialSecret.UID).NotTo(BeNil())
+			initialSecret := simpleSecret(namespaceName, "secret")
+			Expect(k8sClient.Create(ctx, initialSecret)).To(Succeed())
+			Expect(initialSecret.UID).NotTo(BeNil())
 
-			_, err := applyDeployment(ctx, cl, eventRecorder, tt.deployment)
-			g.Expect(err).ToNot(HaveOccurred())
+			initialConfigMap := simpleConfigMap(namespaceName, "configmap")
+			Expect(k8sClient.Create(ctx, initialConfigMap)).To(Succeed())
+			Expect(initialSecret.UID).NotTo(BeNil())
 
-			if tt.updConfigsFunc != nil {
-				tt.updConfigsFunc(tt.initialSecret, tt.initialConfigMap)
-				g.Expect(cl.Update(ctx, tt.initialSecret)).To(Succeed())
-				g.Expect(cl.Update(ctx, tt.initialConfigMap)).To(Succeed())
+			deployment := args.desiredFn(namespaceName)
+			_, err := applyDeployment(ctx, k8sClient, eventRecorder, deployment)
+			Expect(err).ToNot(HaveOccurred())
+
+			if args.updConfigsFn != nil {
+				args.updConfigsFn(initialSecret, initialConfigMap)
+				Expect(k8sClient.Update(ctx, initialSecret)).To(Succeed())
+				Expect(k8sClient.Update(ctx, initialConfigMap)).To(Succeed())
 			}
 
-			updated, err := applyDeployment(ctx, cl, eventRecorder, tt.deployment)
-			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(updated).To(Equal(tt.expectedUpdate), "resource update expectation mismatch")
-		})
-	}
+			updated, err := applyDeployment(ctx, k8sClient, eventRecorder, deployment)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updated).To(Equal(args.expectUpdate), "resource update expectation mismatch")
+		},
+		Entry("When related config specified in volumes did not change it is not updated",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					d := workloadDeployment(namespace)
+					addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "secret", "secret")
+					addConfigMapVolumeToPodSpec(&d.Spec.Template.Spec, "configmap", "configmap")
+					return d
+				},
+				updConfigsFn: nil,
+				expectUpdate: false,
+			},
+		),
+		Entry("When related configs are changed it is updated",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					d := workloadDeployment(namespace)
+					addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "secret", "secret")
+					addConfigMapVolumeToPodSpec(&d.Spec.Template.Spec, "configmap", "configmap")
+					return d
+				},
+				updConfigsFn: func(secret *corev1.Secret, configMap *corev1.ConfigMap) {
+					secret.Data = map[string][]byte{"bar": []byte("bazz")}
+				},
+				expectUpdate: true,
+			},
+		),
+		Entry("When non-existent config is specified it is not updated",
+			applyDeploymentArguments{
+				desiredFn: func(namespace string) *appsv1.Deployment {
+					d := workloadDeployment(namespace)
+					addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "non-existed", "non-existed")
+					return d
+				},
+				updConfigsFn: nil,
+				expectUpdate: false,
+			},
+		),
+	)
+
+})
+
+type daemonSetSupplier func(string) *appsv1.DaemonSet
+
+type applyDaemonSetArguments struct {
+	desiredFn    daemonSetSupplier
+	actualFn     daemonSetSupplier
+	expectedFn   daemonSetSupplier
+	expectError  bool
+	expectUpdate bool
+	errorMsg     string
+	updConfigsFn func(*corev1.Secret, *corev1.ConfigMap)
 }
+
+var _ = Describe("applyDaemonSet", func() {
+	var namespaceName string
+
+	BeforeEach(func() {
+		By("Setting up a namespace for the test")
+		ns := &corev1.Namespace{}
+		ns.SetGenerateName(namespaceNamePrefix)
+		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+		namespaceName = ns.GetName()
+	})
+
+	AfterEach(func() {
+		testutils.CleanupResources(Default, ctx, cfg, k8sClient, namespaceName,
+			&appsv1.DaemonSet{},
+			&corev1.ConfigMap{},
+			&corev1.Secret{},
+		)
+	})
+
+	DescribeTable("Updates daemonset when expected",
+		func(args applyDaemonSetArguments) {
+			eventRecorder := record.NewFakeRecorder(1000)
+
+			if args.actualFn != nil {
+				actualDaemonSet := args.actualFn(namespaceName)
+				Expect(k8sClient.Create(ctx, actualDaemonSet)).To(Succeed())
+			}
+
+			desiredDaemonSet := args.desiredFn(namespaceName)
+			updated, err := applyDaemonSet(ctx, k8sClient, eventRecorder, desiredDaemonSet)
+			// TODO (elmiko) add some test cases to exercise the error failure modes
+			if args.expectError {
+				Expect(err).To(HaveOccurred(), "expected error")
+			} else {
+				Expect(err).NotTo(HaveOccurred(), "expected no error")
+			}
+			if args.expectUpdate {
+				Expect(updated).To(BeTrue(), "expect deployment to be updated")
+			} else {
+				Expect(updated).To(BeFalse(), "expect deployment not to be updated")
+			}
+
+			updatedDaemonSet := &appsv1.DaemonSet{}
+			Expect(k8sClient.Get(ctx, appsclientv1.ObjectKeyFromObject(desiredDaemonSet), updatedDaemonSet)).To(Succeed())
+
+			expectedDaemonSet := args.expectedFn(namespaceName)
+			Expect(equality.Semantic.DeepDerivative(expectedDaemonSet.Spec, updatedDaemonSet.Spec)).To(BeTrue(), fmt.Sprintf("Expected DaemonSet: %+v, got %+v", expectedDaemonSet, updatedDaemonSet))
+
+			Expect(expectedDaemonSet.Annotations).Should(HaveKeyWithValue(specHashAnnotation, updatedDaemonSet.Annotations[specHashAnnotation]))
+		},
+		Entry("When it does not exist it is created",
+			applyDaemonSetArguments{
+				desiredFn:    workloadDaemonSet,
+				actualFn:     nil,
+				expectedFn:   workloadDaemonSetWithDefaultSpecHash,
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+		Entry("When it exists and is up to date it is not updated",
+			applyDaemonSetArguments{
+				desiredFn:    workloadDaemonSet,
+				actualFn:     workloadDaemonSetWithDefaultSpecHash,
+				expectedFn:   workloadDaemonSetWithDefaultSpecHash,
+				expectError:  false,
+				expectUpdate: false,
+			},
+		),
+		Entry("When there is a change in the spec it is updated",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(namespace)
+					w.Spec.Template.Finalizers = []string{"newFinalizer"}
+					return w
+				},
+				actualFn: workloadDaemonSetWithDefaultSpecHash,
+				expectedFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(namespace)
+					w.Annotations["operator.openshift.io/spec-hash"] = "cb44c29fda480ea0b4e7a08dda99db54c46d7ed21a8d9360b6b701864fe7cbbb"
+					w.Spec.Template.Finalizers = []string{"newFinalizer"}
+					return w
+				},
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+		Entry("When there is a change in the labels field it is updated",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(namespace)
+					w.Labels["newLabel"] = "newValue"
+					return w
+				},
+				actualFn: workloadDaemonSetWithDefaultSpecHash,
+				expectedFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSetWithDefaultSpecHash(namespace)
+					w.Labels["newLabel"] = "newValue"
+					return w
+				},
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+		Entry("When there is a change in the annotations field it is updated",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(namespace)
+					w.Annotations["newAnnotation"] = "newValue"
+					return w
+				},
+				actualFn: workloadDaemonSetWithDefaultSpecHash,
+				expectedFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSetWithDefaultSpecHash(namespace)
+					w.Annotations["newAnnotation"] = "newValue"
+					return w
+				},
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+	)
+
+	DescribeTable("Recreates daemonset after selector change when expected",
+		func(args applyDaemonSetArguments) {
+			eventRecorder := record.NewFakeRecorder(1000)
+
+			actualDaemonSet := args.actualFn(namespaceName)
+			Expect(k8sClient.Create(ctx, actualDaemonSet)).To(Succeed())
+			Expect(actualDaemonSet.UID).NotTo(BeNil())
+
+			desiredDaemonSet := args.desiredFn(namespaceName)
+			_, err := applyDaemonSet(ctx, k8sClient, eventRecorder, desiredDaemonSet)
+			if args.expectError {
+				Expect(err).To(HaveOccurred(), "expected error")
+				Expect(args.errorMsg).ToNot(BeEmpty(), "expected error string is empty")
+				Expect(err).To(MatchError(ContainSubstring(args.errorMsg)))
+			} else {
+				Expect(err).NotTo(HaveOccurred(), "expected no error")
+			}
+
+			updatedDaemonSet := &appsv1.DaemonSet{}
+			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(desiredDaemonSet)
+			Expect(k8sClient.Get(ctx, deploymentObjectKey, updatedDaemonSet)).To(Succeed())
+			if args.expectUpdate {
+				Expect(actualDaemonSet.UID).ShouldNot(BeEquivalentTo(updatedDaemonSet.UID))
+			} else {
+				Expect(actualDaemonSet.UID).Should(BeEquivalentTo(updatedDaemonSet.UID))
+			}
+
+			expectedDaemonSet := args.expectedFn(namespaceName)
+			Expect(equality.Semantic.DeepDerivative(expectedDaemonSet.Spec, updatedDaemonSet.Spec)).To(BeTrue(), fmt.Sprintf("Expected deployment: %+v, got %+v", expectedDaemonSet, updatedDaemonSet))
+
+			Expect(expectedDaemonSet.Annotations).Should(HaveKeyWithValue(specHashAnnotation, updatedDaemonSet.Annotations[specHashAnnotation]))
+
+			dss := &appsv1.DaemonSetList{}
+			Expect(k8sClient.List(ctx, dss)).To(Succeed())
+			Expect(len(dss.Items)).To(BeEquivalentTo(1))
+		},
+		Entry("When there is a change in the match labels field it is recreated",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(namespace)
+					w.Spec.Selector = &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"bar": "baz",
+						},
+					}
+					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+					return w
+				},
+				actualFn: workloadDaemonSetWithDefaultSpecHash,
+				expectedFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(namespace)
+					w.Spec.Selector = &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"bar": "baz",
+						},
+					}
+					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+					w.Annotations[specHashAnnotation] = "4c860db5451a859e104e640b8315da4bb6ece3fb8143344c8fcdf1ba95431dd9"
+					return w
+				},
+				expectError:  false,
+				expectUpdate: true,
+			},
+		),
+		Entry("When the resource is malformed an error is reported",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(namespace)
+					w.Spec.Selector = &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"bar": "baz",
+						},
+					}
+					w.Spec.Template.Labels = map[string]string{"fiz": "baz"}
+					return w
+				},
+				actualFn:     workloadDaemonSetWithDefaultSpecHash,
+				expectedFn:   workloadDaemonSetWithDefaultSpecHash,
+				expectError:  true,
+				errorMsg:     "`selector` does not match template `labels`",
+				expectUpdate: false,
+			},
+		),
+		Entry("When the resource deletion is stuck it should report an error",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(namespace)
+					w.Spec.Selector = &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"bar": "baz",
+						},
+					}
+					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
+					return w
+				},
+				actualFn: func(namespace string) *appsv1.DaemonSet {
+					ds := workloadDaemonSetWithDefaultSpecHash(namespace)
+					ds.Finalizers = []string{"foo.bar/baz"}
+					return ds
+				},
+				expectedFn:   workloadDaemonSetWithDefaultSpecHash,
+				expectError:  true,
+				errorMsg:     "object is being deleted: daemonsets.apps \"apiserver\" already exists",
+				expectUpdate: false,
+			},
+		),
+	)
+
+	DescribeTable("Updates daemonset after configuration change when expected",
+		func(args applyDaemonSetArguments) {
+			eventRecorder := record.NewFakeRecorder(1000)
+
+			initialSecret := simpleSecret(namespaceName, "secret")
+			Expect(k8sClient.Create(ctx, initialSecret)).To(Succeed())
+			Expect(initialSecret.UID).NotTo(BeNil())
+
+			initialConfigMap := simpleConfigMap(namespaceName, "configmap")
+			Expect(k8sClient.Create(ctx, initialConfigMap)).To(Succeed())
+			Expect(initialSecret.UID).NotTo(BeNil())
+
+			daemonSet := args.desiredFn(namespaceName)
+			_, err := applyDaemonSet(ctx, k8sClient, eventRecorder, daemonSet)
+			Expect(err).ToNot(HaveOccurred())
+
+			if args.updConfigsFn != nil {
+				args.updConfigsFn(initialSecret, initialConfigMap)
+				Expect(k8sClient.Update(ctx, initialSecret)).To(Succeed())
+				Expect(k8sClient.Update(ctx, initialConfigMap)).To(Succeed())
+			}
+
+			updated, err := applyDaemonSet(ctx, k8sClient, eventRecorder, daemonSet)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updated).To(Equal(args.expectUpdate), "resource update expectation mismatch")
+		},
+		Entry("When related config specified in volumes did not change it is not updated",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					ds := workloadDaemonSet(namespace)
+					addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "secret", "secret")
+					addConfigMapVolumeToPodSpec(&ds.Spec.Template.Spec, "configmap", "configmap")
+					return ds
+				},
+				updConfigsFn: nil,
+				expectUpdate: false,
+			},
+		),
+		Entry("When related config is changed it is updated",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					ds := workloadDaemonSet(namespace)
+					addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "secret", "secret")
+					addConfigMapVolumeToPodSpec(&ds.Spec.Template.Spec, "configmap", "configmap")
+					return ds
+				},
+				updConfigsFn: func(secret *corev1.Secret, configMap *corev1.ConfigMap) {
+					secret.Data = map[string][]byte{"bar": []byte("bazz")}
+				},
+				expectUpdate: true,
+			},
+		),
+		Entry("When non-existent config is specified it is not updated",
+			applyDaemonSetArguments{
+				desiredFn: func(namespace string) *appsv1.DaemonSet {
+					ds := workloadDaemonSet(namespace)
+					addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "non-existed", "non-existed")
+					return ds
+				},
+				updConfigsFn: nil,
+				expectUpdate: false,
+			},
+		),
+	)
+
+})
+
+type podDisruptionBudgetSupplier func(string) *policyv1.PodDisruptionBudget
+
+type applyPodDisruptionBudgetArguments struct {
+	inputFn        podDisruptionBudgetSupplier
+	existingFn     podDisruptionBudgetSupplier
+	expectModified bool
+}
+
+var _ = Describe("applyPodDisruptionBudget", func() {
+	var namespaceName string
+
+	BeforeEach(func() {
+		By("Setting up a namespace for the test")
+		ns := &corev1.Namespace{}
+		ns.SetGenerateName(namespaceNamePrefix)
+		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+		namespaceName = ns.GetName()
+	})
+
+	AfterEach(func() {
+		testutils.CleanupResources(Default, ctx, cfg, k8sClient, namespaceName,
+			&policyv1.PodDisruptionBudget{},
+		)
+	})
+
+	DescribeTable("Updates pod disrutpion budget when expected",
+		func(args applyPodDisruptionBudgetArguments) {
+			recorder := record.NewFakeRecorder(1000)
+
+			if args.existingFn != nil {
+				existing := args.existingFn(namespaceName)
+				Expect(k8sClient.Create(ctx, existing)).To(Succeed())
+			}
+
+			input := args.inputFn(namespaceName)
+			actualModified, err := applyPodDisruptionBudget(ctx, k8sClient, recorder, input)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(args.expectModified).To(BeEquivalentTo(actualModified), "Resource was modified")
+		},
+		Entry("When it does not exist it is created",
+			applyPodDisruptionBudgetArguments{
+				inputFn:        podDisruptionBudget,
+				existingFn:     nil,
+				expectModified: true,
+			},
+		),
+		Entry("When there is an extra label on the existing pdb it does not update",
+			applyPodDisruptionBudgetArguments{
+				inputFn: podDisruptionBudget,
+				existingFn: func(namespace string) *policyv1.PodDisruptionBudget {
+					pdb := podDisruptionBudget(namespace)
+					pdb.Labels = map[string]string{"bar": "baz"}
+					return pdb
+				},
+				expectModified: false,
+			},
+		),
+		Entry("When there is a missing label on the existing pdb it is updated",
+			applyPodDisruptionBudgetArguments{
+				inputFn: func(namespace string) *policyv1.PodDisruptionBudget {
+					pdb := podDisruptionBudget(namespace)
+					pdb.Labels = map[string]string{"new": "merge"}
+					return pdb
+				},
+				existingFn: func(namespace string) *policyv1.PodDisruptionBudget {
+					pdb := podDisruptionBudget(namespace)
+					pdb.Labels = map[string]string{"bar": "baz"}
+					return pdb
+				},
+				expectModified: true,
+			},
+		),
+		Entry("When there is a mismatch of data it is updated",
+			applyPodDisruptionBudgetArguments{
+				inputFn: func(namespace string) *policyv1.PodDisruptionBudget {
+					pdb := podDisruptionBudget(namespace)
+					minAvailable := intstr.FromInt(3)
+					pdb.Spec.MinAvailable = &minAvailable
+					return pdb
+				},
+				existingFn:     podDisruptionBudget,
+				expectModified: true,
+			},
+		),
+	)
+})
 
 func workloadDeployment(namespace string) *appsv1.Deployment {
 	return &appsv1.Deployment{
@@ -587,313 +902,48 @@ func workloadDeploymentWithDefaultSpecHash(namespace string) *appsv1.Deployment 
 	return w
 }
 
-func TestApplyDaemonSet(t *testing.T) {
-	cl, tearDownFn := setupEnvtest(t)
-	defer tearDownFn(t)
-	namespace := createNamespace(NewWithT(t), context.TODO(), cl)
-
-	tests := []struct {
-		name             string
-		desiredDaemonSet *appsv1.DaemonSet
-		actualDaemonSet  *appsv1.DaemonSet
-
-		expectError       bool
-		expectedUpdate    bool
-		expectedDaemonSet *appsv1.DaemonSet
-	}{
-		{
-			name:              "the daemonset is created because it doesn't exist",
-			desiredDaemonSet:  workloadDaemonSet(namespace),
-			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
-			expectedUpdate:    true,
+func simpleSecret(namespace string, name string) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
 		},
+		Data: map[string][]byte{"foo": []byte("bar")},
+	}
+}
 
-		{
-			name:              "the daemonset already exists and it's up to date",
-			desiredDaemonSet:  workloadDaemonSet(namespace),
-			actualDaemonSet:   workloadDaemonSetWithDefaultSpecHash(namespace),
-			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
+func simpleConfigMap(namespace string, name string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
 		},
+		Data: map[string]string{"foo": "bar"},
+	}
+}
 
-		{
-			name: "the daemonset is updated due to a change in the spec",
-			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet(namespace)
-				w.Spec.Template.Finalizers = []string{"newFinalizer"}
-				return w
-			}(),
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
-			expectedDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet(namespace)
-				w.Annotations["operator.openshift.io/spec-hash"] = "cb44c29fda480ea0b4e7a08dda99db54c46d7ed21a8d9360b6b701864fe7cbbb"
-				w.Spec.Template.Finalizers = []string{"newFinalizer"}
-				return w
-			}(),
-			expectedUpdate: true,
-		},
-
-		{
-			name: "the daemonset is updated due to a change in Labels field",
-			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet(namespace)
-				w.Labels["newLabel"] = "newValue"
-				return w
-			}(),
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
-			expectedDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSetWithDefaultSpecHash(namespace)
-				w.Labels["newLabel"] = "newValue"
-				return w
-			}(),
-			expectedUpdate: true,
-		},
-
-		{
-			name: "the daemonset is updated due to a change in Annotations field",
-			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet(namespace)
-				w.Annotations["newAnnotation"] = "newValue"
-				return w
-			}(),
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
-			expectedDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSetWithDefaultSpecHash(namespace)
-				w.Annotations["newAnnotation"] = "newValue"
-				return w
-			}(),
-			expectedUpdate: true,
+func addSecretVolumeToPodSpec(spec *corev1.PodSpec, secretName string, volumeName string) {
+	volume := corev1.Volume{
+		Name: volumeName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			g := NewWithT(t)
-			eventRecorder := record.NewFakeRecorder(1000)
-			ctx := context.TODO()
-			defer cleanupResources(t, g, ctx, cl, &appsv1.DaemonSetList{})
 
-			if tt.actualDaemonSet != nil {
-				g.Expect(cl.Create(ctx, tt.actualDaemonSet)).To(Succeed())
-			}
+	spec.Volumes = append(spec.Volumes, volume)
+}
 
-			updated, err := applyDaemonSet(ctx, cl, eventRecorder, tt.desiredDaemonSet)
-			if tt.expectError {
-				g.Expect(err).To(HaveOccurred(), "expected error")
-			}
-			if !tt.expectError {
-				g.Expect(err).NotTo(HaveOccurred(), "expected no error")
-			}
-			if tt.expectedUpdate {
-				g.Expect(updated).To(BeTrue(), "expect deployment to be updated")
-			}
-			if !tt.expectedUpdate {
-				g.Expect(updated).To(BeFalse(), "expect deployment not to be updated")
-			}
-
-			updatedDaemonSet := &appsv1.DaemonSet{}
-			g.Expect(cl.Get(ctx, appsclientv1.ObjectKeyFromObject(tt.desiredDaemonSet), updatedDaemonSet)).To(Succeed())
-
-			if !equality.Semantic.DeepDerivative(tt.expectedDaemonSet.Spec, updatedDaemonSet.Spec) {
-				t.Fatalf("Expected DaemonSet: %+v, got %+v", tt.expectedDaemonSet, updatedDaemonSet)
-			}
-			g.Expect(tt.expectedDaemonSet.Annotations[specHashAnnotation]).Should(BeEquivalentTo(updatedDaemonSet.Annotations[specHashAnnotation]))
-		})
-	}
-
-	updateSelectorTests := []struct {
-		name              string
-		actualDaemonSet   *appsv1.DaemonSet
-		desiredDaemonSet  *appsv1.DaemonSet
-		expectedDaemonSet *appsv1.DaemonSet
-
-		errorMsg         string
-		expectError      bool
-		expectedRecreate bool
-	}{
-		{
-			name:            "the daemonset is recreated due to a change in match labels field",
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
-			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet(namespace)
-				w.Spec.Selector = &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"bar": "baz",
-					},
-				}
-				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-				return w
-			}(),
-			expectedDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet(namespace)
-				w.Spec.Selector = &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"bar": "baz",
-					},
-				}
-				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-				w.Annotations[specHashAnnotation] = "4c860db5451a859e104e640b8315da4bb6ece3fb8143344c8fcdf1ba95431dd9"
-				return w
-			}(),
-			expectedRecreate: true,
-		},
-
-		{
-			name:            "resourceapply should report an error in case if resource is malformed",
-			actualDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
-			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet(namespace)
-				w.Spec.Selector = &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"bar": "baz",
-					},
-				}
-				w.Spec.Template.Labels = map[string]string{"fiz": "baz"}
-				return w
-			}(),
-			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
-			errorMsg:          "`selector` does not match template `labels`",
-			expectError:       true,
-		},
-
-		{
-			name: "resourceapply should report an error in case if resource deletion stucked",
-			actualDaemonSet: func() *appsv1.DaemonSet {
-				ds := workloadDaemonSetWithDefaultSpecHash(namespace)
-				ds.Finalizers = []string{"foo.bar/baz"}
-				return ds
-			}(),
-			desiredDaemonSet: func() *appsv1.DaemonSet {
-				w := workloadDaemonSet(namespace)
-				w.Spec.Selector = &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"bar": "baz",
-					},
-				}
-				w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-				return w
-			}(),
-			expectedDaemonSet: workloadDaemonSetWithDefaultSpecHash(namespace),
-			errorMsg:          "object is being deleted: daemonsets.apps \"apiserver\" already exists",
-			expectError:       true,
-		},
-	}
-	for _, tt := range updateSelectorTests {
-		t.Run(tt.name, func(t *testing.T) {
-			g := NewWithT(t)
-			eventRecorder := record.NewFakeRecorder(1000)
-			ctx := context.TODO()
-			defer cleanupResources(t, g, ctx, cl, &appsv1.DaemonSetList{})
-
-			g.Expect(cl.Create(ctx, tt.actualDaemonSet)).To(Succeed())
-			g.Expect(tt.actualDaemonSet.UID).NotTo(BeNil())
-
-			_, err := applyDaemonSet(ctx, cl, eventRecorder, tt.desiredDaemonSet)
-			if tt.expectError {
-				g.Expect(err).To(HaveOccurred(), "expected error")
-				g.Expect(tt.errorMsg).NotTo(BeEmpty())
-				g.Expect(err.Error()).To(ContainSubstring(tt.errorMsg))
-			}
-			if !tt.expectError {
-				g.Expect(err).NotTo(HaveOccurred(), "expected no error")
-			}
-
-			updatedDaemonSet := &appsv1.DaemonSet{}
-			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(tt.desiredDaemonSet)
-			g.Expect(cl.Get(ctx, deploymentObjectKey, updatedDaemonSet)).To(Succeed())
-			if tt.expectedRecreate {
-				g.Expect(tt.actualDaemonSet.UID).ShouldNot(BeEquivalentTo(updatedDaemonSet.UID))
-			}
-			if !tt.expectedRecreate {
-				g.Expect(tt.actualDaemonSet.UID).Should(BeEquivalentTo(updatedDaemonSet.UID))
-			}
-
-			if !equality.Semantic.DeepDerivative(tt.expectedDaemonSet.Spec, updatedDaemonSet.Spec) {
-				t.Fatalf("Expected deployment: %+v, got %+v", tt.expectedDaemonSet, updatedDaemonSet)
-			}
-			g.Expect(tt.expectedDaemonSet.Annotations[specHashAnnotation]).To(BeEquivalentTo(updatedDaemonSet.Annotations[specHashAnnotation]))
-
-			dss := &appsv1.DaemonSetList{}
-			g.Expect(cl.List(ctx, dss)).To(Succeed())
-			g.Expect(len(dss.Items)).To(BeEquivalentTo(1))
-		})
-	}
-
-	updateDependentConfigsTest := []struct {
-		name             string
-		daemonSet        *appsv1.DaemonSet
-		initialSecret    *corev1.Secret
-		initialConfigMap *corev1.ConfigMap
-		updConfigsFunc   func(secret *corev1.Secret, configMap *corev1.ConfigMap)
-		expectedUpdate   bool
-	}{
-		{
-			name:           "should not update if related config specified in volumes did not change",
-			expectedUpdate: false,
-			updConfigsFunc: nil,
-			daemonSet: func() *appsv1.DaemonSet {
-				ds := workloadDaemonSet(namespace)
-				addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "secret", "secret")
-				addConfigMapVolumeToPodSpec(&ds.Spec.Template.Spec, "configmap", "configmap")
-				return ds
-			}(),
-			initialSecret:    simpleSecret(namespace, "secret"),
-			initialConfigMap: simpleConfigMap(namespace, "configmap"),
-		},
-		{
-			name:           "should update if related config changed",
-			expectedUpdate: true,
-			updConfigsFunc: func(secret *corev1.Secret, configMap *corev1.ConfigMap) {
-				secret.Data = map[string][]byte{"bar": []byte("bazz")}
+func addConfigMapVolumeToPodSpec(spec *corev1.PodSpec, cmName string, volumeName string) {
+	volume := corev1.Volume{
+		Name: volumeName,
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: cmName},
 			},
-			daemonSet: func() *appsv1.DaemonSet {
-				ds := workloadDaemonSet(namespace)
-				addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "secret", "secret")
-				addConfigMapVolumeToPodSpec(&ds.Spec.Template.Spec, "configmap", "configmap")
-				return ds
-			}(),
-			initialSecret:    simpleSecret(namespace, "secret"),
-			initialConfigMap: simpleConfigMap(namespace, "configmap"),
-		},
-		{
-			name:           "non existent config should not prevent resourceapply",
-			expectedUpdate: false,
-			updConfigsFunc: nil,
-			daemonSet: func() *appsv1.DaemonSet {
-				ds := workloadDaemonSet(namespace)
-				addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "non-existed", "non-existed")
-				return ds
-			}(),
-			initialSecret:    simpleSecret(namespace, "secret"),
-			initialConfigMap: simpleConfigMap(namespace, "configmap"),
 		},
 	}
-	for _, tt := range updateDependentConfigsTest {
-		t.Run(tt.name, func(t *testing.T) {
-			g := NewWithT(t)
-			eventRecorder := record.NewFakeRecorder(1000)
-			ctx := context.TODO()
-			defer cleanupResources(t, g, ctx, cl, &appsv1.DaemonSetList{})
-			defer cleanupResources(t, g, ctx, cl, &corev1.ConfigMapList{})
-			defer cleanupResources(t, g, ctx, cl, &corev1.SecretList{})
 
-			g.Expect(cl.Create(ctx, tt.initialSecret)).To(Succeed())
-			g.Expect(tt.initialSecret.UID).NotTo(BeNil())
-			g.Expect(cl.Create(ctx, tt.initialConfigMap)).To(Succeed())
-			g.Expect(tt.initialSecret.UID).NotTo(BeNil())
-
-			_, err := applyDaemonSet(ctx, cl, eventRecorder, tt.daemonSet)
-			g.Expect(err).ToNot(HaveOccurred())
-
-			if tt.updConfigsFunc != nil {
-				tt.updConfigsFunc(tt.initialSecret, tt.initialConfigMap)
-				g.Expect(cl.Update(ctx, tt.initialSecret)).To(Succeed())
-				g.Expect(cl.Update(ctx, tt.initialConfigMap)).To(Succeed())
-			}
-
-			updated, err := applyDaemonSet(ctx, cl, eventRecorder, tt.daemonSet)
-			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(updated).To(Equal(tt.expectedUpdate), "resource update expectation mismatch")
-		})
-	}
+	spec.Volumes = append(spec.Volumes, volume)
 }
 
 func workloadDaemonSet(namespace string) *appsv1.DaemonSet {
@@ -939,79 +989,6 @@ func workloadDaemonSetWithDefaultSpecHash(namespace string) *appsv1.DaemonSet {
 	w := workloadDaemonSet(namespace)
 	w.Annotations[specHashAnnotation] = "b9f17f24c21dbab45ba7b59d458142cf6aab160ec03a471272e561a062e57107"
 	return w
-}
-
-func TestApplyPDB(t *testing.T) {
-	cl, tearDownFn := setupEnvtest(t)
-	defer tearDownFn(t)
-	namespace := createNamespace(NewWithT(t), context.TODO(), cl)
-
-	tests := []struct {
-		name     string
-		existing *policyv1.PodDisruptionBudget
-		input    *policyv1.PodDisruptionBudget
-
-		expectedModified bool
-	}{
-		{
-			name:             "create",
-			input:            podDisruptionBudget(namespace),
-			expectedModified: true,
-		},
-		{
-			name: "skip on extra label",
-			existing: func() *policyv1.PodDisruptionBudget {
-				pdb := podDisruptionBudget(namespace)
-				pdb.Labels = map[string]string{"bar": "baz"}
-				return pdb
-			}(),
-			input: podDisruptionBudget(namespace),
-
-			expectedModified: false,
-		},
-		{
-			name: "update on missing label",
-			existing: func() *policyv1.PodDisruptionBudget {
-				pdb := podDisruptionBudget(namespace)
-				pdb.Labels = map[string]string{"bar": "baz"}
-				return pdb
-			}(),
-			input: func() *policyv1.PodDisruptionBudget {
-				pdb := podDisruptionBudget(namespace)
-				pdb.Labels = map[string]string{"new": "merge"}
-				return pdb
-			}(),
-
-			expectedModified: true,
-		},
-		{
-			name:     "update on mismatch data",
-			existing: podDisruptionBudget(namespace),
-			input: func() *policyv1.PodDisruptionBudget {
-				pdb := podDisruptionBudget(namespace)
-				minAvailable := intstr.FromInt(3)
-				pdb.Spec.MinAvailable = &minAvailable
-				return pdb
-			}(),
-
-			expectedModified: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			g := NewWithT(t)
-			recorder := record.NewFakeRecorder(1000)
-			ctx := context.TODO()
-			defer cleanupResources(t, g, ctx, cl, &policyv1.PodDisruptionBudgetList{})
-
-			if tt.existing != nil {
-				g.Expect(cl.Create(context.TODO(), tt.existing)).To(Succeed())
-			}
-			actualModified, err := applyPodDisruptionBudget(context.TODO(), cl, recorder, tt.input)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(tt.expectedModified).To(BeEquivalentTo(actualModified), "Resource was modified")
-		})
-	}
 }
 
 func podDisruptionBudget(namespace string) *policyv1.PodDisruptionBudget {

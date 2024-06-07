@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	. "github.com/onsi/gomega"
 
@@ -85,7 +84,6 @@ func getPlatforms() testPlatformsMap {
 
 func TestGetResources(t *testing.T) {
 	platformsMap := getPlatforms()
-	getResourcesThresholdMs := 30 * time.Millisecond
 
 	t.Log("disabling klog logging")
 	testingutils.TurnOffKlog()
@@ -322,25 +320,6 @@ func TestGetResources(t *testing.T) {
 				assert.NotEqualValues(t, resources, newResources)
 			}
 		})
-
-		if !testing.Short() {
-			t.Run(fmt.Sprintf("Benchmark: %s", tc.name), func(t *testing.T) {
-				operatorConfig := tc.testPlatform.getOperatorConfig()
-				operatorConfig.IsSingleReplica = tc.singleReplica
-				benchResulst := testing.Benchmark(func(b *testing.B) {
-					for i := 0; i < b.N; i++ {
-						_, err := GetResources(operatorConfig)
-						assert.NoError(t, err)
-					}
-				})
-				assert.True(
-					t,
-					getResourcesThresholdMs.Nanoseconds() > benchResulst.NsPerOp(),
-					"Resources rendering took too long, worth to check.",
-				)
-				fmt.Println(benchResulst)
-			})
-		}
 	}
 }
 
