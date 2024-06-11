@@ -205,7 +205,7 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&operatorv1.KubeControllerManager{},
 			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
 			builder.WithPredicates(kcmPredicates())).
-		WatchesRawSource(&source.Channel{Source: watcher.EventStream()}, handler.EnqueueRequestsFromMapFunc(toClusterOperator)).
+		WatchesRawSource(source.Channel(watcher.EventStream(), handler.EnqueueRequestsFromMapFunc(toClusterOperator))).
 		Watches(&corev1.ConfigMap{}, handler.EnqueueRequestsFromMapFunc(toClusterOperator)).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
 

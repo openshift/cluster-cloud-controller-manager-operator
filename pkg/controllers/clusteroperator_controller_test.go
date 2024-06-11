@@ -600,7 +600,7 @@ var _ = Describe("Apply resources should", func() {
 			Eventually(func() bool {
 				err := cl.Delete(context.Background(), co)
 				return err == nil || apierrors.IsNotFound(err)
-			}).Should(BeTrue())
+			}, timeout).Should(BeTrue())
 		}
 		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
 
