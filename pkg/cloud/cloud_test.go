@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/onsi/gomega"
+
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -377,10 +379,21 @@ func checkResourceTolerations(t *testing.T, podSpec corev1.PodSpec) {
 		Operator: corev1.TolerationOpExists,
 		Effect:   corev1.TaintEffectNoSchedule,
 	}
+	noScheduleTaint := corev1.Toleration{
+		Operator: corev1.TolerationOpExists,
+		Effect:   corev1.TaintEffectNoSchedule,
+	}
 
 	tolerations := podSpec.Tolerations
-	assert.Contains(t, tolerations, uninitializedTaint, "PodSpec should tolerate the uninitialized taint")
-	assert.Contains(t, tolerations, notReadyTaint, "PodSpec should tolerate the not-ready taint")
+
+	g := NewWithT(t)
+	g.Expect(tolerations).To(SatisfyAny(
+		SatisfyAll(
+			ContainElement(uninitializedTaint),
+			ContainElement(notReadyTaint),
+		),
+		ContainElement(noScheduleTaint),
+	), "PodSpec must either contain the uninitialized and not-ready tolerations, or tolerate any NoSchedule taint")
 }
 
 func checkHostNetwork(t *testing.T, podSpec corev1.PodSpec) {
