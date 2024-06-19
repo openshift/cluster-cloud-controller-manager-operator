@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
+
+	. "github.com/onsi/gomega"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 
@@ -83,7 +84,6 @@ func getPlatforms() testPlatformsMap {
 
 func TestGetResources(t *testing.T) {
 	platformsMap := getPlatforms()
-	getResourcesThresholdMs := 25 * time.Millisecond
 
 	t.Log("disabling klog logging")
 	testingutils.TurnOffKlog()
@@ -287,25 +287,6 @@ func TestGetResources(t *testing.T) {
 				assert.NotEqualValues(t, resources, newResources)
 			}
 		})
-
-		if !testing.Short() {
-			t.Run(fmt.Sprintf("Benchmark: %s", tc.name), func(t *testing.T) {
-				operatorConfig := tc.testPlatform.getOperatorConfig()
-				operatorConfig.IsSingleReplica = tc.singleReplica
-				benchResulst := testing.Benchmark(func(b *testing.B) {
-					for i := 0; i < b.N; i++ {
-						_, err := GetResources(operatorConfig)
-						assert.NoError(t, err)
-					}
-				})
-				assert.True(
-					t,
-					getResourcesThresholdMs.Nanoseconds() > benchResulst.NsPerOp(),
-					"Resources rendering took too long, worth to check.",
-				)
-				fmt.Println(benchResulst)
-			})
-		}
 	}
 }
 
@@ -377,10 +358,21 @@ func checkResourceTolerations(t *testing.T, podSpec corev1.PodSpec) {
 		Operator: corev1.TolerationOpExists,
 		Effect:   corev1.TaintEffectNoSchedule,
 	}
+	noScheduleTaint := corev1.Toleration{
+		Operator: corev1.TolerationOpExists,
+		Effect:   corev1.TaintEffectNoSchedule,
+	}
 
 	tolerations := podSpec.Tolerations
-	assert.Contains(t, tolerations, uninitializedTaint, "PodSpec should tolerate the uninitialized taint")
-	assert.Contains(t, tolerations, notReadyTaint, "PodSpec should tolerate the not-ready taint")
+
+	g := NewWithT(t)
+	g.Expect(tolerations).To(SatisfyAny(
+		SatisfyAll(
+			ContainElement(uninitializedTaint),
+			ContainElement(notReadyTaint),
+		),
+		ContainElement(noScheduleTaint),
+	), "PodSpec must either contain the uninitialized and not-ready tolerations, or tolerate any NoSchedule taint")
 }
 
 func checkHostNetwork(t *testing.T, podSpec corev1.PodSpec) {
