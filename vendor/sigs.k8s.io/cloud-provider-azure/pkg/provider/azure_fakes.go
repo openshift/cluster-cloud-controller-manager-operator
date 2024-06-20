@@ -19,15 +19,14 @@ package provider
 import (
 	"context"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
-
 	"go.uber.org/mock/gomock"
-
-	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/interfaceclient/mockinterfaceclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/loadbalancerclient/mockloadbalancerclient"
@@ -42,6 +41,8 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient/mockvmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient/mockvmssvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
+	utilsets "sigs.k8s.io/cloud-provider-azure/pkg/util/sets"
 )
 
 // NewTestScaleSet creates a fake ScaleSet for unit test
@@ -96,12 +97,12 @@ func GetTestCloud(ctrl *gomock.Controller) (az *Cloud) {
 			VMType:                                   consts.VMTypeStandard,
 			LoadBalancerBackendPoolConfigurationType: consts.LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration,
 		},
-		nodeZones:                map[string]sets.Set[string]{},
+		nodeZones:                map[string]*utilsets.IgnoreCaseSet{},
 		nodeInformerSynced:       func() bool { return true },
 		nodeResourceGroups:       map[string]string{},
-		unmanagedNodes:           sets.New[string](),
-		excludeLoadBalancerNodes: sets.New[string](),
-		nodePrivateIPs:           map[string]sets.Set[string]{},
+		unmanagedNodes:           utilsets.NewString(),
+		excludeLoadBalancerNodes: utilsets.NewString(),
+		nodePrivateIPs:           map[string]*utilsets.IgnoreCaseSet{},
 		routeCIDRs:               map[string]string{},
 		eventRecorder:            &record.FakeRecorder{},
 		lockMap:                  newLockMap(),
@@ -131,6 +132,14 @@ func GetTestCloud(ctrl *gomock.Controller) (az *Cloud) {
 	az.storageAccountCache, _ = az.newStorageAccountCache()
 
 	az.regionZonesMap = map[string][]string{az.Location: {"1", "2", "3"}}
+
+	{
+		kubeClient := fake.NewSimpleClientset() // FIXME: inject kubeClient
+		informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+		az.serviceLister = informerFactory.Core().V1().Services().Lister()
+		informerFactory.Start(wait.NeverStop)
+		informerFactory.WaitForCacheSync(wait.NeverStop)
+	}
 
 	return az
 }

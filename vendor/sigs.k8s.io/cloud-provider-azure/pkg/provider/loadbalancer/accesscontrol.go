@@ -46,6 +46,7 @@ type AccessControl struct {
 	// immutable pre-compute states.
 	SourceRanges                           []netip.Prefix
 	AllowedIPRanges                        []netip.Prefix
+	InvalidRanges                          []string
 	AllowedServiceTags                     []string
 	securityRuleDestinationPortsByProtocol map[network.SecurityRuleProtocol][]int32
 }
@@ -82,20 +83,17 @@ func NewAccessControl(svc *v1.Service, sg *network.SecurityGroup, opts ...Access
 		logger.Error(err, "Failed to initialize RuleHelper")
 		return nil, err
 	}
-	sourceRanges, err := SourceRanges(svc)
+	sourceRanges, invalidSourceRanges, err := SourceRanges(svc)
 	if err != nil && !options.SkipAnnotationValidation {
 		logger.Error(err, "Failed to parse SourceRange configuration")
-		return nil, err
 	}
-	allowedIPRanges, err := AllowedIPRanges(svc)
+	allowedIPRanges, invalidAllowedIPRanges, err := AllowedIPRanges(svc)
 	if err != nil && !options.SkipAnnotationValidation {
 		logger.Error(err, "Failed to parse AllowedIPRanges configuration")
-		return nil, err
 	}
 	allowedServiceTags, err := AllowedServiceTags(svc)
 	if err != nil && !options.SkipAnnotationValidation {
 		logger.Error(err, "Failed to parse AllowedServiceTags configuration")
-		return nil, err
 	}
 	securityRuleDestinationPortsByProtocol, err := securityRuleDestinationPortsByProtocol(svc)
 	if err != nil {
@@ -114,13 +112,14 @@ func NewAccessControl(svc *v1.Service, sg *network.SecurityGroup, opts ...Access
 		SourceRanges:                           sourceRanges,
 		AllowedIPRanges:                        allowedIPRanges,
 		AllowedServiceTags:                     allowedServiceTags,
+		InvalidRanges:                          append(invalidSourceRanges, invalidAllowedIPRanges...),
 		securityRuleDestinationPortsByProtocol: securityRuleDestinationPortsByProtocol,
 	}, nil
 }
 
 // IsAllowFromInternet returns true if the given service is allowed to be accessed from internet.
 // To be specific,
-// 1. For all types of LB, it returns false if the given service is specified with `service tags` or `not allowed all IP ranges`.
+// 1. For all types of LB, it returns false if the given service is specified with `service tags` or `not allowed all IP ranges`, including invalid IP ranges.
 // 2. For internal LB, it returns true iff the given service is explicitly specified with `allowed all IP ranges`. Refer: https://github.com/kubernetes-sigs/cloud-provider-azure/issues/698
 func (ac *AccessControl) IsAllowFromInternet() bool {
 	if len(ac.AllowedServiceTags) > 0 {
@@ -130,6 +129,9 @@ func (ac *AccessControl) IsAllowFromInternet() bool {
 		return false
 	}
 	if len(ac.AllowedIPRanges) > 0 && !iputil.IsPrefixesAllowAll(ac.AllowedIPRanges) {
+		return false
+	}
+	if len(ac.InvalidRanges) > 0 {
 		return false
 	}
 	if !IsInternal(ac.svc) {
@@ -143,10 +145,11 @@ func (ac *AccessControl) IsAllowFromInternet() bool {
 // By default, NSG allow traffic from the VNet.
 func (ac *AccessControl) DenyAllExceptSourceRanges() bool {
 	var (
-		annotationEnabled    = strings.EqualFold(ac.svc.Annotations[consts.ServiceAnnotationDenyAllExceptLoadBalancerSourceRanges], "true")
-		sourceRangeSpecified = len(ac.SourceRanges) > 0 || len(ac.AllowedIPRanges) > 0
+		annotationEnabled      = strings.EqualFold(ac.svc.Annotations[consts.ServiceAnnotationDenyAllExceptLoadBalancerSourceRanges], "true")
+		sourceRangeSpecified   = len(ac.SourceRanges) > 0 || len(ac.AllowedIPRanges) > 0
+		invalidRangesSpecified = len(ac.InvalidRanges) > 0
 	)
-	return annotationEnabled && sourceRangeSpecified
+	return (annotationEnabled && sourceRangeSpecified) || invalidRangesSpecified
 }
 
 // AllowedIPv4Ranges returns the IPv4 ranges that are allowed to access the LoadBalancer.
@@ -262,21 +265,41 @@ func (ac *AccessControl) PatchSecurityGroup(dstIPv4Addresses, dstIPv6Addresses [
 }
 
 // CleanSecurityGroup removes the given IP addresses from the SecurityGroup.
-func (ac *AccessControl) CleanSecurityGroup(dstIPv4Addresses, dstIPv6Addresses []netip.Addr) {
+func (ac *AccessControl) CleanSecurityGroup(
+	dstIPv4Addresses, dstIPv6Addresses []netip.Addr,
+	retainPortRanges map[network.SecurityRuleProtocol][]int32,
+) error {
 	logger := ac.logger.WithName("CleanSecurityGroup").
 		WithValues("num-dst-ipv4-addresses", len(dstIPv4Addresses)).
 		WithValues("num-dst-ipv6-addresses", len(dstIPv6Addresses))
 	logger.V(10).Info("Start cleaning")
 
 	var (
-		prefixes = fnutil.Map(func(addr netip.Addr) string {
-			return addr.String()
-		}, append(dstIPv4Addresses, dstIPv6Addresses...))
+		ipv4Prefixes = fnutil.Map(func(addr netip.Addr) string { return addr.String() }, dstIPv4Addresses)
+		ipv6Prefixes = fnutil.Map(func(addr netip.Addr) string { return addr.String() }, dstIPv6Addresses)
 	)
 
-	ac.sgHelper.RemoveDestinationPrefixesFromRules(prefixes)
+	protocols := []network.SecurityRuleProtocol{
+		network.SecurityRuleProtocolTCP,
+		network.SecurityRuleProtocolUDP,
+		network.SecurityRuleProtocolAsterisk,
+	}
+
+	for _, protocol := range protocols {
+		retainDstPorts := retainPortRanges[protocol]
+		if err := ac.sgHelper.RemoveDestinationFromRules(protocol, ipv4Prefixes, retainDstPorts); err != nil {
+			logger.Error(err, "Failed to remove IPv4 destination from rules")
+			return err
+		}
+
+		if err := ac.sgHelper.RemoveDestinationFromRules(protocol, ipv6Prefixes, retainDstPorts); err != nil {
+			logger.Error(err, "Failed to remove IPv6 destination from rules")
+			return err
+		}
+	}
 
 	logger.V(10).Info("Completed cleaning")
+	return nil
 }
 
 // SecurityGroup returns the SecurityGroup object with patched rules and indicates if the rules had been changed.

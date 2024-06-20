@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	coreclientv1 "sigs.k8s.io/controller-runtime/pkg/client"
@@ -105,7 +106,7 @@ func applyConfigMap(ctx context.Context, client coreclientv1.Client, recorder re
 		return false, err
 	}
 
-	modified := resourcemerge.BoolPtr(false)
+	modified := ptr.To[bool](false)
 	existingCopy := existing.DeepCopy()
 
 	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, required.ObjectMeta)
@@ -178,7 +179,7 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 		return false, err
 	}
 
-	modified := resourcemerge.BoolPtr(false)
+	modified := ptr.To[bool](false)
 	existingCopy := existing.DeepCopy()
 
 	expectedGeneration := ""
@@ -267,7 +268,7 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 		return false, err
 	}
 
-	modified := resourcemerge.BoolPtr(false)
+	modified := ptr.To[bool](false)
 	existingCopy := existing.DeepCopy()
 
 	expectedGeneration := ""
@@ -347,7 +348,7 @@ func applyPodDisruptionBudget(ctx context.Context, client coreclientv1.Client, r
 		return false, fmt.Errorf("failed to get pdb for update: %v", err)
 	}
 
-	modified := resourcemerge.BoolPtr(false)
+	modified := ptr.To[bool](false)
 	existingCopy := existing.DeepCopy()
 
 	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, required.ObjectMeta)
@@ -387,7 +388,7 @@ func applyRole(ctx context.Context, client coreclientv1.Client, recorder record.
 		return false, fmt.Errorf("failed to get role for update: %v", err)
 	}
 
-	modified := resourcemerge.BoolPtr(false)
+	modified := ptr.To[bool](false)
 	existingCopy := existing.DeepCopy()
 
 	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, required.ObjectMeta)
@@ -425,7 +426,7 @@ func applyClusterRole(ctx context.Context, client coreclientv1.Client, recorder 
 		return false, fmt.Errorf("failed to get clusterrole for update: %v", err)
 	}
 
-	modified := resourcemerge.BoolPtr(false)
+	modified := ptr.To[bool](false)
 	existingCopy := existing.DeepCopy()
 
 	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, required.ObjectMeta)
@@ -464,7 +465,7 @@ func applyRoleBinding(ctx context.Context, client coreclientv1.Client, recorder 
 		return false, fmt.Errorf("failed to get rolebinding for update: %v", err)
 	}
 
-	modified := resourcemerge.BoolPtr(false)
+	modified := ptr.To[bool](false)
 	existingCopy := existing.DeepCopy()
 	requiredCopy := required.DeepCopy()
 
@@ -521,7 +522,7 @@ func applyClusterRoleBinding(ctx context.Context, client coreclientv1.Client, re
 		return false, fmt.Errorf("failed to get clusterrolebinding for update: %v", err)
 	}
 
-	modified := resourcemerge.BoolPtr(false)
+	modified := ptr.To[bool](false)
 	existingCopy := existing.DeepCopy()
 	requiredCopy := required.DeepCopy()
 
