@@ -73,7 +73,6 @@ spec:
               source /etc/kubernetes/apiserver-url.env
             fi
             exec /bin/ibm-cloud-controller-manager \
-            --bind-address=127.0.0.1 \
             --use-service-account-credentials=true \
             --configure-cloud-routes=false \
             --cloud-provider=ibm \
