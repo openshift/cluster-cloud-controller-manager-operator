@@ -22,7 +22,7 @@ This operator is considered stable with unit and end-to-end testing against the 
 | [OpenStack](https://github.com/openshift/cloud-provider-openstack)   | Yes                  | Yes           |
 | [vSphere](https://github.com/openshift/cloud-provider-vsphere)       | Yes                  | Yes           |
 | [IBM](https://github.com/openshift/cloud-provider-ibm)               | Yes                  |               |
-| [Alibaba](https://github.com/openshift/cloud-provider-alibaba-cloud) | Yes                  | Yes           |
+| [Alibaba](https://github.com/openshift/cloud-provider-alibaba-cloud) | Removed              | No            |
 | [Power VS](https://github.com/openshift/cloud-provider-powervs)      | Yes                  |               |
 | [Nutanix](https://github.com/openshift/cloud-provider-nutanix)       | Yes                  | Yes           |
 
