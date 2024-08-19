@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -22,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	coreclientv1 "sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 )
 
@@ -83,6 +85,10 @@ func ApplyResource(ctx context.Context, client coreclientv1.Client, recorder rec
 		return applyRoleBinding(ctx, client, recorder, t)
 	case *rbacv1.ClusterRoleBinding:
 		return applyClusterRoleBinding(ctx, client, recorder, t)
+	case *admissionregistrationv1.ValidatingAdmissionPolicy:
+		return applyValidatingAdmissionPolicy(ctx, client, recorder, t)
+	case *admissionregistrationv1.ValidatingAdmissionPolicyBinding:
+		return applyValidatingAdmissionPolicyBinding(ctx, client, recorder, t)
 	default:
 		return false, fmt.Errorf("unhandled type %T", resource)
 	}
@@ -558,5 +564,89 @@ func applyClusterRoleBinding(ctx context.Context, client coreclientv1.Client, re
 		return false, err
 	}
 	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
+	return true, nil
+}
+
+func applyValidatingAdmissionPolicy(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder,
+	requiredOriginal *admissionregistrationv1.ValidatingAdmissionPolicy) (bool, error) {
+	required := requiredOriginal.DeepCopy()
+
+	existing := &admissionregistrationv1.ValidatingAdmissionPolicy{}
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(requiredOriginal), existing)
+	if apierrors.IsNotFound(err) {
+		required := requiredOriginal.DeepCopy()
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
+			return false, fmt.Errorf("validatingadmissionpolicy creation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
+		return true, nil
+	} else if err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, fmt.Errorf("failed to get validatingadmissionpolicy for update: %v", err)
+	}
+
+	modified := false
+	existingCopy := existing.DeepCopy()
+
+	resourcemerge.EnsureObjectMeta(&modified, &existingCopy.ObjectMeta, required.ObjectMeta)
+	specEquivalent := equality.Semantic.DeepDerivative(required.Spec, existingCopy.Spec)
+	if specEquivalent && !modified {
+		return false, nil
+	}
+	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
+	toWrite := existingCopy // shallow copy so the code reads easier
+	toWrite.Spec = required.Spec
+
+	klog.V(2).Infof("ValidatingAdmissionPolicyConfiguration %q changes: %v", required.GetNamespace()+"/"+required.GetName(), resourceapply.JSONPatchNoError(existing, toWrite))
+
+	if err := client.Update(ctx, existingCopy); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, err
+	}
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
+
+	return true, nil
+}
+
+func applyValidatingAdmissionPolicyBinding(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder,
+	requiredOriginal *admissionregistrationv1.ValidatingAdmissionPolicyBinding) (bool, error) {
+	required := requiredOriginal.DeepCopy()
+
+	existing := &admissionregistrationv1.ValidatingAdmissionPolicyBinding{}
+	err := client.Get(ctx, coreclientv1.ObjectKeyFromObject(requiredOriginal), existing)
+	if apierrors.IsNotFound(err) {
+		required := requiredOriginal.DeepCopy()
+		if err := client.Create(ctx, required); err != nil {
+			recorder.Event(required, corev1.EventTypeWarning, ResourceCreateFailedEvent, err.Error())
+			return false, fmt.Errorf("validatingadmissionpolicybinding creation failed: %v", err)
+		}
+		recorder.Event(required, corev1.EventTypeNormal, ResourceCreateSuccessEvent, "Resource was successfully created")
+		return true, nil
+	} else if err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, fmt.Errorf("failed to get validatingadmissionpolicybinding for update: %v", err)
+	}
+
+	modified := false
+	existingCopy := existing.DeepCopy()
+
+	resourcemerge.EnsureObjectMeta(&modified, &existingCopy.ObjectMeta, required.ObjectMeta)
+	specEquivalent := equality.Semantic.DeepDerivative(required.Spec, existingCopy.Spec)
+	if specEquivalent && !modified {
+		return false, nil
+	}
+	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
+	toWrite := existingCopy // shallow copy so the code reads easier
+	toWrite.Spec = required.Spec
+
+	klog.V(2).Infof("ValidatingAdmissionPolicyBindingConfiguration %q changes: %v", required.GetNamespace()+"/"+required.GetName(), resourceapply.JSONPatchNoError(existing, toWrite))
+
+	if err := client.Update(ctx, existingCopy); err != nil {
+		recorder.Event(required, corev1.EventTypeWarning, ResourceUpdateFailedEvent, err.Error())
+		return false, err
+	}
+	recorder.Event(required, corev1.EventTypeNormal, ResourceUpdateSuccessEvent, "Resource was successfully updated")
+
 	return true, nil
 }
