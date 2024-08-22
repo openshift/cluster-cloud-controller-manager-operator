@@ -35,7 +35,6 @@ import (
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/textlogger"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -77,8 +76,7 @@ func init() {
 }
 
 func main() {
-	textLoggerCfg := textlogger.NewConfig()
-	textLoggerCfg.AddFlags(flag.CommandLine)
+	klog.InitFlags(flag.CommandLine)
 
 	metricsAddr := flag.String(
 		"metrics-bind-address",
@@ -109,7 +107,7 @@ func main() {
 	options.BindLeaderElectionFlags(&leaderElectionConfig, pflag.CommandLine)
 	pflag.Parse()
 
-	ctrl.SetLogger(textlogger.NewLogger(textLoggerCfg).WithName("CCMOperator"))
+	ctrl.SetLogger(klog.NewKlogr().WithName("CCMOperator"))
 
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionDefaults(restConfig, configv1.LeaderElection{
