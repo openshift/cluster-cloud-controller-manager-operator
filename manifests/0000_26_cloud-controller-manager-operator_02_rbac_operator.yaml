@@ -75,6 +75,19 @@ rules:
   - update
   - patch
 
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingadmissionpolicies
+  - validatingadmissionpolicybindings
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+
 # vSphere has a separate node manager that uses the service account kube-system/vsphere-cloud-controller-manager.
 # The operator must have these permissions to then grant them to the vSphere node manager.
 - apiGroups:

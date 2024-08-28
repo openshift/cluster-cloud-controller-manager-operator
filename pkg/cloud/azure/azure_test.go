@@ -90,7 +90,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 			}
 
 			resources := assets.GetRenderedResources()
-			assert.Len(t, resources, 4)
+			assert.Len(t, resources, 6)
 		})
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	configv1 "github.com/openshift/api/config/v1"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -31,6 +32,8 @@ var (
 		{ReferenceObject: &appsv1.DaemonSet{}, EmbedFsPath: "assets/cloud-node-manager-daemonset.yaml"},
 		{ReferenceObject: &rbacv1.ClusterRole{}, EmbedFsPath: "assets/azure-cloud-controller-manager-clusterrole.yaml"},
 		{ReferenceObject: &rbacv1.ClusterRoleBinding{}, EmbedFsPath: "assets/azure-cloud-controller-manager-clusterrolebinding.yaml"},
+		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicy{}, EmbedFsPath: "assets/validating-admission-policy.yaml"},
+		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicyBinding{}, EmbedFsPath: "assets/validating-admission-policy-binding.yaml"},
 	}
 )
 
