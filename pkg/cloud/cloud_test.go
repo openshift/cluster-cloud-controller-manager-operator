@@ -149,24 +149,28 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "Azure resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 5,
+		expectedResourceCount: 7,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
 			"ClusterRole/azure-cloud-controller-manager",
 			"ClusterRoleBinding/cloud-controller-manager:azure-cloud-controller-manager",
+			"ValidatingAdmissionPolicy/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
+			"ValidatingAdmissionPolicyBinding/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
 			"PodDisruptionBudget/azure-cloud-controller-manager",
 		},
 	}, {
 		name:                  "Azure resources returned as expected with single node cluster",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 4,
+		expectedResourceCount: 6,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
 			"ClusterRole/azure-cloud-controller-manager",
 			"ClusterRoleBinding/cloud-controller-manager:azure-cloud-controller-manager",
+			"ValidatingAdmissionPolicy/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
+			"ValidatingAdmissionPolicyBinding/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
 		},
 	}, {
 		name:                  "Azure Stack resources returned as expected",
