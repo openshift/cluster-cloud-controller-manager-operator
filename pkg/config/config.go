@@ -6,9 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"k8s.io/klog/v2"
+
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
-	"k8s.io/klog/v2"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 )
@@ -19,7 +20,6 @@ import (
 // See manifests/0000_26_cloud-controller-manager-operator_01_images.configmap.yaml
 type ImagesReference struct {
 	CloudControllerManagerOperator  string `json:"cloudControllerManagerOperator"`
-	CloudControllerManagerAlibaba   string `json:"cloudControllerManagerAlibaba"`
 	CloudControllerManagerAWS       string `json:"cloudControllerManagerAWS"`
 	CloudControllerManagerAzure     string `json:"cloudControllerManagerAzure"`
 	CloudNodeManagerAzure           string `json:"cloudNodeManagerAzure"`

@@ -1,0 +1,23 @@
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: openshift-cloud-controller-manager-cloud-provider-azure-node-admission
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   [""]
+      apiVersions: ["v1"]
+      operations:  ["UPDATE"]
+      resources:   ["nodes"]
+  validations:
+    # all requests should have a node-name claim, this prevents impersonation of the SA.
+    - expression: "has(request.userInfo.extra) && ('authentication.kubernetes.io/node-name' in request.userInfo.extra)"
+      message: "this user must have a \"authentication.kubernetes.io/node-name\" claim"
+    # all requests should originate from the MCN owner's node
+    - expression: "object.metadata.name == request.userInfo.extra[\"authentication.kubernetes.io/node-name\"][0]"
+      messageExpression: "'updates to Node ' + string(object.metadata.name) + ' may only be effected from the cloud node manager running on the same node'"      
+  matchConditions:
+    # Only check requests from Azure Cloud Node Manager SA, this allows all other SAs with the correct RBAC to modify Nodes.
+    - name: "check-only-machine-config-daemon-requests"
+      expression: "request.userInfo.username == 'system:serviceaccount:openshift-cloud-controller-manager:cloud-node-manager'"

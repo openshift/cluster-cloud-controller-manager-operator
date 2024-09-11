@@ -75,6 +75,19 @@ rules:
   - update
   - patch
 
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingadmissionpolicies
+  - validatingadmissionpolicybindings
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+
 # vSphere has a separate node manager that uses the service account kube-system/vsphere-cloud-controller-manager.
 # The operator must have these permissions to then grant them to the vSphere node manager.
 - apiGroups:
@@ -106,7 +119,6 @@ rules:
   - create
   - patch
 
-# alibaba has a separate node manager that uses the service account kube-system/alibaba-cloud-controller-manager.
 # The operator must have these permissions to then grant them to the alibaba node manager. (note it also uses some of the ones requred by vsphere)
 - apiGroups:
   - ""
@@ -127,7 +139,7 @@ rules:
   - patch
 
 # nutanix has a separate node manager that uses the service account kube-system/nutanix-cloud-controller-manager.
-# The operator must have these permissions to then grant them to the nutanix node manager. (note it also uses some of the ones requred by vsphere and alibaba)
+# The operator must have these permissions to then grant them to the nutanix node manager. (note it also uses some of the ones requred by vsphere)
 - apiGroups:
   - ""
   resources:

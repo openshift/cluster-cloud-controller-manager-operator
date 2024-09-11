@@ -68,7 +68,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 					CloudNodeManagerAzure:          "CloudNodeManagerAzure",
 					CloudControllerManagerOperator: "CloudControllerManagerOperator",
 				},
-				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AlibabaCloudPlatformType},
+				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AzurePlatformType},
 				InfrastructureName: "infra",
 				ClusterProxy: &configv1.Proxy{
 					Status: configv1.ProxyStatus{
@@ -90,7 +90,7 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 			}
 
 			resources := assets.GetRenderedResources()
-			assert.Len(t, resources, 4)
+			assert.Len(t, resources, 6)
 		})
 	}
 }

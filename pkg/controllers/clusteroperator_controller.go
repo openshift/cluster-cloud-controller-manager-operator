@@ -85,11 +85,6 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if infra.Status.PlatformStatus != nil && infra.Status.PlatformStatus.Type == configv1.AlibabaCloudPlatformType {
-		klog.Infof("Alibaba platform type is detected, upgrades are not allowed.")
-		conditionOverrides = append(conditionOverrides, newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionFalse, ReasonPlatformTechPreview, "Alibaba platform is currently tech preview, upgrades are not allowed."))
-	}
-
 	allowedToProvision, err := r.provisioningAllowed(ctx, infra, conditionOverrides)
 	if err != nil {
 		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
