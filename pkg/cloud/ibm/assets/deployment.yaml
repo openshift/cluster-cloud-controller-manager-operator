@@ -87,11 +87,15 @@ spec:
             --tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_AES_128_GCM_SHA256,TLS_CHACHA20_POLY1305_SHA256,TLS_AES_256_GCM_SHA384 \
             --v=2
         livenessProbe:
+          failureThreshold: 3
           httpGet:
+            host: 127.0.0.1
             path: /healthz
             port: 10258
             scheme: HTTPS
           initialDelaySeconds: 300
+          periodSeconds: 10
+          successThreshold: 1
           timeoutSeconds: 160
         ports:
           - containerPort: 10258
