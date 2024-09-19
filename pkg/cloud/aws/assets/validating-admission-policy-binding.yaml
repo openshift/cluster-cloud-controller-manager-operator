@@ -1,0 +1,7 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: openshift-cloud-controller-manager-cloud-provider-aws
+spec:
+  policyName: openshift-cloud-controller-manager-cloud-provider-aws
+  validationActions: ["Deny"]
