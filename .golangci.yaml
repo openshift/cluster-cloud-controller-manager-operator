@@ -1,0 +1,13 @@
+linters:
+  # https://golangci-lint.run/usage/linters/#enabled-by-default-linters
+  enable:
+    # default linters
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # optional linters
+    - goimports
+

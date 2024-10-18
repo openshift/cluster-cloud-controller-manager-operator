@@ -59,7 +59,7 @@ manifests:
 # Run go fmt against code
 .PHONY: fmt
 fmt:
-	hack/goimports.sh
+	go fmt ./...
 
 # Run go vet against code
 .PHONY: vet
@@ -69,7 +69,7 @@ vet:
 # Run golangci-lint against code
 .PHONY: lint
 lint:
-	( GOLANGCI_LINT_CACHE=$(PROJECT_DIR)/.cache $(GOLANGCI_LINT) run --timeout 10m )
+	( GOLANGCI_LINT_CACHE=$(PROJECT_DIR)/.cache $(GOLANGCI_LINT) run --timeout 10m -v)
 
 # Run go mod
 .PHONY: vendor
