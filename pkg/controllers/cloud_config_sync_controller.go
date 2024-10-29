@@ -16,8 +16,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/api/features"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 const (
@@ -32,7 +34,8 @@ const (
 
 type CloudConfigReconciler struct {
 	ClusterOperatorStatusClient
-	Scheme *runtime.Scheme
+	Scheme            *runtime.Scheme
+	FeatureGateAccess featuregates.FeatureGateAccess
 }
 
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -191,11 +194,22 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 	case configv1.AzurePlatformType,
 		configv1.GCPPlatformType,
 		configv1.VSpherePlatformType,
-		configv1.IBMCloudPlatformType,
 		configv1.PowerVSPlatformType,
 		configv1.OpenStackPlatformType,
 		configv1.NutanixPlatformType:
 		return true, nil
+	case configv1.IBMCloudPlatformType:
+		if r.FeatureGateAccess != nil {
+			enabled, err := r.FeatureGateAccess.CurrentFeatureGates()
+			if err != nil {
+				return false, fmt.Errorf("error ensuring feature gate set before syncing cloud config for IBM, %v", err)
+			}
+			if enabled.Enabled(features.FeatureGateDyanmicServiceEndpointIBMCloud) {
+				return true, nil
+			}
+
+		}
+		return false, nil
 	case configv1.AWSPlatformType:
 		// Some of AWS regions might require to sync a cloud-config, in such case reference in infra resource will be presented
 		return infraCloudConfigRef.Name != "", nil
