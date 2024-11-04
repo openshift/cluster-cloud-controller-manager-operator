@@ -64,6 +64,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		network                       *configv1.Network
 		expectedServiceInfraEndpoints []configv1.IBMCloudServiceEndpoint
 		expectedErr                   error
+		complexErr                    bool // for errors that come from diff package and can't be easily checked via mock, if set validate error contains expected err string
 		expectedConfig                string
 	}{
 		{
@@ -100,47 +101,72 @@ func TestCloudConfigTransformer(t *testing.T) {
 			name:   "Unhappy path duplicate override",
 			source: createConfigNoOverrides(),
 			infra: createInfraResource(configv1.IBMCloudPlatformType, []configv1.IBMCloudServiceEndpoint{
-				{Name: configv1.IBMCloudServiceIAM, URL: "https://ibmcloud.iam.override.endpoint.test"},
-				{Name: configv1.IBMCloudServiceIAM, URL: "https://ibmcloud.iam.override.endpoint.test"}}),
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com"},
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com"}}),
 			expectedErr:    fmt.Errorf("error, service endpoint override contained duplicate entries for same name %s", configv1.IBMCloudServiceIAM),
+			expectedConfig: "",
+		},
+		{
+			name:   "Unhappy path override doesnt conform to path rules using unsupported path keyword",
+			source: createConfigNoOverrides(),
+			infra: createInfraResource(configv1.IBMCloudPlatformType, []configv1.IBMCloudServiceEndpoint{
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com/something/v1"}}),
+			expectedErr:    fmt.Errorf("error invalid path present in URI, /something/v1 was provided"),
+			expectedConfig: "",
+		},
+		{
+			name:   "Unhappy path override doesnt conform to path rules using only API path keyword with no versioning",
+			source: createConfigNoOverrides(),
+			infra: createInfraResource(configv1.IBMCloudPlatformType, []configv1.IBMCloudServiceEndpoint{
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com/api"}}),
+			expectedErr:    fmt.Errorf("error invalid path present in URI, /api was provided"),
+			expectedConfig: "",
+		},
+		{
+			name:   "Unhappy path override is a DNE endpoint",
+			source: createConfigNoOverrides(),
+			infra: createInfraResource(configv1.IBMCloudPlatformType, []configv1.IBMCloudServiceEndpoint{
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://fakeendpoint.dne.cloud.ibm.com/api"}}),
+			complexErr:     true,
+			expectedErr:    fmt.Errorf("error validating host exists, with error: lookup fakeendpoint.dne.cloud.ibm.com: no such host"),
 			expectedConfig: "",
 		},
 		{
 			name:   "Happy path single IAM override",
 			source: createConfigNoOverrides(),
 			infra: createInfraResource(configv1.IBMCloudPlatformType, []configv1.IBMCloudServiceEndpoint{
-				{Name: configv1.IBMCloudServiceIAM, URL: "https://ibmcloud.iam.override.endpoint.test"}}),
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com"}}),
 			expectedErr: nil,
 			expectedServiceInfraEndpoints: []configv1.IBMCloudServiceEndpoint{
-				{Name: configv1.IBMCloudServiceIAM, URL: "https://ibmcloud.iam.override.endpoint.test"}},
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com"}},
 			expectedConfig: createConfigSingleIAMOverrides(),
 		},
 		{
 			name:   "Happy path multi IAM override",
 			source: createConfigNoOverrides(),
 			infra: createInfraResource(configv1.IBMCloudPlatformType, []configv1.IBMCloudServiceEndpoint{
-				{Name: configv1.IBMCloudServiceIAM, URL: "https://ibmcloud.iam.override.endpoint.test"},
-				{Name: configv1.IBMCloudServiceVPC, URL: "https://ibmcloud.vpc.override.endpoint.test"},
-				{Name: configv1.IBMCloudServiceResourceManager, URL: "https://ibmcloud.resource-manager.override.endpoint.test"}}),
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com"},
+				{Name: configv1.IBMCloudServiceVPC, URL: "https://us-south.private.iaas.cloud.ibm.com/v4"},
+				{Name: configv1.IBMCloudServiceResourceManager, URL: "https://private.iam.cloud.ibm.com/v99"}}),
 			expectedErr: nil,
 			expectedServiceInfraEndpoints: []configv1.IBMCloudServiceEndpoint{
-				{Name: configv1.IBMCloudServiceIAM, URL: "https://ibmcloud.iam.override.endpoint.test"},
-				{Name: configv1.IBMCloudServiceVPC, URL: "https://ibmcloud.vpc.override.endpoint.test"},
-				{Name: configv1.IBMCloudServiceResourceManager, URL: "https://ibmcloud.resource-manager.override.endpoint.test"}},
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com"},
+				{Name: configv1.IBMCloudServiceVPC, URL: "https://us-south.private.iaas.cloud.ibm.com/v4"},
+				{Name: configv1.IBMCloudServiceResourceManager, URL: "https://private.iam.cloud.ibm.com/v99"}},
 			expectedConfig: createConfigAllOverrides(),
 		},
 		{
 			name:   "Happy path multi IAM override, previous overrides were present",
 			source: createConfigAllOverrides(),
 			infra: createInfraResource(configv1.IBMCloudPlatformType, []configv1.IBMCloudServiceEndpoint{
-				{Name: configv1.IBMCloudServiceIAM, URL: "https://ibmcloud.iam.override.endpoint.test/v1"},
-				{Name: configv1.IBMCloudServiceVPC, URL: "https://ibmcloud.vpc.override.endpoint.test/v1"},
-				{Name: configv1.IBMCloudServiceResourceManager, URL: "https://ibmcloud.resource-manager.override.endpoint.test/v1"}}),
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com/v1"},
+				{Name: configv1.IBMCloudServiceVPC, URL: "https://us-south.private.iaas.cloud.ibm.com/v4"},
+				{Name: configv1.IBMCloudServiceResourceManager, URL: "https://private.iam.cloud.ibm.com/v99"}}),
 			expectedErr: nil,
 			expectedServiceInfraEndpoints: []configv1.IBMCloudServiceEndpoint{
-				{Name: configv1.IBMCloudServiceIAM, URL: "https://ibmcloud.iam.override.endpoint.test/v1"},
-				{Name: configv1.IBMCloudServiceVPC, URL: "https://ibmcloud.vpc.override.endpoint.test/v1"},
-				{Name: configv1.IBMCloudServiceResourceManager, URL: "https://ibmcloud.resource-manager.override.endpoint.test/v1"}},
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com/v1"},
+				{Name: configv1.IBMCloudServiceVPC, URL: "https://us-south.private.iaas.cloud.ibm.com/v4"},
+				{Name: configv1.IBMCloudServiceResourceManager, URL: "https://private.iam.cloud.ibm.com/v99"}},
 			expectedConfig: createConfigAllOverridesAlternate(),
 		},
 		{
@@ -151,12 +177,27 @@ func TestCloudConfigTransformer(t *testing.T) {
 			expectedServiceInfraEndpoints: []configv1.IBMCloudServiceEndpoint{},
 			expectedConfig:                createConfigNoOverrides(),
 		},
+		{
+			name:   "Happy path single IAM override with diff path supporting /api",
+			source: createConfigNoOverrides(),
+			infra: createInfraResource(configv1.IBMCloudPlatformType, []configv1.IBMCloudServiceEndpoint{
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com/api/v2"}}),
+			expectedErr: nil,
+			expectedServiceInfraEndpoints: []configv1.IBMCloudServiceEndpoint{
+				{Name: configv1.IBMCloudServiceIAM, URL: "https://private.iam.cloud.ibm.com/api/v2"}},
+			expectedConfig: createConfigSingleIAMOverridesDiffAPIEndpoint(),
+		},
 	}
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
 			actualConfig, err := CloudConfigTransformer(tc.source, tc.infra, nil)
-			assert.Equal(t, tc.expectedErr, err)
+			if tc.complexErr {
+				// contains expected err string
+				assert.Contains(t, err.Error(), tc.expectedErr.Error())
+			} else {
+				assert.Equal(t, tc.expectedErr, err)
+			}
 			assert.Equal(t, tc.expectedConfig, actualConfig)
 			assert.Equal(t, tc.expectedServiceInfraEndpoints, tc.infra.Status.PlatformStatus.IBMCloud.ServiceEndpoints)
 		})
@@ -179,9 +220,9 @@ g2ResourceGroupName      = ocp4-8pxks-rg
 g2VpcName                = ocp4-8pxks-vpc
 g2workerServiceAccountID = 1e1f75646aef447814a6d907cc83fb3c
 g2VpcSubnetNames         = ocp4-8pxks-subnet-compute-us-east-1,ocp4-8pxks-subnet-compute-us-east-2,ocp4-8pxks-subnet-compute-us-east-3,ocp4-8pxks-subnet-control-plane-us-east-1,ocp4-8pxks-subnet-control-plane-us-east-2,ocp4-8pxks-subnet-control-plane-us-east-3
-iamEndpointOverride      = https://ibmcloud.iam.override.endpoint.test
-g2EndpointOverride       = https://ibmcloud.vpc.override.endpoint.test
-rmEndpointOverride       = https://ibmcloud.resource-manager.override.endpoint.test
+iamEndpointOverride      = https://private.iam.cloud.ibm.com
+g2EndpointOverride       = https://us-south.private.iaas.cloud.ibm.com/v4
+rmEndpointOverride       = https://private.iam.cloud.ibm.com/v99
 `
 
 const multiOverrideAlternate = `[global]
@@ -200,9 +241,9 @@ g2ResourceGroupName      = ocp4-8pxks-rg
 g2VpcName                = ocp4-8pxks-vpc
 g2workerServiceAccountID = 1e1f75646aef447814a6d907cc83fb3c
 g2VpcSubnetNames         = ocp4-8pxks-subnet-compute-us-east-1,ocp4-8pxks-subnet-compute-us-east-2,ocp4-8pxks-subnet-compute-us-east-3,ocp4-8pxks-subnet-control-plane-us-east-1,ocp4-8pxks-subnet-control-plane-us-east-2,ocp4-8pxks-subnet-control-plane-us-east-3
-iamEndpointOverride      = https://ibmcloud.iam.override.endpoint.test/v1
-g2EndpointOverride       = https://ibmcloud.vpc.override.endpoint.test/v1
-rmEndpointOverride       = https://ibmcloud.resource-manager.override.endpoint.test/v1
+iamEndpointOverride      = https://private.iam.cloud.ibm.com/v1
+g2EndpointOverride       = https://us-south.private.iaas.cloud.ibm.com/v4
+rmEndpointOverride       = https://private.iam.cloud.ibm.com/v99
 `
 
 const singleOverride = `[global]
@@ -221,7 +262,7 @@ g2ResourceGroupName      = ocp4-8pxks-rg
 g2VpcName                = ocp4-8pxks-vpc
 g2workerServiceAccountID = 1e1f75646aef447814a6d907cc83fb3c
 g2VpcSubnetNames         = ocp4-8pxks-subnet-compute-us-east-1,ocp4-8pxks-subnet-compute-us-east-2,ocp4-8pxks-subnet-compute-us-east-3,ocp4-8pxks-subnet-control-plane-us-east-1,ocp4-8pxks-subnet-control-plane-us-east-2,ocp4-8pxks-subnet-control-plane-us-east-3
-iamEndpointOverride      = https://ibmcloud.iam.override.endpoint.test
+iamEndpointOverride      = https://private.iam.cloud.ibm.com
 `
 
 const noOverride = `[global]
@@ -242,6 +283,25 @@ g2workerServiceAccountID = 1e1f75646aef447814a6d907cc83fb3c
 g2VpcSubnetNames         = ocp4-8pxks-subnet-compute-us-east-1,ocp4-8pxks-subnet-compute-us-east-2,ocp4-8pxks-subnet-compute-us-east-3,ocp4-8pxks-subnet-control-plane-us-east-1,ocp4-8pxks-subnet-control-plane-us-east-2,ocp4-8pxks-subnet-control-plane-us-east-3
 `
 
+const singleOverrideDiffAPIEndpoint = `[global]
+version = 1.1.0
+
+[kubernetes]
+config-file = cf
+
+[provider]
+accountID                = 1e1f75646aef447814a6d907cc83fb3c
+clusterID                = ocp4-8pxks
+cluster-default-provider = g2
+region                   = us-east
+g2Credentials            = /etc/vpc/ibmcloud_api_key
+g2ResourceGroupName      = ocp4-8pxks-rg
+g2VpcName                = ocp4-8pxks-vpc
+g2workerServiceAccountID = 1e1f75646aef447814a6d907cc83fb3c
+g2VpcSubnetNames         = ocp4-8pxks-subnet-compute-us-east-1,ocp4-8pxks-subnet-compute-us-east-2,ocp4-8pxks-subnet-compute-us-east-3,ocp4-8pxks-subnet-control-plane-us-east-1,ocp4-8pxks-subnet-control-plane-us-east-2,ocp4-8pxks-subnet-control-plane-us-east-3
+iamEndpointOverride      = https://private.iam.cloud.ibm.com/api/v2
+`
+
 func createConfigAllOverrides() string {
 	return multiOverride
 }
@@ -256,6 +316,10 @@ func createConfigSingleIAMOverrides() string {
 
 func createConfigNoOverrides() string {
 	return noOverride
+}
+
+func createConfigSingleIAMOverridesDiffAPIEndpoint() string {
+	return singleOverrideDiffAPIEndpoint
 }
 
 func createInfraResource(platform configv1.PlatformType, serviceEndpoints []configv1.IBMCloudServiceEndpoint) *configv1.Infrastructure {

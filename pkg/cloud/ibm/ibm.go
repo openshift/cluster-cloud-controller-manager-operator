@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 
@@ -175,15 +176,21 @@ func validateOverrides(overrides []configv1.IBMCloudServiceEndpoint) error {
 	return nil
 }
 
-// validate URL is not malformed and using https
+// validate URL is not malformed, host exists, and is using https as scheme
 func validateURL(uri string) error {
 	httpsScheme := "https"
 	// regular expression for the final segment of URL path matching api versioning of the resource
-	versionPath := regexp.MustCompile(`(/v\d+[/]{0,9})$`)
+	versionPath := regexp.MustCompile(`(^\/(api\/)?v\d+[/]{0,9})$`)
 
 	parsedURL, err := url.Parse(uri)
 	if err != nil {
 		return err
+	}
+
+	// validate the host exists
+	_, err = net.LookupIP(parsedURL.Host)
+	if err != nil {
+		return fmt.Errorf("error validating host exists, with error: %w", err)
 	}
 
 	// ensure scheme is https
@@ -196,9 +203,9 @@ func validateURL(uri string) error {
 		return fmt.Errorf("empty hostname provided, it cannot be empty")
 	}
 
-	// ensure that the resource path is either empty ('/') or only contains an API version denoted ('/v') followed by number
+	// ensure that the resource path is either empty ('/') or follows pattern of /api/v1 or /v1
 	if r := parsedURL.RequestURI(); r != "/" && !versionPath.MatchString(r) {
-		return fmt.Errorf("no path or request parameters can be provided, %q was provided", r)
+		return fmt.Errorf("error invalid path present in URI, %s was provided", r)
 	}
 
 	return nil
