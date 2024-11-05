@@ -2,8 +2,6 @@ module github.com/openshift/cluster-cloud-controller-manager-operator
 
 go 1.22.5
 
-toolchain go1.22.2
-
 require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/go-logr/logr v1.4.2
