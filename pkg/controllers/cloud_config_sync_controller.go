@@ -251,6 +251,7 @@ func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	build := ctrl.NewControllerManagedBy(mgr).
+		Named("CloudConfigSyncController").
 		For(
 			&corev1.ConfigMap{},
 			builder.WithPredicates(

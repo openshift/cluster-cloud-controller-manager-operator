@@ -284,6 +284,7 @@ func (r *TrustedCABundleReconciler) mergeCABundles(additionalData, systemData []
 // SetupWithManager sets up the controller with the Manager.
 func (r *TrustedCABundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	build := ctrl.NewControllerManagedBy(mgr).
+		Named("TrustedCABundleController").
 		For(
 			&corev1.ConfigMap{},
 			builder.WithPredicates(

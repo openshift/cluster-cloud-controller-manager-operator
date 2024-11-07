@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -107,7 +108,11 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		mgr, err := manager.New(cfg, manager.Options{
 			Metrics: metricsserver.Options{
 				BindAddress: "0",
-			}})
+			},
+			Controller: config.Controller{
+				SkipNameValidation: ptr.To(true),
+			},
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler = &TrustedCABundleReconciler{
