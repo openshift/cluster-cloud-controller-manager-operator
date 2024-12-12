@@ -102,6 +102,9 @@ func (f *File) lint(rules []Rule, config Config, failures chan Failure) {
 	disabledIntervals := f.disabledIntervals(rules, mustSpecifyDisableReason, failures)
 	for _, currentRule := range rules {
 		ruleConfig := rulesConfig[currentRule.Name()]
+		if ruleConfig.MustExclude(f.Name) {
+			continue
+		}
 		currentFailures := currentRule.Apply(f, ruleConfig.Arguments)
 		for idx, failure := range currentFailures {
 			if failure.RuleName == "" {
@@ -185,7 +188,7 @@ func (f *File) disabledIntervals(rules []Rule, mustSpecifyDisableReason bool, fa
 		enabledDisabledRulesMap[name] = existing
 	}
 
-	handleRules := func(filename, modifier string, isEnabled bool, line int, ruleNames []string) []DisabledInterval {
+	handleRules := func(_, modifier string, isEnabled bool, line int, ruleNames []string) []DisabledInterval {
 		var result []DisabledInterval
 		for _, name := range ruleNames {
 			if modifier == "line" {
