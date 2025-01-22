@@ -36,6 +36,8 @@ var (
 		{ReferenceObject: &rbacv1.ClusterRoleBinding{}, EmbedFsPath: "assets/azure-cloud-controller-manager-clusterrolebinding.yaml"},
 		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicy{}, EmbedFsPath: "assets/validating-admission-policy.yaml"},
 		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicyBinding{}, EmbedFsPath: "assets/validating-admission-policy-binding.yaml"},
+		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicyBinding{}, EmbedFsPath: "assets/validating-admission-service-annotation-policy-binding.yaml"},
+		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicy{}, EmbedFsPath: "assets/validating-admission-service-annotation-policy.yaml"},
 	}
 )
 
