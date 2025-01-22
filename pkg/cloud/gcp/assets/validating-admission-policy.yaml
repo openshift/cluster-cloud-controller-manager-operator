@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: network-tier-annotation-validation-policy
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["services"]
+  variables:
+    - name: hasNetworkTier
+      expression: has(object.metadata.annotations) && 'cloud.google.com/network-tier' in object.metadata.annotations
+    - name: networkTierValue
+      expression: object.metadata.?annotations['cloud.google.com/network-tier'].orValue("")
+    - name: hasOldNetworkTier
+      expression: oldObject != null && oldObject.metadata.?annotations != null && 'cloud.google.com/network-tier' in oldObject.metadata.annotations
+    - name: oldNetworkTierValue
+      expression: oldObject.metadata.?annotations['cloud.google.com/network-tier'].orValue("")
+    - name: valueHasChanged
+      expression: variables.hasNetworkTier && (!variables.hasOldNetworkTier || variables.oldNetworkTierValue != variables.networkTierValue)
+  validations:
+    - expression: |
+        !variables.valueHasChanged || variables.networkTierValue in ['Standard', 'Premium']
+      message: "The annotation 'cloud.google.com/network-tier', if specified, must be either 'Standard' or 'Premium'."

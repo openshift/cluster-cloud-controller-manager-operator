@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/asaskevich/govalidator"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,6 +23,8 @@ var (
 		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/cloud-controller-manager.yaml"},
 		{ReferenceObject: &rbacv1.ClusterRole{}, EmbedFsPath: "assets/gcp-cloud-controller-manager-clusterrole.yaml"},
 		{ReferenceObject: &rbacv1.ClusterRoleBinding{}, EmbedFsPath: "assets/gcp-cloud-controller-manager-clusterrolebinding.yaml"},
+		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicyBinding{}, EmbedFsPath: "assets/validating-admission-policy-binding.yaml"},
+		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicy{}, EmbedFsPath: "assets/validating-admission-policy.yaml"},
 	}
 )
 
