@@ -54,17 +54,6 @@ spec:
             - --cloud-config-file-path=/tmp/cloud-config/cloud.conf
             - --output-file-path=/tmp/merged-cloud-config/cloud.conf
             - --creds-path=/etc/azure/credentials
-          env:
-            - name: AZURE_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: azure-cloud-credentials
-                  key: azure_client_id
-            - name: AZURE_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: azure-cloud-credentials
-                  key: azure_client_secret
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: config-accm
