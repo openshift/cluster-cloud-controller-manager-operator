@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	clocktesting "k8s.io/utils/clock/testing"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,6 +39,7 @@ var _ = Describe("Cluster Operator status controller", func() {
 		operatorController = &CloudOperatorReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:           cl,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				ManagedNamespace: defaultManagementNamespace,
 				Recorder:         record.NewFakeRecorder(32),
 			},
@@ -258,6 +260,7 @@ var _ = Describe("Apply resources should", func() {
 		recorder.IncludeObject = true
 		reconciler = &CloudOperatorReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Clock:    clocktesting.NewFakePassiveClock(time.Now()),
 				Client:   cl,
 				Recorder: recorder,
 			},

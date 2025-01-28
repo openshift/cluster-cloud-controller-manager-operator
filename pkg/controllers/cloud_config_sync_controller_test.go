@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -12,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	clocktesting "k8s.io/utils/clock/testing"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -202,6 +204,7 @@ var _ = Describe("Cloud config sync controller", func() {
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:           cl,
 				Recorder:         rec,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				ManagedNamespace: targetNamespaceName,
 			},
 			Scheme: scheme.Scheme,
@@ -401,6 +404,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 	BeforeEach(func() {
 		reconciler = &CloudConfigReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				Client:           cl,
 				ManagedNamespace: targetNamespaceName,
 			},
