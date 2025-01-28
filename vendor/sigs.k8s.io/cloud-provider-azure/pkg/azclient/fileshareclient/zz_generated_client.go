@@ -26,6 +26,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing"
 	armstorage "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/metrics"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/utils"
 )
 
@@ -55,15 +56,16 @@ func New(subscriptionID string, credential azcore.TokenCredential, options *arm.
 const GetOperationName = "FileSharesClient.Get"
 
 // Get gets the FileShare
-func (client *Client) Get(ctx context.Context, resourceGroupName string, parentResourceName string, resourceName string) (result *armstorage.FileShare, rerr error) {
-
-	ctx = utils.ContextWithClientName(ctx, "FileSharesClient")
-	ctx = utils.ContextWithRequestMethod(ctx, "Get")
-	ctx = utils.ContextWithResourceGroupName(ctx, resourceGroupName)
-	ctx = utils.ContextWithSubscriptionID(ctx, client.subscriptionID)
+func (client *Client) Get(ctx context.Context, resourceGroupName string, accountName string, fileshareName string, expand *string) (result *armstorage.FileShare, err error) {
+	var ops *armstorage.FileSharesClientGetOptions
+	if expand != nil {
+		ops = &armstorage.FileSharesClientGetOptions{Expand: expand}
+	}
+	metricsCtx := metrics.BeginARMRequest(client.subscriptionID, resourceGroupName, "FileShare", "get")
+	defer func() { metricsCtx.Observe(ctx, err) }()
 	ctx, endSpan := runtime.StartSpan(ctx, GetOperationName, client.tracer, nil)
-	defer endSpan(rerr)
-	resp, err := client.FileSharesClient.Get(ctx, resourceGroupName, parentResourceName, resourceName, nil)
+	defer endSpan(err)
+	resp, err := client.FileSharesClient.Get(ctx, resourceGroupName, accountName, fileshareName, ops)
 	if err != nil {
 		return nil, err
 	}
