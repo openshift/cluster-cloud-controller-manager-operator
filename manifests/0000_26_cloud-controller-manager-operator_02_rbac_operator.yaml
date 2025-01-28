@@ -275,6 +275,35 @@ rules:
       - get
       - list
       - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-cloud-controller-manager
+  namespace: kube-system
+  annotations:
+    capability.openshift.io/name: CloudControllerManager
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+rules:
+  # Azure needs these permissions, so to be able to install them, the operator needs them too.
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    resourceNames:
+      - aks-managed-resource-locker
+    verbs:
+      - get
+      - list
+      - update
+  # Create cannot be restricted by resource name
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -345,6 +374,25 @@ metadata:
 roleRef:
   kind: ClusterRole
   name: admin
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    namespace: openshift-cloud-controller-manager-operator
+    name: cluster-cloud-controller-manager
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-cloud-controller-manager
+  namespace: kube-system
+  annotations:
+    capability.openshift.io/name: CloudControllerManager
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+roleRef:
+  kind: Role
+  name: cluster-cloud-controller-manager
   apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount

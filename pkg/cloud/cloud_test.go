@@ -149,10 +149,12 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "Azure resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 7,
+		expectedResourceCount: 9,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
+			"Role/azure-cloud-provider",
+			"RoleBinding/azure-cloud-provider:azure-cloud-provider",
 			"ClusterRole/azure-cloud-controller-manager",
 			"ClusterRoleBinding/cloud-controller-manager:azure-cloud-controller-manager",
 			"ValidatingAdmissionPolicy/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
@@ -162,11 +164,13 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "Azure resources returned as expected with single node cluster",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 6,
+		expectedResourceCount: 8,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
+			"Role/azure-cloud-provider",
+			"RoleBinding/azure-cloud-provider:azure-cloud-provider",
 			"ClusterRole/azure-cloud-controller-manager",
 			"ClusterRoleBinding/cloud-controller-manager:azure-cloud-controller-manager",
 			"ValidatingAdmissionPolicy/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
