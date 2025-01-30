@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	azureconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -139,7 +139,7 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		return "", fmt.Errorf("invalid platform, expected CloudName to be %s", configv1.AzurePublicCloud)
 	}
 
-	var cfg azure.Config
+	var cfg azureconfig.Config
 	if err := json.Unmarshal([]byte(source), &cfg); err != nil {
 		return "", fmt.Errorf("failed to unmarshal the cloud.conf: %w", err)
 	}

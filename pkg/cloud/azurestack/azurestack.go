@@ -9,7 +9,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	azureconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
@@ -106,7 +106,7 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		return "", fmt.Errorf("invalid platform, expected CloudName to be %s", configv1.AzureStackCloud)
 	}
 
-	var cfg azure.Config
+	var cfg azureconfig.Config
 	if err := json.Unmarshal([]byte(source), &cfg); err != nil {
 		return "", fmt.Errorf("failed to unmarshal the cloud.conf: %w", err)
 	}
