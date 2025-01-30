@@ -39,7 +39,7 @@ func GetCloudConfigTransformer(platformStatus *configv1.PlatformStatus) (cloudCo
 		// want to handle this differently in the caller.
 		// FIXME: We need to implement a transformer for this. Currently we're
 		// relying on CCO to do the heavy lifting for us.
-		return nil, true, nil
+		return aws.CloudConfigTransformer, true, nil
 	case configv1.AzurePlatformType:
 		// We intentionally return nil rather than NoOpTransformer since we
 		// want to handle this differently in the caller.
