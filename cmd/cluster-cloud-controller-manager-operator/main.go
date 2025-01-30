@@ -37,6 +37,7 @@ import (
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -47,6 +48,7 @@ import (
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
+	rbacv1 "k8s.io/api/rbac/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
@@ -65,6 +67,7 @@ var (
 
 const (
 	defaultImagesLocation = "/etc/cloud-controller-manager-config/images.json"
+	kubeSystemNamespace   = "kube-system"
 )
 
 func init() {
@@ -126,6 +129,21 @@ func main() {
 			BindAddress: *metricsAddr,
 		},
 		Cache: cache.Options{
+			// For roles/rolebindings specifically, we need to also watch kube-system.
+			ByObject: map[client.Object]cache.ByObject{
+				&rbacv1.Role{}: {
+					Namespaces: map[string]cache.Config{
+						kubeSystemNamespace: {},
+						*managedNamespace:   {},
+					},
+				},
+				&rbacv1.RoleBinding{}: {
+					Namespaces: map[string]cache.Config{
+						kubeSystemNamespace: {},
+						*managedNamespace:   {},
+					},
+				},
+			},
 			SyncPeriod: &syncPeriod,
 			DefaultNamespaces: map[string]cache.Config{
 				*managedNamespace: {},

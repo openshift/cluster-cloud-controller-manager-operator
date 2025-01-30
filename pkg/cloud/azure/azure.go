@@ -30,6 +30,8 @@ var (
 	templates = []common.TemplateSource{
 		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/cloud-controller-manager-deployment.yaml"},
 		{ReferenceObject: &appsv1.DaemonSet{}, EmbedFsPath: "assets/cloud-node-manager-daemonset.yaml"},
+		{ReferenceObject: &rbacv1.Role{}, EmbedFsPath: "assets/azure-cloud-provider-role.yaml"},
+		{ReferenceObject: &rbacv1.RoleBinding{}, EmbedFsPath: "assets/azure-cloud-provider-rolebinding.yaml"},
 		{ReferenceObject: &rbacv1.ClusterRole{}, EmbedFsPath: "assets/azure-cloud-controller-manager-clusterrole.yaml"},
 		{ReferenceObject: &rbacv1.ClusterRoleBinding{}, EmbedFsPath: "assets/azure-cloud-controller-manager-clusterrolebinding.yaml"},
 		{ReferenceObject: &admissionregistrationv1.ValidatingAdmissionPolicy{}, EmbedFsPath: "assets/validating-admission-policy.yaml"},
