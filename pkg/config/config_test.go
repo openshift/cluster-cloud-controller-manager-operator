@@ -217,7 +217,7 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		featureGates: featuregates.NewHardcodedFeatureGateAccess(
-			[]configv1.FeatureGateName{"CloudDualStackNodeIPs", "ChocobombVanilla", "ChocobombStrawberry"},
+			[]configv1.FeatureGateName{"ChocobombVanilla", "ChocobombStrawberry"},
 			[]configv1.FeatureGateName{"ChocobombBlueberry", "ChocobombBanana"},
 		),
 		expectConfig: OperatorConfig{
@@ -229,7 +229,7 @@ func TestComposeConfig(t *testing.T) {
 			// white-listed features that are allowed to be used by cloud providers. Anything that
 			// is not defined there won't be passed to the cloud provider.
 			// For more details look into k8s.io/controller-manager/pkg/features
-			FeatureGates: "CloudDualStackNodeIPs=true",
+			FeatureGates: "",
 		},
 	}, {
 		name:        "Empty infrastructure should return error",

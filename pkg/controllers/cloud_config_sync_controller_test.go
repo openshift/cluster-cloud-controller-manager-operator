@@ -81,43 +81,57 @@ func makeInfraStatus(platform configv1.PlatformType) configv1.InfrastructureStat
 	}
 }
 
-func makeInfraCloudConfig() *corev1.ConfigMap {
+func makeInfraCloudConfig(platform configv1.PlatformType) *corev1.ConfigMap {
+	defaultConfig := `[Global]
+`
+
+	if platform == configv1.AzurePlatformType {
+		defaultConfig = defaultAzureConfig
+	}
+
 	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 		Name:      infraCloudConfName,
 		Namespace: OpenshiftConfigNamespace,
-	}, Data: map[string]string{infraCloudConfKey: defaultAzureConfig}}
+	}, Data: map[string]string{infraCloudConfKey: defaultConfig}}
 }
 
-func makeManagedCloudConfig() *corev1.ConfigMap {
+func makeManagedCloudConfig(platform configv1.PlatformType) *corev1.ConfigMap {
+	defaultConfig := `[Global]
+`
+
+	if platform == configv1.AzurePlatformType {
+		defaultConfig = defaultAzureConfig
+	}
+
 	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 		Name:      managedCloudConfigMapName,
 		Namespace: OpenshiftManagedConfigNamespace,
-	}, Data: map[string]string{"cloud.conf": defaultAzureConfig}}
+	}, Data: map[string]string{"cloud.conf": defaultConfig}}
 }
 
 var _ = Describe("isCloudConfigEqual reconciler method", func() {
 	reconciler := &CloudConfigReconciler{}
 
 	It("should return 'true' if ConfigMaps content are equal", func() {
-		Expect(reconciler.isCloudConfigEqual(makeManagedCloudConfig(), makeManagedCloudConfig())).Should(BeTrue())
+		Expect(reconciler.isCloudConfigEqual(makeManagedCloudConfig(configv1.AzurePlatformType), makeManagedCloudConfig(configv1.AzurePlatformType))).Should(BeTrue())
 	})
 
 	It("should return 'false' if ConfigMaps content are not equal", func() {
-		changedManagedCloudConfig := makeManagedCloudConfig()
+		changedManagedCloudConfig := makeManagedCloudConfig(configv1.AzurePlatformType)
 		changedManagedCloudConfig.Immutable = ptr.To[bool](true)
-		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConfig())).Should(BeFalse())
+		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConfig(configv1.AzurePlatformType))).Should(BeFalse())
 
-		changedManagedCloudConfig = makeManagedCloudConfig()
+		changedManagedCloudConfig = makeManagedCloudConfig(configv1.AzurePlatformType)
 		changedManagedCloudConfig.Data = map[string]string{}
-		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConfig())).Should(BeFalse())
+		Expect(reconciler.isCloudConfigEqual(changedManagedCloudConfig, makeManagedCloudConfig(configv1.AzurePlatformType))).Should(BeFalse())
 	})
 })
 
 var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 	reconciler := &CloudConfigReconciler{}
 	infra := makeInfrastructureResource(configv1.AzurePlatformType)
-	infraCloudConfig := makeInfraCloudConfig()
-	managedCloudConfig := makeManagedCloudConfig()
+	infraCloudConfig := makeInfraCloudConfig(configv1.AzurePlatformType)
+	managedCloudConfig := makeManagedCloudConfig(configv1.AzurePlatformType)
 
 	It("not prepared config should be different with managed one", func() {
 		_, ok := infraCloudConfig.Data[infraCloudConfKey]
@@ -157,6 +171,7 @@ var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 var _ = Describe("Cloud config sync controller", func() {
 	var rec *record.FakeRecorder
 
+	var mgr manager.Manager
 	var mgrCtxCancel context.CancelFunc
 	var mgrStopped chan struct{}
 	ctx := context.Background()
@@ -172,7 +187,8 @@ var _ = Describe("Cloud config sync controller", func() {
 
 	BeforeEach(func() {
 		By("Setting up a new manager")
-		mgr, err := manager.New(cfg, manager.Options{
+		var err error
+		mgr, err = manager.New(cfg, manager.Options{
 			Metrics: metricsserver.Options{
 				BindAddress: "0",
 			},
@@ -201,13 +217,9 @@ var _ = Describe("Cloud config sync controller", func() {
 		By("Creating network resource")
 		networkResource := makeNetworkResource()
 		Expect(cl.Create(ctx, networkResource)).To(Succeed())
+	})
 
-		By("Creating needed ConfigMaps")
-		infraCloudConfig = makeInfraCloudConfig()
-		managedCloudConfig = makeManagedCloudConfig()
-		Expect(cl.Create(ctx, infraCloudConfig)).To(Succeed())
-		Expect(cl.Create(ctx, managedCloudConfig)).To(Succeed())
-
+	JustBeforeEach(func() {
 		var mgrCtx context.Context
 		mgrCtx, mgrCtxCancel = context.WithCancel(ctx)
 		mgrStopped = make(chan struct{})
@@ -271,100 +283,111 @@ var _ = Describe("Cloud config sync controller", func() {
 		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 	})
 
-	It("config should be synced up after first reconcile", func() {
-		Eventually(func(g Gomega) string {
+	Context("on Azure", func() {
+		BeforeEach(func() {
+
+			By("Creating needed ConfigMaps")
+			infraCloudConfig = makeInfraCloudConfig(configv1.AzurePlatformType)
+			managedCloudConfig = makeManagedCloudConfig(configv1.AzurePlatformType)
+			Expect(cl.Create(ctx, infraCloudConfig)).To(Succeed())
+			Expect(cl.Create(ctx, managedCloudConfig)).To(Succeed())
+		})
+
+		It("config should be synced up after first reconcile", func() {
+			Eventually(func(g Gomega) string {
+				syncedCloudConfigMap := &corev1.ConfigMap{}
+				err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+				g.Expect(err).NotTo(HaveOccurred())
+				return syncedCloudConfigMap.Data[defaultConfigKey]
+			}).Should(Equal(defaultAzureConfig))
+		})
+
+		It("config should be synced up if managed cloud config changed", func() {
+			changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
+			changedManagedConfig := managedCloudConfig.DeepCopy()
+			changedManagedConfig.Data = map[string]string{"cloud.conf": changedConfigString}
+			Expect(cl.Update(ctx, changedManagedConfig)).To(Succeed())
+
+			Eventually(func(g Gomega) string {
+				syncedCloudConfigMap := &corev1.ConfigMap{}
+				err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+				g.Expect(err).NotTo(HaveOccurred())
+				return syncedCloudConfigMap.Data[defaultConfigKey]
+			}).Should(Equal(changedConfigString))
+		})
+
+		It("config should be synced up if own cloud-config deleted or changed", func() {
 			syncedCloudConfigMap := &corev1.ConfigMap{}
-			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			g.Expect(err).NotTo(HaveOccurred())
-			return syncedCloudConfigMap.Data[defaultConfigKey]
-		}).Should(Equal(defaultAzureConfig))
-	})
+			Eventually(func() error {
+				return cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+			}, timeout).Should(Succeed())
 
-	It("config should be synced up if managed cloud config changed", func() {
-		changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
-		changedManagedConfig := managedCloudConfig.DeepCopy()
-		changedManagedConfig.Data = map[string]string{"cloud.conf": changedConfigString}
-		Expect(cl.Update(ctx, changedManagedConfig)).To(Succeed())
+			changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
+			syncedCloudConfigMap.Data = map[string]string{"foo": changedConfigString}
+			Expect(cl.Update(ctx, syncedCloudConfigMap)).To(Succeed())
+			Eventually(func(g Gomega) string {
+				err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+				g.Expect(err).NotTo(HaveOccurred())
+				return syncedCloudConfigMap.Data[defaultConfigKey]
+			}).Should(Equal(defaultAzureConfig))
 
-		Eventually(func(g Gomega) string {
+			Expect(cl.Delete(ctx, syncedCloudConfigMap)).To(Succeed())
+			Eventually(func(g Gomega) string {
+				err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+				g.Expect(err).NotTo(HaveOccurred())
+				return syncedCloudConfigMap.Data[defaultConfigKey]
+			}).Should(Equal(defaultAzureConfig))
+		})
+
+		It("config should not be updated if source and target config content are identical", func() {
 			syncedCloudConfigMap := &corev1.ConfigMap{}
-			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			g.Expect(err).NotTo(HaveOccurred())
-			return syncedCloudConfigMap.Data[defaultConfigKey]
-		}).Should(Equal(changedConfigString))
-	})
+			Eventually(func() error {
+				return cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+			}, timeout).Should(Succeed())
+			initialCMresourceVersion := syncedCloudConfigMap.ResourceVersion
 
-	It("config should be synced up if own cloud-config deleted or changed", func() {
-		syncedCloudConfigMap := &corev1.ConfigMap{}
-		Eventually(func() error {
-			return cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-		}, timeout).Should(Succeed())
+			request := reconcile.Request{NamespacedName: client.ObjectKey{Name: "foo", Namespace: "bar"}}
+			_, err := reconciler.Reconcile(ctx, request)
+			Expect(err).Should(Succeed())
 
-		changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
-		syncedCloudConfigMap.Data = map[string]string{"foo": changedConfigString}
-		Expect(cl.Update(ctx, syncedCloudConfigMap)).To(Succeed())
-		Eventually(func(g Gomega) string {
-			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			g.Expect(err).NotTo(HaveOccurred())
-			return syncedCloudConfigMap.Data[defaultConfigKey]
-		}).Should(Equal(defaultAzureConfig))
+			Expect(cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)).Should(Succeed())
+			Expect(initialCMresourceVersion).Should(BeEquivalentTo(syncedCloudConfigMap.ResourceVersion))
+		})
 
-		Expect(cl.Delete(ctx, syncedCloudConfigMap)).To(Succeed())
-		Eventually(func(g Gomega) string {
-			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			g.Expect(err).NotTo(HaveOccurred())
-			return syncedCloudConfigMap.Data[defaultConfigKey]
-		}).Should(Equal(defaultAzureConfig))
-	})
+		It("config should be synced up with infra one if managed config not found", func() {
+			Expect(cl.Delete(ctx, managedCloudConfig)).Should(Succeed())
+			managedCloudConfig = nil
 
-	It("config should not be updated if source and target config content are identical", func() {
-		syncedCloudConfigMap := &corev1.ConfigMap{}
-		Eventually(func() error {
-			return cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-		}, timeout).Should(Succeed())
-		initialCMresourceVersion := syncedCloudConfigMap.ResourceVersion
+			changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
+			changedInfraConfig := infraCloudConfig.DeepCopy()
+			changedInfraConfig.Data = map[string]string{infraCloudConfKey: changedInfraConfigString}
+			Expect(cl.Update(ctx, changedInfraConfig)).Should(Succeed())
 
-		request := reconcile.Request{NamespacedName: client.ObjectKey{Name: "foo", Namespace: "bar"}}
-		_, err := reconciler.Reconcile(ctx, request)
-		Expect(err).Should(Succeed())
+			Eventually(func(g Gomega) string {
+				syncedCloudConfigMap := &corev1.ConfigMap{}
+				err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+				g.Expect(err).NotTo(HaveOccurred())
+				return syncedCloudConfigMap.Data[defaultConfigKey]
+			}).Should(Equal(changedInfraConfigString))
+		})
 
-		Expect(cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)).Should(Succeed())
-		Expect(initialCMresourceVersion).Should(BeEquivalentTo(syncedCloudConfigMap.ResourceVersion))
-	})
+		It("all keys from cloud-config should be synced", func() {
 
-	It("config should be synced up with infra one if managed config not found", func() {
-		Expect(cl.Delete(ctx, managedCloudConfig)).Should(Succeed())
-		managedCloudConfig = nil
+			changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
+			changedManagedConfig := managedCloudConfig.DeepCopy()
+			changedManagedConfig.Data = map[string]string{
+				infraCloudConfKey: changedInfraConfigString, cloudProviderConfigCABundleConfigMapKey: "some pem there",
+				"baz": "fizz",
+			}
+			Expect(cl.Update(ctx, changedManagedConfig)).Should(Succeed())
 
-		changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
-		changedInfraConfig := infraCloudConfig.DeepCopy()
-		changedInfraConfig.Data = map[string]string{infraCloudConfKey: changedInfraConfigString}
-		Expect(cl.Update(ctx, changedInfraConfig)).Should(Succeed())
-
-		Eventually(func(g Gomega) string {
-			syncedCloudConfigMap := &corev1.ConfigMap{}
-			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			g.Expect(err).NotTo(HaveOccurred())
-			return syncedCloudConfigMap.Data[defaultConfigKey]
-		}).Should(Equal(changedInfraConfigString))
-	})
-
-	It("all keys from cloud-config should be synced", func() {
-
-		changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
-		changedManagedConfig := managedCloudConfig.DeepCopy()
-		changedManagedConfig.Data = map[string]string{
-			infraCloudConfKey: changedInfraConfigString, cloudProviderConfigCABundleConfigMapKey: "some pem there",
-			"baz": "fizz",
-		}
-		Expect(cl.Update(ctx, changedManagedConfig)).Should(Succeed())
-
-		Eventually(func(g Gomega) int {
-			syncedCloudConfigMap := &corev1.ConfigMap{}
-			err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
-			g.Expect(err).NotTo(HaveOccurred())
-			return len(syncedCloudConfigMap.Data)
-		}).Should(Equal(3))
+			Eventually(func(g Gomega) int {
+				syncedCloudConfigMap := &corev1.ConfigMap{}
+				err := cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)
+				g.Expect(err).NotTo(HaveOccurred())
+				return len(syncedCloudConfigMap.Data)
+			}).Should(Equal(3))
+		})
 	})
 })
 
@@ -384,81 +407,8 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			Scheme: scheme.Scheme,
 		}
 
-		Expect(cl.Create(ctx, makeInfraCloudConfig())).To(Succeed())
 		networkResource := makeNetworkResource()
 		Expect(cl.Create(ctx, networkResource)).To(Succeed())
-
-	})
-
-	It("reconcile should fail if no infra resource found", func() {
-		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-		Expect(err.Error()).Should(BeEquivalentTo("infrastructures.config.openshift.io \"cluster\" not found"))
-	})
-
-	It("should fail if no PlatformStatus in infra resource presented ", func() {
-		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
-		Expect(cl.Create(ctx, infraResource)).To(Succeed())
-		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-		Expect(err.Error()).Should(BeEquivalentTo("platformStatus is required"))
-	})
-
-	It("should skip config sync for AWS platform if there is no reference in infra resource", func() {
-		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
-		infraResource.Spec.CloudConfig.Name = ""
-		Expect(cl.Create(ctx, infraResource)).To(Succeed())
-
-		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
-		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
-
-		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-		Expect(err).To(BeNil())
-
-		allCMs := &corev1.ConfigMapList{}
-		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
-
-		Expect(len(allCMs.Items)).To(BeZero())
-	})
-
-	It("should perform config sync for AWS platform if there is a reference in infra resource", func() {
-		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
-		Expect(cl.Create(ctx, infraResource)).To(Succeed())
-
-		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
-		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
-
-		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-		Expect(err).To(BeNil())
-
-		allCMs := &corev1.ConfigMapList{}
-		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
-
-		Expect(len(allCMs.Items)).NotTo(BeZero())
-		Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
-	})
-
-	It("should skip config sync for BareMetal platform", func() {
-		infraResource := makeInfrastructureResource(configv1.BareMetalPlatformType)
-		Expect(cl.Create(ctx, infraResource)).To(Succeed())
-		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
-		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
-		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-		Expect(err).To(BeNil())
-		allCMs := &corev1.ConfigMapList{}
-		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
-		Expect(len(allCMs.Items)).To(BeZero())
-	})
-
-	It("should perform config sync for Azure platform", func() {
-		infraResource := makeInfrastructureResource(configv1.AzurePlatformType)
-		Expect(cl.Create(ctx, infraResource)).To(Succeed())
-		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
-		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
-		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-		Expect(err).To(BeNil())
-		allCMs := &corev1.ConfigMapList{}
-		Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
-		Expect(len(allCMs.Items)).NotTo(BeZero())
-		Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
 	})
 
 	AfterEach(func() {
@@ -506,5 +456,94 @@ var _ = Describe("Cloud config sync reconciler", func() {
 				return cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})
 			}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 		}
+	})
+
+	Context("On AWS platform", func() {
+		BeforeEach(func() {
+			Expect(cl.Create(ctx, makeInfraCloudConfig(configv1.AWSPlatformType))).To(Succeed())
+		})
+
+		It("should skip config sync for AWS platform if there is no reference in infra resource", func() {
+			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+			infraResource.Spec.CloudConfig.Name = ""
+			Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+			infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+			Expect(err).To(BeNil())
+
+			allCMs := &corev1.ConfigMapList{}
+			Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+
+			Expect(len(allCMs.Items)).To(BeZero())
+		})
+
+		It("should perform config sync for AWS platform if there is a reference in infra resource", func() {
+			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+			Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+			infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+			Expect(err).To(BeNil())
+
+			allCMs := &corev1.ConfigMapList{}
+			Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+
+			Expect(len(allCMs.Items)).NotTo(BeZero())
+			Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
+		})
+	})
+
+	Context("On Azure platform", func() {
+		BeforeEach(func() {
+			Expect(cl.Create(ctx, makeInfraCloudConfig(configv1.AzurePlatformType))).To(Succeed())
+		})
+
+		It("should perform config sync for Azure platform", func() {
+			infraResource := makeInfrastructureResource(configv1.AzurePlatformType)
+			Expect(cl.Create(ctx, infraResource)).To(Succeed())
+			infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+			Expect(err).To(BeNil())
+			allCMs := &corev1.ConfigMapList{}
+			Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+			Expect(len(allCMs.Items)).NotTo(BeZero())
+			Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
+		})
+	})
+
+	Context("On BareMetal platform", func() {
+		BeforeEach(func() {
+			Expect(cl.Create(ctx, makeInfraCloudConfig(configv1.BareMetalPlatformType))).To(Succeed())
+		})
+
+		It("should skip config sync for BareMetal platform", func() {
+			infraResource := makeInfrastructureResource(configv1.BareMetalPlatformType)
+			Expect(cl.Create(ctx, infraResource)).To(Succeed())
+			infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+			Expect(err).To(BeNil())
+			allCMs := &corev1.ConfigMapList{}
+			Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+			Expect(len(allCMs.Items)).To(BeZero())
+		})
+	})
+
+	It("reconcile should fail if no infra resource found", func() {
+		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+		Expect(err.Error()).Should(BeEquivalentTo("infrastructures.config.openshift.io \"cluster\" not found"))
+	})
+
+	It("should fail if no PlatformStatus in infra resource presented ", func() {
+		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+		Expect(err.Error()).Should(BeEquivalentTo("platformStatus is required"))
 	})
 })
