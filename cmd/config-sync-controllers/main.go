@@ -33,6 +33,7 @@ import (
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
 	"k8s.io/klog/v2/textlogger"
+	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -131,10 +132,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	sharedClock := clock.RealClock{}
 	if err = (&controllers.CloudConfigReconciler{
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
 			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator-cloud-config-sync-controller"),
+			Clock:            sharedClock,
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
 		},
@@ -148,6 +151,7 @@ func main() {
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
 			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator-ca-sync-controller"),
+			Clock:            sharedClock,
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
 		},

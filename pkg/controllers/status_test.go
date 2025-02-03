@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	clocktesting "k8s.io/utils/clock/testing"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -80,6 +81,7 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 
 		optr := CloudOperatorReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Clock:          clocktesting.NewFakePassiveClock(time.Now()),
 				Recorder:       record.NewFakeRecorder(32),
 				ReleaseVersion: tc.desiredVersion,
 			},
@@ -204,6 +206,7 @@ func TestOperatorSetStatusDegraded(t *testing.T) {
 
 		optr := CloudOperatorReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Clock:          clocktesting.NewFakePassiveClock(time.Now()),
 				Recorder:       record.NewFakeRecorder(32),
 				ReleaseVersion: tc.desiredVersion,
 			},
@@ -345,6 +348,7 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 
 		optr := CloudOperatorReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Clock:          clocktesting.NewFakePassiveClock(time.Now()),
 				Recorder:       record.NewFakeRecorder(32),
 				ReleaseVersion: tc.desiredVersion,
 			},

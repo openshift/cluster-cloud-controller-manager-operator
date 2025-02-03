@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	azconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 
 	"github.com/stretchr/testify/assert"
 
@@ -112,26 +112,26 @@ func makeInfrastructureResource(platform configv1.PlatformType, cloudName config
 func TestCloudConfigTransformer(t *testing.T) {
 	tc := []struct {
 		name     string
-		source   azure.Config
-		expected azure.Config
+		source   azconfig.Config
+		expected azconfig.Config
 		infra    *configv1.Infrastructure
 		errMsg   string
 	}{
 		{
 			name:     "Azure Stack Hub sets the vmType to standard",
-			source:   azure.Config{},
-			expected: azure.Config{VMType: "standard"},
+			source:   azconfig.Config{},
+			expected: azconfig.Config{VMType: "standard"},
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureStackCloud),
 		},
 		{
 			name:     "Azure Stack Hub doesn't modify vmType if user set",
-			source:   azure.Config{VMType: "vmss"},
-			expected: azure.Config{VMType: "vmss"},
+			source:   azconfig.Config{VMType: "vmss"},
+			expected: azconfig.Config{VMType: "vmss"},
 			infra:    makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzureStackCloud),
 		},
 		{
 			name:   "Non Azure Stack Hub returns an error",
-			source: azure.Config{},
+			source: azconfig.Config{},
 			infra:  makeInfrastructureResource(configv1.AzurePlatformType, configv1.AzurePublicCloud),
 			errMsg: fmt.Sprintf("invalid platform, expected CloudName to be %s", configv1.AzureStackCloud),
 		},
@@ -149,7 +149,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 				g.Expect(err).Should(MatchError(tc.errMsg))
 				g.Expect(actual).Should(Equal(""))
 			} else {
-				var observed azure.Config
+				var observed azconfig.Config
 				g.Expect(json.Unmarshal([]byte(actual), &observed)).To(Succeed(), "Unmarshal of observed data should succeed")
 
 				g.Expect(observed).Should(Equal(tc.expected))

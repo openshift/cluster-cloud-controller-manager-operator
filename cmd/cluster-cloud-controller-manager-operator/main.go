@@ -35,6 +35,7 @@ import (
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -189,8 +190,8 @@ func main() {
 	if err != nil {
 		klog.Warningf("unable to get owner reference (falling back to namespace): %v", err)
 	}
-
-	recorder := events.NewKubeRecorder(kubeClient.CoreV1().Events(*managedNamespace), "cloud-controller-manager-operator", controllerRef)
+	mgrClock := clock.RealClock{}
+	recorder := events.NewKubeRecorder(kubeClient.CoreV1().Events(*managedNamespace), "cloud-controller-manager-operator", controllerRef, mgrClock)
 	featureGateAccessor := featuregates.NewFeatureGateAccess(
 		desiredVersion, missingVersion,
 		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
@@ -219,6 +220,7 @@ func main() {
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
 			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
+			Clock:            mgrClock,
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
 		},

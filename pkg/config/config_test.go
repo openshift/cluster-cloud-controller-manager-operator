@@ -217,7 +217,7 @@ func TestComposeConfig(t *testing.T) {
 			},
 		},
 		featureGates: featuregates.NewHardcodedFeatureGateAccess(
-			[]configv1.FeatureGateName{"ChocobombVanilla", "ChocobombStrawberry"},
+			[]configv1.FeatureGateName{"CloudControllerManagerWebhook", "ChocobombVanilla", "ChocobombStrawberry"},
 			[]configv1.FeatureGateName{"ChocobombBlueberry", "ChocobombBanana"},
 		),
 		expectConfig: OperatorConfig{
@@ -225,11 +225,16 @@ func TestComposeConfig(t *testing.T) {
 			ImagesReference:  defaultImagesReference,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.OpenStackPlatformType},
 			IsSingleReplica:  true,
-			// We only see CloudDualStackNodeIPs returned here because kubernetes defines
+			// We only see CloudControllerManagerWebhook returned here because kubernetes defines
 			// white-listed features that are allowed to be used by cloud providers. Anything that
 			// is not defined there won't be passed to the cloud provider.
 			// For more details look into k8s.io/controller-manager/pkg/features
-			FeatureGates: "",
+			//
+			// To the next person doing a k8s version bump where this test case
+			// fails: it's possible the FeatureGate used has been promoted, and no
+			// longer appears in the features package linked above. You'll need to
+			// choose something present in the vendored k8s version.
+			FeatureGates: "CloudControllerManagerWebhook=true",
 		},
 	}, {
 		name:        "Empty infrastructure should return error",

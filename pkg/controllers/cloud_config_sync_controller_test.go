@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -12,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	clocktesting "k8s.io/utils/clock/testing"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -25,7 +27,7 @@ const (
 	infraCloudConfName = "test-config"
 	infraCloudConfKey  = "foo"
 
-	defaultAzureConfig = `{"cloud":"AzurePublicCloud","tenantId":"0000000-0000-0000-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
+	defaultAzureConfig = `{"cloud":"AzurePublicCloud","tenantId":"0000000-0000-0000-0000-000000000000","Entries":null,"subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 )
 
 func makeInfrastructureResource(platform configv1.PlatformType) *configv1.Infrastructure {
@@ -202,6 +204,7 @@ var _ = Describe("Cloud config sync controller", func() {
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:           cl,
 				Recorder:         rec,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				ManagedNamespace: targetNamespaceName,
 			},
 			Scheme: scheme.Scheme,
@@ -303,7 +306,7 @@ var _ = Describe("Cloud config sync controller", func() {
 		})
 
 		It("config should be synced up if managed cloud config changed", func() {
-			changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
+			changedConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","Entries":null,"subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 			changedManagedConfig := managedCloudConfig.DeepCopy()
 			changedManagedConfig.Data = map[string]string{"cloud.conf": changedConfigString}
 			Expect(cl.Update(ctx, changedManagedConfig)).To(Succeed())
@@ -358,7 +361,7 @@ var _ = Describe("Cloud config sync controller", func() {
 			Expect(cl.Delete(ctx, managedCloudConfig)).Should(Succeed())
 			managedCloudConfig = nil
 
-			changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
+			changedInfraConfigString := `{"cloud":"AzurePublicCloud","tenantId":"0000000-1234-1234-0000-000000000000","Entries":null,"subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 			changedInfraConfig := infraCloudConfig.DeepCopy()
 			changedInfraConfig.Data = map[string]string{infraCloudConfKey: changedInfraConfigString}
 			Expect(cl.Update(ctx, changedInfraConfig)).Should(Succeed())
@@ -402,6 +405,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		reconciler = &CloudConfigReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
 				Client:           cl,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				ManagedNamespace: targetNamespaceName,
 			},
 			Scheme: scheme.Scheme,

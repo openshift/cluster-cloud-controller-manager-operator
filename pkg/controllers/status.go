@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -41,6 +42,7 @@ const (
 type ClusterOperatorStatusClient struct {
 	client.Client
 	Recorder         record.EventRecorder
+	Clock            clock.PassiveClock
 	ManagedNamespace string
 	ReleaseVersion   string
 }
@@ -211,12 +213,12 @@ func (r *ClusterOperatorStatusClient) relatedObjects() []configv1.ObjectReferenc
 // syncStatus applies the new condition to the ClusterOperator object.
 func (r *ClusterOperatorStatusClient) syncStatus(ctx context.Context, co *configv1.ClusterOperator, conds, overrides []configv1.ClusterOperatorStatusCondition) error {
 	for _, c := range conds {
-		v1helpers.SetStatusCondition(&co.Status.Conditions, c)
+		v1helpers.SetStatusCondition(&co.Status.Conditions, c, r.Clock)
 	}
 
 	// These overrides came from the operator controller and override anything set by the setAvaialble, setProgressing, or setDegraded methods.
 	for _, c := range overrides {
-		v1helpers.SetStatusCondition(&co.Status.Conditions, c)
+		v1helpers.SetStatusCondition(&co.Status.Conditions, c, r.Clock)
 	}
 
 	if !equality.Semantic.DeepEqual(co.Status.RelatedObjects, r.relatedObjects()) {
