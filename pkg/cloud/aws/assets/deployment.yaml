@@ -34,6 +34,7 @@ spec:
             source /etc/kubernetes/apiserver-url.env
           fi
           exec /bin/aws-cloud-controller-manager \
+          --cloud-config=$(CLOUD_CONFIG) \
           --cloud-provider=aws \
           --use-service-account-credentials=true \
           --configure-cloud-routes=false \
@@ -43,6 +44,9 @@ spec:
           --leader-elect-retry-period=26s \
           --leader-elect-resource-namespace=openshift-cloud-controller-manager \
           -v=2
+        env:
+        - name: CLOUD_CONFIG
+          value: /etc/kubernetes-cloud-config/cloud.conf
         image: {{ .images.CloudControllerManager }}
         imagePullPolicy: IfNotPresent
         name: cloud-controller-manager
@@ -58,6 +62,9 @@ spec:
         volumeMounts:
         - mountPath: /etc/kubernetes
           name: host-etc-kube
+          readOnly: true
+        - name: config-accm
+          mountPath: /etc/kubernetes-cloud-config
           readOnly: true
         - name: trusted-ca
           mountPath: /etc/pki/ca-trust/extracted/pem
@@ -93,6 +100,12 @@ spec:
         key: node.kubernetes.io/not-ready
         operator: Exists
       volumes:
+      - name: config-accm
+        configMap:
+          name: cloud-conf
+          items:
+            - key: cloud.conf
+              path: cloud.conf
       - name: trusted-ca
         configMap:
           name: ccm-trusted-ca
