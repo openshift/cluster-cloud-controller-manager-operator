@@ -69,31 +69,8 @@ spec:
                 --cloud-config-file-path=/etc/cloud-config/cloud.conf \
                 --output-file-path=/etc/merged-cloud-config/cloud.conf \
                 --disable-identity-extension-auth \
-                --enable-azure-workload-identity=true
-          env:
-            - name: AZURE_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: azure-cloud-credentials
-                  key: azure_client_id
-            - name: AZURE_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: azure-cloud-credentials
-                  key: azure_client_secret
-                  optional: true
-            - name: AZURE_TENANT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: azure-cloud-credentials
-                  key: azure_tenant_id
-                  optional: true
-            - name: AZURE_FEDERATED_TOKEN_FILE
-              valueFrom:
-                secretKeyRef:
-                  name: azure-cloud-credentials
-                  key: azure_federated_token_file
-                  optional: true
+                --enable-azure-workload-identity=true \
+                --creds-path=/etc/azure/credentials
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: config-accm
@@ -101,6 +78,9 @@ spec:
               readOnly: true
             - name: merged-cloud-config
               mountPath: /etc/merged-cloud-config
+            - name: cloud-sa-volume
+              mountPath: /etc/azure/credentials
+              readOnly: true
       containers:
         - name: cloud-controller-manager
           image: {{ .images.CloudControllerManager }}
@@ -110,12 +90,6 @@ spec:
               value: /etc/kubernetes-cloud-config/cloud.conf
             - name: OCP_INFRASTRUCTURE_NAME
               value: {{ .infrastructureName }}
-            - name: AZURE_FEDERATED_TOKEN_FILE
-              valueFrom:
-                secretKeyRef:
-                  name: azure-cloud-credentials
-                  key: azure_federated_token_file
-                  optional: true
           resources:
             requests:
               cpu: 200m
@@ -156,6 +130,9 @@ spec:
             - name: merged-cloud-config
               mountPath: /etc/kubernetes-cloud-config
               readOnly: true
+            - name: cloud-sa-volume
+              readOnly: true
+              mountPath: /etc/azure/credentials
             - name: trusted-ca
               mountPath: /etc/pki/ca-trust/extracted/pem
               readOnly: true
@@ -169,6 +146,9 @@ spec:
             items:
               - key: cloud.conf
                 path: cloud.conf
+        - name: cloud-sa-volume
+          secret:
+            secretName: azure-cloud-credentials
         - name: trusted-ca
           configMap:
             name: ccm-trusted-ca
