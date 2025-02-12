@@ -129,22 +129,26 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "GCP resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.GCPPlatformType)],
-		expectedResourceCount: 4,
+		expectedResourceCount: 6,
 		expectedResourcesKindName: []string{
 			"Deployment/gcp-cloud-controller-manager",
 			"PodDisruptionBudget/gcp-cloud-controller-manager",
 			"ClusterRole/gcp-cloud-controller-manager",
 			"ClusterRoleBinding/gcp-cloud-controller-manager:cloud-provider",
+			"ValidatingAdmissionPolicyBinding/network-tier-annotation-binding",
+			"ValidatingAdmissionPolicy/network-tier-annotation-validation-policy",
 		},
 	}, {
 		name:                  "GCP resources returned as expected with single node cluster",
 		testPlatform:          platformsMap[string(configv1.GCPPlatformType)],
-		expectedResourceCount: 3,
+		expectedResourceCount: 5,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/gcp-cloud-controller-manager",
 			"ClusterRole/gcp-cloud-controller-manager",
 			"ClusterRoleBinding/gcp-cloud-controller-manager:cloud-provider",
+			"ValidatingAdmissionPolicyBinding/network-tier-annotation-binding",
+			"ValidatingAdmissionPolicy/network-tier-annotation-validation-policy",
 		},
 	}, {
 		name:                  "Azure resources returned as expected",
@@ -159,6 +163,8 @@ func TestGetResources(t *testing.T) {
 			"ClusterRoleBinding/cloud-controller-manager:azure-cloud-controller-manager",
 			"ValidatingAdmissionPolicy/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
 			"ValidatingAdmissionPolicyBinding/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
+			"ValidatingAdmissionPolicyBinding/azure-load-balancer-tcp-idle-timeout-validation-annotation-binding",
+			"ValidatingAdmissionPolicy/azure-load-balancer-tcp-idle-timeout-annotation-validation-policy",
 			"PodDisruptionBudget/azure-cloud-controller-manager",
 		},
 	}, {
@@ -175,6 +181,8 @@ func TestGetResources(t *testing.T) {
 			"ClusterRoleBinding/cloud-controller-manager:azure-cloud-controller-manager",
 			"ValidatingAdmissionPolicy/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
 			"ValidatingAdmissionPolicyBinding/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
+			"ValidatingAdmissionPolicyBinding/azure-load-balancer-tcp-idle-timeout-validation-annotation-binding",
+			"ValidatingAdmissionPolicy/azure-load-balancer-tcp-idle-timeout-annotation-validation-policy",
 		},
 	}, {
 		name:                  "Azure Stack resources returned as expected",

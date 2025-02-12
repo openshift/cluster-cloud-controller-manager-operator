@@ -1,0 +1,7 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: network-tier-annotation-binding
+spec:
+  policyName: network-tier-annotation-validation-policy
+  validationActions: ["Deny"]
