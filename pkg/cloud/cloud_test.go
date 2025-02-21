@@ -153,7 +153,7 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "Azure resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 9,
+		expectedResourceCount: 11,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
@@ -170,7 +170,7 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "Azure resources returned as expected with single node cluster",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 8,
+		expectedResourceCount: 10,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
