@@ -1,0 +1,28 @@
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: azure-load-balancer-tcp-idle-timeout-annotation-validation-policy
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["services"]
+  variables:
+    - name: hasIdleTimeout
+      expression: has(object.metadata.annotations) && 'service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout' in object.metadata.annotations
+    - name: idleTimeoutValue
+      expression: object.metadata.?annotations['service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout'].orValue("")
+    - name: hasOldIdleTimeout
+      expression: oldObject != null && oldObject.metadata.?annotations != null && 'service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout' in oldObject.metadata.annotations
+    - name: oldIdleTimeoutValue
+      expression: oldObject.metadata.?annotations['service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout'].orValue("")
+    - name: valueHasChanged
+      expression: variables.hasIdleTimeout && (!variables.hasOldIdleTimeout || variables.oldIdleTimeoutValue != variables.idleTimeoutValue) 
+  validations:
+    - expression: "!variables.hasIdleTimeout || !variables.valueHasChanged || variables.idleTimeoutValue.matches('^[0-9]+$')"
+      message: "value for annotation 'service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout' must be an integer"
+    - expression: "!variables.hasIdleTimeout || !variables.valueHasChanged || (int(variables.idleTimeoutValue) >= 4 && int(variables.idleTimeoutValue) <= 100)"
+      message: "value for annotation 'service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout' must be no less than 4 and no more than 100"
+
