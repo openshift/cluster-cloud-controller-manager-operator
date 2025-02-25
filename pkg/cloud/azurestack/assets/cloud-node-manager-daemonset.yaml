@@ -53,6 +53,7 @@ spec:
           args:
             - --cloud-config-file-path=/tmp/cloud-config/cloud.conf
             - --output-file-path=/tmp/merged-cloud-config/cloud.conf
+            - --creds-path=/etc/azure/credentials
           env:
             - name: AZURE_CLIENT_ID
               valueFrom:
@@ -71,6 +72,9 @@ spec:
               readOnly: true
             - name: cloud-config
               mountPath: /tmp/merged-cloud-config
+            - name: cloud-sa-volume
+              mountPath: /etc/azure/credentials
+              readOnly: true
       containers:
         - name: cloud-node-manager
           image: {{ .images.CloudNodeManager }}
@@ -134,6 +138,9 @@ spec:
                 path: cloud.conf
               - key: endpoints
                 path: endpoints.conf
+        - name: cloud-sa-volume
+          secret:
+            secretName: azure-cloud-credentials
         - name: trusted-ca
           configMap:
             name: ccm-trusted-ca
