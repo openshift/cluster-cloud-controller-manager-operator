@@ -72,13 +72,13 @@ func Test_mergeCloudConfig(t *testing.T) {
 		{
 			name:           "AZURE_CLIENT_ID not set",
 			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
-			expectedErrMsg: "AZURE_CLIENT_ID env variable should be set up",
+			expectedErrMsg: "azure_client_id should be set up",
 		},
 		{
 			name:           "AZURE_CLIENT_SECRET not set",
 			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name()},
 			envVars:        map[string]string{"AZURE_CLIENT_ID": "foo"},
-			expectedErrMsg: "AZURE_CLIENT_SECRET env variable should be set up",
+			expectedErrMsg: "azure_client_secret should be set up",
 		},
 		{
 			name:           "input file content is not a valid json",
@@ -161,19 +161,19 @@ func Test_mergeCloudConfig(t *testing.T) {
 			name:           "should fail, client secret is present while federated token file is present",
 			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name(), "--disable-identity-extension-auth", "--enable-azure-workload-identity=true"},
 			envVars:        map[string]string{"AZURE_TENANT_ID": "baz", "AZURE_CLIENT_ID": "foo", "AZURE_CLIENT_SECRET": "bar", "AZURE_FEDERATED_TOKEN_FILE": "baz"},
-			expectedErrMsg: "AZURE_CLIENT_SECRET env variable is set while workload identity is enabled using AZURE_FEDERATED_TOKEN_FILE env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com",
+			expectedErrMsg: "azure_client_secret is set while workload identity is enabled using azure_federated_token_file, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com",
 		},
 		{
 			name:           "should fail, tenant id missing while federated token file is present",
 			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name(), "--disable-identity-extension-auth", "--enable-azure-workload-identity=true"},
 			envVars:        map[string]string{"AZURE_CLIENT_ID": "buzz", "AZURE_FEDERATED_TOKEN_FILE": "baz"},
-			expectedErrMsg: "AZURE_TENANT_ID env variable should be set up while workload identity is enabled using AZURE_FEDERATED_TOKEN_FILE env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com",
+			expectedErrMsg: "azure_tenant_id should be set up while workload identity is enabled using azure_federated_token_file, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com",
 		},
 		{
 			name:           "should fail, workload identity can't be enabled because federated token missing, expect secret provided",
 			args:           []string{"--cloud-config-file-path", inputFile.Name(), "--output-file-path", outputFile.Name(), "--disable-identity-extension-auth", "--enable-azure-workload-identity=true"},
 			envVars:        map[string]string{"AZURE_TENANT_ID": "bar", "AZURE_CLIENT_ID": "buzz"},
-			expectedErrMsg: "AZURE_CLIENT_SECRET env variable should be set up",
+			expectedErrMsg: "azure_client_secret should be set up",
 		},
 	}
 

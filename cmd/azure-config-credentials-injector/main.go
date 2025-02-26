@@ -37,6 +37,7 @@ var (
 		outputFilePath               string
 		enableWorkloadIdentity       string
 		disableIdentityExtensionAuth bool
+		credentialsPath              string
 	}
 )
 
@@ -47,6 +48,7 @@ func init() {
 	injectorCmd.PersistentFlags().StringVar(&injectorOpts.outputFilePath, "output-file-path", "/tmp/merged-cloud-config/cloud.conf", "Location of the generated cloud config file with injected credentials.")
 	injectorCmd.PersistentFlags().BoolVar(&injectorOpts.disableIdentityExtensionAuth, "disable-identity-extension-auth", false, "Disable managed identity authentication, if it's set in cloudConfig.")
 	injectorCmd.PersistentFlags().StringVar(&injectorOpts.enableWorkloadIdentity, "enable-azure-workload-identity", "false", "Enable workload identity authentication.")
+	injectorCmd.PersistentFlags().StringVar(&injectorOpts.credentialsPath, "creds-path", "/etc/azure/credentials", "Path of the credential file.")
 }
 
 func main() {
@@ -58,6 +60,7 @@ func main() {
 func mergeCloudConfig(_ *cobra.Command, args []string) error {
 	var (
 		azureClientId           string
+		azureClientIdFound      bool
 		tenantId                string
 		tenantIdFound           bool
 		federatedTokenFile      string
@@ -71,30 +74,70 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	azureClientId, found := mustLookupEnvValue(clientIDEnvKey)
-	if !found {
-		return fmt.Errorf("%s env variable should be set up", clientIDEnvKey)
+	// Read credentials from mounted Secret files or environment variables
+	azureClientId, err = readSecretFile(fmt.Sprintf("%s/azure_client_id", injectorOpts.credentialsPath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Fallback to environment variable if secret file does not exist
+			azureClientId, azureClientIdFound = mustLookupEnvValue(clientIDEnvKey)
+			if !azureClientIdFound {
+				return fmt.Errorf("azure_client_id should be set up")
+			}
+		} else {
+			return fmt.Errorf("failed to read azure_client_id from secret: %w", err)
+		}
 	}
 
-	// Check for environment variables
-	azureClientSecret, secretFound = mustLookupEnvValue(clientSecretEnvKey)
-	federatedTokenFile, federatedTokenFileFound = mustLookupEnvValue(federatedTokenEnvKey)
-	tenantId, tenantIdFound = mustLookupEnvValue(tenantIDEnvKey)
+	azureClientSecret, err = readSecretFile(fmt.Sprintf("%s/azure_client_secret", injectorOpts.credentialsPath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Fallback to environment variable if secret file does not exist
+			azureClientSecret, secretFound = mustLookupEnvValue(clientSecretEnvKey)
+		} else {
+			return fmt.Errorf("failed to read azure_client_secret from secret: %w", err)
+		}
+	} else {
+		secretFound = true
+	}
+
+	tenantId, err = readSecretFile(fmt.Sprintf("%s/azure_tenant_id", injectorOpts.credentialsPath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Fallback to environment variable if secret file does not exist
+			tenantId, tenantIdFound = mustLookupEnvValue(tenantIDEnvKey)
+		} else {
+			return fmt.Errorf("failed to read azure_tenant_id from secret: %w", err)
+		}
+	} else {
+		tenantIdFound = true
+	}
+
+	federatedTokenFile, err = readSecretFile(fmt.Sprintf("%s/azure_federated_token_file", injectorOpts.credentialsPath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Fallback to environment variable if secret file does not exist
+			federatedTokenFile, federatedTokenFileFound = mustLookupEnvValue(federatedTokenEnvKey)
+		} else {
+			return fmt.Errorf("failed to read azure_federated_token_file from secret: %w", err)
+		}
+	} else {
+		federatedTokenFileFound = true
+	}
 
 	// If federatedTokenFile found, workload identity should be used
 	if federatedTokenFileFound {
 		// azureClientSecret should not be set for workload identity auth, report error when secretFound
 		if secretFound {
-			return fmt.Errorf("%s env variable is set while workload identity is enabled using %s env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", clientSecretEnvKey, federatedTokenEnvKey)
+			return fmt.Errorf("azure_client_secret is set while workload identity is enabled using azure_federated_token_file, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com")
 		}
 		// tenantId is required for workload identity auth, report error when !tenantIdFound
 		if !tenantIdFound {
-			return fmt.Errorf("%s env variable should be set up while workload identity is enabled using %s env variable, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com", tenantIDEnvKey, federatedTokenEnvKey)
+			return fmt.Errorf("azure_tenant_id should be set up while workload identity is enabled using azure_federated_token_file, this should never happen.\nPlease consider reporting a bug: https://issues.redhat.com")
 		}
 	} else {
 		// federatedTokenFile not found, secret will be required
 		if !secretFound {
-			return fmt.Errorf("%s env variable should be set up", clientSecretEnvKey)
+			return fmt.Errorf("azure_client_secret should be set up")
 		}
 	}
 
@@ -113,6 +156,15 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// Helper function to read a file and return its content as a string
+func readSecretFile(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func readCloudConfig(path string) (map[string]interface{}, error) {
