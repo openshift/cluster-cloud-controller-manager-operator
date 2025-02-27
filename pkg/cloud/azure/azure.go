@@ -184,7 +184,13 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 	}
 
 	// Ensure we are using the shared health probe
+
 	cfg.ClusterServiceLoadBalancerHealthProbeMode = azureconsts.ClusterServiceLoadBalancerHealthProbeModeShared
+
+	// If using GOV Cloud, set the resource manager endpoint manually.
+	if cfg.Cloud == string(configv1.AzureUSGovernmentCloud) {
+		cfg.ResourceManagerEndpoint = "https://management.usgovcloudapi.net/"
+	}
 
 	cfgbytes, err := json.Marshal(cfg)
 	if err != nil {
