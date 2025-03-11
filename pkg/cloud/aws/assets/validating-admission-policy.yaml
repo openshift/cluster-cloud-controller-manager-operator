@@ -1,0 +1,20 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: openshift-cloud-controller-manager-cloud-provider-aws
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   [""]
+      apiVersions: ["v1"]
+      operations:  ["UPDATE"]
+      resources:   ["services"]
+  validations:
+    - expression: |
+        (has(object.metadata.annotations) && 'service.beta.kubernetes.io/aws-load-balancer-type' in object.metadata.annotations) ==
+          (has(oldObject.metadata.annotations) && 'service.beta.kubernetes.io/aws-load-balancer-type' in oldObject.metadata.annotations) &&
+          (has(object.metadata.annotations) && 'service.beta.kubernetes.io/aws-load-balancer-type' in object.metadata.annotations ?
+          object.metadata.annotations['service.beta.kubernetes.io/aws-load-balancer-type'] == oldObject.metadata.annotations['service.beta.kubernetes.io/aws-load-balancer-type'] : true)
+      message: "The annotation 'service.beta.kubernetes.io/aws-load-balancer-type' may not be added, removed, or have its value changed. Changing the type of an existing load balancer is not supported."
+      reason: Invalid
