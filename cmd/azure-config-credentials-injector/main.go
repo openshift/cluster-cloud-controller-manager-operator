@@ -11,11 +11,6 @@ import (
 )
 
 const (
-	clientIDEnvKey       = "AZURE_CLIENT_ID"
-	clientSecretEnvKey   = "AZURE_CLIENT_SECRET"
-	tenantIDEnvKey       = "AZURE_TENANT_ID"
-	federatedTokenEnvKey = "AZURE_FEDERATED_TOKEN_FILE"
-
 	clientIDCloudConfigKey               = "aadClientId"
 	clientSecretCloudConfigKey           = "aadClientSecret"
 	useManagedIdentityExtensionConfigKey = "useManagedIdentityExtension"
@@ -60,7 +55,6 @@ func main() {
 func mergeCloudConfig(_ *cobra.Command, args []string) error {
 	var (
 		azureClientId           string
-		azureClientIdFound      bool
 		tenantId                string
 		tenantIdFound           bool
 		federatedTokenFile      string
@@ -74,54 +68,31 @@ func mergeCloudConfig(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Read credentials from mounted Secret files or environment variables
+	// Read credentials from mounted Secret files
 	azureClientId, err = readSecretFile(fmt.Sprintf("%s/azure_client_id", injectorOpts.credentialsPath))
 	if err != nil {
-		if os.IsNotExist(err) {
-			// Fallback to environment variable if secret file does not exist
-			azureClientId, azureClientIdFound = mustLookupEnvValue(clientIDEnvKey)
-			if !azureClientIdFound {
-				return fmt.Errorf("azure_client_id should be set up")
-			}
-		} else {
-			return fmt.Errorf("failed to read azure_client_id from secret: %w", err)
-		}
+		return fmt.Errorf("failed to read azure_client_id from secret: %w", err)
 	}
 
 	azureClientSecret, err = readSecretFile(fmt.Sprintf("%s/azure_client_secret", injectorOpts.credentialsPath))
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Fallback to environment variable if secret file does not exist
-			azureClientSecret, secretFound = mustLookupEnvValue(clientSecretEnvKey)
-		} else {
-			return fmt.Errorf("failed to read azure_client_secret from secret: %w", err)
-		}
-	} else {
+	if err == nil {
 		secretFound = true
-	}
-
-	tenantId, err = readSecretFile(fmt.Sprintf("%s/azure_tenant_id", injectorOpts.credentialsPath))
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Fallback to environment variable if secret file does not exist
-			tenantId, tenantIdFound = mustLookupEnvValue(tenantIDEnvKey)
-		} else {
-			return fmt.Errorf("failed to read azure_tenant_id from secret: %w", err)
-		}
-	} else {
-		tenantIdFound = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read azure_client_secret from secret: %w", err)
 	}
 
 	federatedTokenFile, err = readSecretFile(fmt.Sprintf("%s/azure_federated_token_file", injectorOpts.credentialsPath))
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Fallback to environment variable if secret file does not exist
-			federatedTokenFile, federatedTokenFileFound = mustLookupEnvValue(federatedTokenEnvKey)
-		} else {
-			return fmt.Errorf("failed to read azure_federated_token_file from secret: %w", err)
-		}
-	} else {
+	if err == nil {
 		federatedTokenFileFound = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read azure_federated_token_file from secret: %w", err)
+	}
+
+	tenantId, err = readSecretFile(fmt.Sprintf("%s/azure_tenant_id", injectorOpts.credentialsPath))
+	if err == nil {
+		tenantIdFound = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read azure_tenant_id from secret: %w", err)
 	}
 
 	// If federatedTokenFile found, workload identity should be used
@@ -199,7 +170,7 @@ func prepareCloudConfig(cloudConfig map[string]interface{}, clientId, clientSecr
 		cloudConfig[aadFederatedTokenFileConfigKey] = federatedTokenFile
 		cloudConfig[useFederatedWorkloadIdentityExtensionConfigKey] = true
 	} else {
-		klog.V(4).Infof("%s env variable is set, client secret authentication will be used", clientSecretEnvKey)
+		klog.V(4).Infof("azure_client_secret is set, client secret authentication will be used")
 		cloudConfig[clientSecretCloudConfigKey] = clientSecret
 	}
 
@@ -216,12 +187,4 @@ func writeCloudConfig(path string, preparedConfig []byte) error {
 		return err
 	}
 	return nil
-}
-
-func mustLookupEnvValue(key string) (string, bool) {
-	value, found := os.LookupEnv(key)
-	if !found || len(value) == 0 {
-		return "", false
-	}
-	return value, true
 }
