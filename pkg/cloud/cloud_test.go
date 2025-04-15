@@ -187,20 +187,24 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "Azure Stack resources returned as expected",
 		testPlatform:          platformsMap["AzureStackHub"],
-		expectedResourceCount: 3,
+		expectedResourceCount: 5,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
+			"Role/azure-cloud-provider",
+			"RoleBinding/azure-cloud-provider:azure-cloud-provider",
 			"PodDisruptionBudget/azure-cloud-controller-manager",
 		},
 	}, {
 		name:                  "Azure Stack resources returned as expected with single node",
 		testPlatform:          platformsMap["AzureStackHub"],
-		expectedResourceCount: 2,
+		expectedResourceCount: 4,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
+			"Role/azure-cloud-provider",
+			"RoleBinding/azure-cloud-provider:azure-cloud-provider",
 		},
 	}, {
 		name:                  "VSphere resources returned as expected",
