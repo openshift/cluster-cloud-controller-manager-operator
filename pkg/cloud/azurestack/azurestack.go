@@ -8,6 +8,7 @@ import (
 	"github.com/asaskevich/govalidator"
 	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azureconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,6 +25,8 @@ var (
 	templates = []common.TemplateSource{
 		{ReferenceObject: &appsv1.Deployment{}, EmbedFsPath: "assets/cloud-controller-manager-deployment.yaml"},
 		{ReferenceObject: &appsv1.DaemonSet{}, EmbedFsPath: "assets/cloud-node-manager-daemonset.yaml"},
+		{ReferenceObject: &rbacv1.Role{}, EmbedFsPath: "assets/azure-cloud-provider-role.yaml"},
+		{ReferenceObject: &rbacv1.RoleBinding{}, EmbedFsPath: "assets/azure-cloud-provider-rolebinding.yaml"},
 	}
 )
 
