@@ -12,7 +12,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -267,16 +266,23 @@ func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					openshiftCloudConfigMapPredicates(),
 				),
 			),
-		).
-		Watches(
-			&configv1.Infrastructure{},
-			handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
-			builder.WithPredicates(infrastructurePredicates()),
-		).
-		Watches(
-			&configv1.Network{},
-			handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
 		)
+	/*
+		.
+			Watches(
+				&configv1.Infrastructure{},
+				handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
+				builder.WithPredicates(infrastructurePredicates()),
+			).
+			Watches(
+				&configv1.Network{},
+				handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
+			).Watches(
+				&corev1.ConfigMap{}, handler.EnqueueRequestsFromMapFunc(toManagedConfigMap),
+
+				)
+
+	*/
 
 	return build.Complete(r)
 }
