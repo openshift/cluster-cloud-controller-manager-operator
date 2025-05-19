@@ -184,6 +184,8 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1.PlatformStatus, infraCloudConfigRef configv1.ConfigMapFileReference) (bool, error) {
+	klog.V(1).Info("Checking if cloud config sync needed")
+
 	if platformStatus == nil {
 		return false, fmt.Errorf("platformStatus is required")
 	}
@@ -205,6 +207,7 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 }
 
 func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap, infra *configv1.Infrastructure) (*corev1.ConfigMap, error) {
+	klog.V(1).Info("Preparing source config map")
 	// Keys might be different between openshift-config/cloud-config and openshift-config-managed/kube-cloud-config
 	// Always use "cloud.conf" which is default one across openshift
 	cloudConfCm := source.DeepCopy()
@@ -225,11 +228,13 @@ func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap,
 }
 
 func (r *CloudConfigReconciler) isCloudConfigEqual(source *corev1.ConfigMap, target *corev1.ConfigMap) bool {
+	klog.V(1).Info("Checking if cloud config equal")
 	return source.Immutable == target.Immutable &&
 		reflect.DeepEqual(source.Data, target.Data) && reflect.DeepEqual(source.BinaryData, target.BinaryData)
 }
 
 func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source *corev1.ConfigMap, target *corev1.ConfigMap) error {
+	klog.V(1).Info("Syncing cloud config data")
 	target.SetName(syncedCloudConfigMapName)
 	target.SetNamespace(r.ManagedNamespace)
 	target.Data = source.Data
@@ -250,6 +255,8 @@ func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source 
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	klog.V(1).Info("Setting up controller")
+
 	build := ctrl.NewControllerManagedBy(mgr).
 		Named("CloudConfigSyncController").
 		For(
@@ -275,6 +282,7 @@ func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *CloudConfigReconciler) setAvailableCondition(ctx context.Context) error {
+	klog.V(1).Info("Setting available condition")
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		return err
