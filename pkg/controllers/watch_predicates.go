@@ -36,12 +36,14 @@ func toClusterOperator(context.Context, client.Object) []reconcile.Request {
 }
 
 func toManagedConfigMap(context.Context, client.Object) []reconcile.Request {
+	klog.V(1).Info("toManagedConfigMap called")
 	return []reconcile.Request{{
 		NamespacedName: client.ObjectKey{Name: syncedCloudConfigMapName, Namespace: DefaultManagedNamespace},
 	}}
 }
 
 func infrastructurePredicates() predicate.Funcs {
+	klog.V(1).Info("infrastructurePredicates called")
 	isInfrastructureCluster := func(obj runtime.Object) bool {
 		infra, ok := obj.(*configv1.Infrastructure)
 		return ok && infra.GetName() == infrastructureResourceName
