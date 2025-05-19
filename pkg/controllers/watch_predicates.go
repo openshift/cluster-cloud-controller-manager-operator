@@ -3,14 +3,16 @@ package controllers
 import (
 	"context"
 
-	configv1 "github.com/openshift/api/config/v1"
-	operatorv1 "github.com/openshift/api/operator/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 )
 
 func clusterOperatorPredicates() predicate.Funcs {
@@ -34,12 +36,14 @@ func toClusterOperator(context.Context, client.Object) []reconcile.Request {
 }
 
 func toManagedConfigMap(context.Context, client.Object) []reconcile.Request {
+	klog.V(1).Info("toManagedConfigMap called")
 	return []reconcile.Request{{
 		NamespacedName: client.ObjectKey{Name: syncedCloudConfigMapName, Namespace: DefaultManagedNamespace},
 	}}
 }
 
 func infrastructurePredicates() predicate.Funcs {
+	klog.V(1).Info("infrastructurePredicates called")
 	isInfrastructureCluster := func(obj runtime.Object) bool {
 		infra, ok := obj.(*configv1.Infrastructure)
 		return ok && infra.GetName() == infrastructureResourceName
@@ -105,6 +109,8 @@ func openshiftCloudConfigMapPredicates() predicate.Funcs {
 
 		isOpenshiftConfigNamespace := configMap.GetNamespace() == OpenshiftConfigNamespace
 		isManagedCloudConfig := configMap.GetName() == managedCloudConfigMapName && configMap.GetNamespace() == OpenshiftManagedConfigNamespace
+
+		klog.V(1).Infof("is ocp configmap %t/%t", isOpenshiftConfigNamespace, isManagedCloudConfig)
 
 		return isOpenshiftConfigNamespace || isManagedCloudConfig
 	}
