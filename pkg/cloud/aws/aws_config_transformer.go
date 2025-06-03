@@ -83,4 +83,9 @@ func setOpenShiftDefaults(cfg *awsconfig.CloudConfig) {
 		// health check endpoint served by OVN.
 		cfg.Global.ClusterServiceLoadBalancerHealthProbeMode = "Shared"
 	}
+	if cfg.Global.NLBSecurityGroupMode != awsconfig.NLBSecurityGroupModeManaged {
+		// OpenShift enforces security group by default when deploying
+		// service type loadbalancer NLB.
+		cfg.Global.NLBSecurityGroupMode = awsconfig.NLBSecurityGroupModeManaged
+	}
 }
