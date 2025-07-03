@@ -8,7 +8,7 @@ require (
 	github.com/golangci/golangci-lint v1.62.2
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
-	github.com/openshift/api v0.0.0-20250128061932-d2791f98ff08
+	github.com/openshift/api v0.0.0-20250620092249-a8cbc218cd2c
 	github.com/openshift/client-go v0.0.0-20250125113824-8e1f0b8fa9a7
 	github.com/openshift/cluster-api-actuator-pkg/testutils v0.0.0-20250122171707-86066d47a264
 	github.com/openshift/library-go v0.0.0-20250127111945-0f76e23726cd
