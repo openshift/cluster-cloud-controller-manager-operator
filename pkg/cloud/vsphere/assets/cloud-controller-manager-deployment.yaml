@@ -69,7 +69,7 @@ spec:
             - name: ENABLE_ALPHA_DUAL_STACK
               value: "true"
             - name: ADDITIONAL_NODE_LABELS
-              value: "node.openshift.io/platform-type=vsphere"
+              value: {{ .additionalLabels }}
           resources:
             requests:
               cpu: 200m
