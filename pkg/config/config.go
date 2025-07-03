@@ -40,6 +40,7 @@ type OperatorConfig struct {
 	PlatformStatus     *configv1.PlatformStatus
 	ClusterProxy       *configv1.Proxy
 	FeatureGates       string
+	OCPFeatureGates    featuregates.FeatureGate
 }
 
 func (cfg *OperatorConfig) GetPlatformNameString() string {
@@ -97,11 +98,14 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		klog.Errorf("Unable to get upstream feature gates: %s", err)
 		return OperatorConfig{}, fmt.Errorf("unable to get upstream feature gates: %w", err)
 	}
+
+	var features featuregates.FeatureGate
 	if featureGateAccessor != nil {
-		features, _ := featureGateAccessor.CurrentFeatureGates()
+		features, _ = featureGateAccessor.CurrentFeatureGates()
 		enabled, _ := util.GetEnabledDisabledFeatures(features, upstreamGates)
 		featureGatesString = util.BuildFeatureGateString(enabled, nil)
 	}
+	fmt.Printf("Generated feature gates string: %s\n", featureGatesString)
 
 	config := OperatorConfig{
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
@@ -111,6 +115,7 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		InfrastructureName: infrastructure.Status.InfrastructureName,
 		IsSingleReplica:    infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
 		FeatureGates:       featureGatesString,
+		OCPFeatureGates:    features,
 	}
 
 	return config, nil

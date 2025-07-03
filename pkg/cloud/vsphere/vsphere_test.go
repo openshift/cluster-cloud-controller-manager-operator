@@ -41,6 +41,17 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.VSpherePlatformType},
 				InfrastructureName: "infra",
 			},
+		}, {
+			name: "FeatureGate FeatureGateVSphereMixedNodeEnv=true results in node-labels generated without error",
+			config: config.OperatorConfig{
+				ManagedNamespace: "my-cool-namespace",
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerVSphere: "CloudControllerManagerVsphere",
+				},
+				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.VSpherePlatformType},
+				InfrastructureName: "infra",
+				FeatureGates:       "FeatureGateVSphereMixedNodeEnv=true",
+			},
 		},
 	}
 
