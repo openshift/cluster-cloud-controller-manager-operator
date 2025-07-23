@@ -18,5 +18,5 @@ spec:
     port: 9258
     targetPort: https
   selector:
-    app: cloud-manager-operator
+    k8s-app: cloud-manager-operator
   sessionAffinity: None
