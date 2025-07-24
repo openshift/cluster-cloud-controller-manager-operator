@@ -30,6 +30,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
@@ -41,9 +42,13 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 
+	configv1client "github.com/openshift/client-go/config/clientset/versioned"
+	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/restmapper"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	"github.com/openshift/library-go/pkg/operator/events"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -132,15 +137,49 @@ func main() {
 	}
 
 	sharedClock := clock.RealClock{}
+	// Feature gate accessor
+	missingVersion := "0.0.1-snapshot"
+	desiredVersion := controllers.GetReleaseVersion()
+	ctx := ctrl.SetupSignalHandler()
+	configClient, err := configv1client.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create config client")
+		os.Exit(1)
+	}
+	configInformers := configinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
+	kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create kube client")
+		os.Exit(1)
+	}
+	controllerRef, err := events.GetControllerReferenceForCurrentPod(ctx, kubeClient, *managedNamespace, nil)
+	if err != nil {
+		klog.Warningf("unable to get owner reference (falling back to namespace): %v", err)
+	}
+	recorderName := "cloud-controller-manager-operator-cloud-config-sync-controller"
+	recorder := events.NewKubeRecorder(kubeClient.CoreV1().Events(*managedNamespace), recorderName, controllerRef, sharedClock)
+	featureGateAccessor := featuregates.NewFeatureGateAccess(
+		desiredVersion, missingVersion,
+		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
+		recorder,
+	)
+	featureGateAccessor.SetChangeHandler(func(featureChange featuregates.FeatureChange) {
+		// Do nothing here. The controller watches feature gate changes and will react to them.
+		klog.InfoS("FeatureGates changed", "enabled", featureChange.New.Enabled, "disabled", featureChange.New.Disabled)
+	})
+	go featureGateAccessor.Run(ctx)
+	go configInformers.Start(ctx.Done())
+
 	if err = (&controllers.CloudConfigReconciler{
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
-			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator-cloud-config-sync-controller"),
+			Recorder:         mgr.GetEventRecorderFor(recorderName),
 			Clock:            sharedClock,
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
 		},
-		Scheme: mgr.GetScheme(),
+		Scheme:            mgr.GetScheme(),
+		FeatureGateAccess: featureGateAccessor,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create cloud-config sync controller", "controller", "ClusterOperator")
 		os.Exit(1)

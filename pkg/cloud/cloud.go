@@ -8,6 +8,7 @@ import (
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/aws"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/azure"
@@ -23,7 +24,7 @@ import (
 // cloudConfigTransformer function transforms the source config map using the input infrastructure.config.openshift.io
 // and network.config.openshift.io objects. Only the data and binaryData field of the output ConfigMap will be respected by
 // consumer of the transformer.
-type cloudConfigTransformer func(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error)
+type cloudConfigTransformer func(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error)
 
 // GetCloudConfigTransformer returns the function that should be used to transform
 // the cloud configuration config map, and a boolean to indicate if the config should

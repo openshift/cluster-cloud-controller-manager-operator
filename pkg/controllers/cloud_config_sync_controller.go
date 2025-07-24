@@ -18,6 +18,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 const (
@@ -32,7 +33,8 @@ const (
 
 type CloudConfigReconciler struct {
 	ClusterOperatorStatusClient
-	Scheme *runtime.Scheme
+	Scheme            *runtime.Scheme
+	FeatureGateAccess featuregates.FeatureGateAccess
 }
 
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -53,6 +55,15 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller when getting cluster Network object: %v", err)
 		}
 		return ctrl.Result{}, err
+	}
+
+	// TODO: evaluate if we can check gate starting here
+	features, err := r.FeatureGateAccess.CurrentFeatureGates()
+	if err != nil {
+		klog.Errorf("unable to get feature gates: %v", err)
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
 	}
 
 	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus, infra.Spec.CloudConfig)
@@ -134,7 +145,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
 		// we're not expecting users to put their data in the former.
-		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network)
+		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network, features)
 		if err != nil {
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
