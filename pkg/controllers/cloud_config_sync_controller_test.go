@@ -206,7 +206,7 @@ var _ = Describe("Cloud config sync controller", func() {
 				ManagedNamespace: targetNamespaceName,
 			},
 			Scheme:            scheme.Scheme,
-			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []configv1.FeatureGateName{"AWSServiceLBNetworkSecurityGroup"}, nil, nil),
 		}
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
@@ -408,7 +408,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 				ManagedNamespace: targetNamespaceName,
 			},
 			Scheme:            scheme.Scheme,
-			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []configv1.FeatureGateName{"AWSServiceLBNetworkSecurityGroup"}, nil, nil),
 		}
 
 		networkResource := makeNetworkResource()

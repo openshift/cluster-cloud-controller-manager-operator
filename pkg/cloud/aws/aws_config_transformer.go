@@ -11,6 +11,7 @@ import (
 	"gopkg.in/ini.v1"
 
 	awsconfig "k8s.io/cloud-provider-aws/pkg/providers/v1/config"
+	"k8s.io/klog/v2"
 
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
@@ -28,7 +29,7 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		return "", fmt.Errorf("failed to read the cloud.conf: %w", err)
 	}
 
-	setOpenShiftDefaults(cfg)
+	setOpenShiftDefaults(cfg, features)
 
 	return marshalAWSConfig(cfg)
 }
@@ -76,24 +77,65 @@ func marshalAWSConfig(cfg *awsconfig.CloudConfig) (string, error) {
 	}
 
 	// Ensure service override sections are last and ordered numerically.
-	sort.Slice(file.Sections(), func(i, j int) bool {
-		return file.Sections()[i].Name() < file.Sections()[j].Name()
+	// We need to create a new file with sorted sections because file.Sections()
+	// returns a new slice each time, so sorting it doesn't modify the original.
+	sections := file.Sections()
+	sort.Slice(sections, func(i, j int) bool {
+		return sections[i].Name() < sections[j].Name()
 	})
+
+	// Create a new INI file with sections in sorted order
+	sortedFile := ini.Empty()
+	for _, section := range sections {
+		newSection, err := sortedFile.NewSection(section.Name())
+		if err != nil {
+			return "", fmt.Errorf("failed to create section: %w", err)
+		}
+		for _, key := range section.Keys() {
+			newSection.Key(key.Name()).SetValue(key.Value())
+		}
+	}
 
 	buf := &bytes.Buffer{}
 
-	if _, err := file.WriteTo(buf); err != nil {
+	if _, err := sortedFile.WriteTo(buf); err != nil {
 		return "", fmt.Errorf("failed to write INI file: %w", err)
 	}
 
 	return buf.String(), nil
 }
 
-func setOpenShiftDefaults(cfg *awsconfig.CloudConfig) {
+// isFeatureGateEnabled safely checks if a feature gate is enabled without panicking
+// if the feature is not registered. Returns false if features is nil or if the
+// feature is not in the known features list.
+func isFeatureGateEnabled(features featuregates.FeatureGate, featureName string) bool {
+	// features.Enabled returns panic if the feature is not registered in FeatureGates,
+	// this functions prevents the panic by returning false if the feature is not registered in FeatureGates.
+	if features == nil || len(featureName) == 0 {
+		return false
+	}
+	for _, known := range features.KnownFeatures() {
+		if string(known) == featureName {
+			return features.Enabled(known)
+		}
+	}
+	return false
+}
+
+func setOpenShiftDefaults(cfg *awsconfig.CloudConfig, features featuregates.FeatureGate) {
 	if cfg.Global.ClusterServiceLoadBalancerHealthProbeMode == "" {
 		// OpenShift uses Shared mode by default.
 		// This attaches the health check for Cluster scope services to the "kube-proxy"
 		// health check endpoint served by OVN.
 		cfg.Global.ClusterServiceLoadBalancerHealthProbeMode = "Shared"
+	}
+	if isFeatureGateEnabled(features, "AWSServiceLBNetworkSecurityGroup") {
+		if cfg.Global.NLBSecurityGroupMode != awsconfig.NLBSecurityGroupModeManaged {
+			// When the feature gate AWSServiceLBNetworkSecurityGroup is enabled,
+			// OpenShift configures the AWS CCM to manage security groups for
+			// Network Load Balancer (NLB) Services.
+			klog.Infof("Enforcing cloud provider AWS configuration NLBSecurityGroupMode to Managed")
+			cfg.Global.NLBSecurityGroupMode = awsconfig.NLBSecurityGroupModeManaged
+		}
 	}
 }
