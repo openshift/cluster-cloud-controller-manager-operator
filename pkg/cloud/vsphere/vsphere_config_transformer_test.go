@@ -8,6 +8,8 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+
 	ccm "k8s.io/cloud-provider-vsphere/pkg/cloudprovider/vsphere/config"
 )
 
@@ -393,6 +395,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		inputConfig      string
 		equivalentConfig string
 		errMsg           string
+		features         featuregates.FeatureGate
 	}{
 		{
 			name:             "in-tree to external with empty infra",
@@ -400,6 +403,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      iniConfigWithWorkspace,
 			equivalentConfig: iniConfigWithoutWorkspace,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "in-tree to external with node networking",
@@ -407,6 +411,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      iniConfigWithWorkspace,
 			equivalentConfig: iniConfigNodeNetworking,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "populating labels datacenters from zones config",
@@ -414,6 +419,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      iniConfigWithWorkspace,
 			equivalentConfig: iniConfigZonal,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "replacing existing labels with openshift specific",
@@ -421,6 +427,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      iniConfigWithExistingLabels,
 			equivalentConfig: iniConfigZonal,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "yaml and ini config parsing results should be the same",
@@ -428,6 +435,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: iniConfigWithoutWorkspace,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "yaml and ini config parsing results should be the same, with zones",
@@ -435,6 +443,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfigZonal,
 			equivalentConfig: iniConfigZonal,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "yaml and ini config parsing results should be the same, node networking",
@@ -442,6 +451,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfigNodeNetworking,
 			equivalentConfig: iniConfigNodeNetworking,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "yaml config should contain node networking if it's specified in infra",
@@ -449,6 +459,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworking,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "yaml config should be populated with datacenters and labels if failure domains specified",
@@ -456,6 +467,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigZonal,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "yaml config should contain ipv4-primary dual-stack config and correct excluded subnets",
@@ -463,6 +475,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   withDualStackPrimaryIPv4NetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworkingDualStackPrimaryIPv4,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "yaml config should contain ipv6-primary dual-stack config and correct excluded subnets",
@@ -470,6 +483,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   withDualStackPrimaryIPv6NetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworkingDualStackPrimaryIPv6,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:             "yaml config should contain ipv6-only config and correct excluded subnets",
@@ -477,18 +491,21 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder:   withIPv6onlyNetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworkingIPv6only,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:           "empty input",
 			infraBuilder:   newVsphereInfraBuilder(),
 			networkBuilder: makeDummyNetworkConfig(),
 			errMsg:         "failed to read the cloud.conf: vSphere config is empty",
+			features:       featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:           "incorrect platform",
 			infraBuilder:   newVsphereInfraBuilder().withPlatform(configv1.NonePlatformType),
 			networkBuilder: makeDummyNetworkConfig(),
 			errMsg:         "invalid platform, expected to be VSphere",
+			features:       featuregates.NewFeatureGate(nil, nil),
 		},
 		{
 			name:           "invalid ini input",
@@ -496,6 +513,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			networkBuilder: makeDummyNetworkConfig(),
 			inputConfig:    ":",
 			errMsg:         "failed to read the cloud.conf",
+			features:       featuregates.NewFeatureGate(nil, nil),
 		},
 	}
 
@@ -503,7 +521,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			g := gmg.NewWithT(t)
 			infraResouce := tc.infraBuilder.Build()
-			transformedConfig, err := CloudConfigTransformer(tc.inputConfig, infraResouce, tc.networkBuilder)
+			transformedConfig, err := CloudConfigTransformer(tc.inputConfig, infraResouce, tc.networkBuilder, tc.features)
 			if tc.errMsg != "" {
 				g.Expect(err).To(gmg.MatchError(gmg.ContainSubstring(tc.errMsg)))
 				return
