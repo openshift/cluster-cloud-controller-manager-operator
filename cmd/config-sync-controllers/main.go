@@ -26,6 +26,7 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -40,6 +41,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	"github.com/openshift/library-go/pkg/operator/events"
+
+	configv1client "github.com/openshift/client-go/config/clientset/versioned"
+	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/restmapper"
@@ -78,6 +84,12 @@ func main() {
 		controllers.DefaultManagedNamespace,
 		"The namespace for managed objects, target cloud-conf in particular.",
 	)
+
+	recorderName := "cloud-controller-manager-operator-cloud-config-sync-controller"
+	missingVersion := "0.0.1-snapshot"
+	desiredVersion := controllers.GetReleaseVersion()
+	sharedClock := clock.RealClock{}
+	ctx := ctrl.SetupSignalHandler()
 
 	// Once all the flags are regitered, switch to pflag
 	// to allow leader lection flags to be bound
@@ -131,7 +143,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	sharedClock := clock.RealClock{}
+	// Feature gate accessor
+	configClient, err := configv1client.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create config client")
+		os.Exit(1)
+	}
+	kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create kube client")
+		os.Exit(1)
+	}
+
+	configInformers := configinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
+	controllerRef, err := events.GetControllerReferenceForCurrentPod(ctx, kubeClient, *managedNamespace, nil)
+	if err != nil {
+		klog.Warningf("unable to get owner reference (falling back to namespace): %v", err)
+	}
+
+	featureGateAccessor := featuregates.NewFeatureGateAccess(
+		desiredVersion, missingVersion,
+		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
+		events.NewKubeRecorder(kubeClient.CoreV1().Events(*managedNamespace), recorderName, controllerRef, sharedClock),
+	)
+	featureGateAccessor.SetChangeHandler(func(featureChange featuregates.FeatureChange) {
+		// Do nothing here. The controller watches feature gate changes and will react to them.
+		klog.InfoS("FeatureGates changed", "enabled", featureChange.New.Enabled, "disabled", featureChange.New.Disabled)
+	})
+	go featureGateAccessor.Run(ctx)
+	go configInformers.Start(ctx.Done())
+
 	if err = (&controllers.CloudConfigReconciler{
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
@@ -140,7 +181,8 @@ func main() {
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
 		},
-		Scheme: mgr.GetScheme(),
+		Scheme:            mgr.GetScheme(),
+		FeatureGateAccess: featureGateAccessor,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create cloud-config sync controller", "controller", "ClusterOperator")
 		os.Exit(1)
@@ -171,7 +213,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

@@ -76,7 +76,8 @@ func getMinimalConfigForPlatform(platformType configv1.PlatformType) string {
 
 type CloudConfigReconciler struct {
 	ClusterOperatorStatusClient
-	Scheme *runtime.Scheme
+	Scheme            *runtime.Scheme
+	FeatureGateAccess featuregates.FeatureGateAccess
 }
 
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -210,7 +211,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
 		// we're not expecting users to put their data in the former.
-		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network)
+		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network, features)
 		if err != nil {
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
