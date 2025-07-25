@@ -28,7 +28,7 @@ const (
 // Currently, CloudConfigTransformer is responsible to populate vcenters, labels, and node networking parameters from
 // the Infrastructure resource.
 // Also, this function converts legacy deprecated INI configuration format to a YAML-based one.
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error) {
 	if infra.Status.PlatformStatus == nil ||
 		infra.Status.PlatformStatus.Type != configv1.VSpherePlatformType {
 		return "", fmt.Errorf("invalid platform, expected to be %s", configv1.VSpherePlatformType)
