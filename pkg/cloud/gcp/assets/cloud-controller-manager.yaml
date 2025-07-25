@@ -130,3 +130,26 @@ spec:
             items:
               - key: ca-bundle.crt
                 path: tls-ca-bundle.pem
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-controller-manager
+  namespace: openshift-cloud-controller-manager
+  annotations:
+    capability.openshift.io/name: CloudControllerManager
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+    service.alpha.openshift.io/serving-cert-secret-name: cloud-controller-manager-operator-tls
+  labels:
+    k8s-app: gcp-cloud-controller-manager
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: https
+    port: 10258
+    targetPort: https
+  selector:
+    k8s-app: gcp-cloud-controller-manager
+  sessionAffinity: None
