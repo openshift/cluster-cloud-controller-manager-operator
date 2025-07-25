@@ -10,18 +10,19 @@ import (
 	"gopkg.in/gcfg.v1"
 	"gopkg.in/ini.v1"
 
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	awsconfig "k8s.io/cloud-provider-aws/pkg/providers/v1/config"
 )
 
 // CloudConfigTransformer is used to inject OpenShift configuration defaults into the Cloud Provider config
 // for the AWS Cloud Provider.
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error) {
 	cfg, err := readAWSConfig(source)
 	if err != nil {
 		return "", fmt.Errorf("failed to read the cloud.conf: %w", err)
 	}
 
-	setOpenShiftDefaults(cfg)
+	setOpenShiftDefaults(cfg, features)
 
 	return marshalAWSConfig(cfg)
 }
@@ -76,11 +77,19 @@ func marshalAWSConfig(cfg *awsconfig.CloudConfig) (string, error) {
 	return buf.String(), nil
 }
 
-func setOpenShiftDefaults(cfg *awsconfig.CloudConfig) {
+func setOpenShiftDefaults(cfg *awsconfig.CloudConfig, features featuregates.FeatureGate) {
 	if cfg.Global.ClusterServiceLoadBalancerHealthProbeMode == "" {
 		// OpenShift uses Shared mode by default.
 		// This attaches the health check for Cluster scope services to the "kube-proxy"
 		// health check endpoint served by OVN.
 		cfg.Global.ClusterServiceLoadBalancerHealthProbeMode = "Shared"
 	}
+	if features.Enabled("AWSServiceLBNetworkSecurityGroup") {
+		if cfg.Global.NLBSecurityGroupMode != awsconfig.NLBSecurityGroupModeManaged {
+			// OpenShift enforces security group by default when deploying
+			// service type loadbalancer NLB.
+			cfg.Global.NLBSecurityGroupMode = awsconfig.NLBSecurityGroupModeManaged
+		}
+	}
+
 }
