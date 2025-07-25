@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 func TestCloudConfigTransformer(t *testing.T) {
@@ -87,7 +89,7 @@ SigningRegion = signing_region
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
 
-			gotConfig, err := CloudConfigTransformer(tc.source, nil, nil) // No Infra or Network are required for the current functionality.
+			gotConfig, err := CloudConfigTransformer(tc.source, nil, nil, featuregates.NewFeatureGate(nil, nil)) // No Infra or Network are required for the current functionality.
 			g.Expect(err).ToNot(HaveOccurred())
 
 			g.Expect(gotConfig).To(Equal(tc.expected))
