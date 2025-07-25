@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
 )
@@ -32,7 +33,8 @@ const (
 
 type CloudConfigReconciler struct {
 	ClusterOperatorStatusClient
-	Scheme *runtime.Scheme
+	Scheme            *runtime.Scheme
+	FeatureGateAccess featuregates.FeatureGateAccess
 }
 
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -133,11 +135,29 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// Check if FeatureGateAccess is configured
+	if r.FeatureGateAccess == nil {
+		klog.Errorf("FeatureGateAccess is not configured")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, fmt.Errorf("FeatureGateAccess is not configured")
+	}
+
+	features, err := r.FeatureGateAccess.CurrentFeatureGates()
+	if err != nil {
+		klog.Errorf("unable to get feature gates: %v", err)
+		if errD := r.setDegradedCondition(ctx); errD != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", errD)
+		}
+		return ctrl.Result{}, err
+	}
+
 	if cloudConfigTransformerFn != nil {
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
 		// we're not expecting users to put their data in the former.
-		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network)
+		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network, features)
 		if err != nil {
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
