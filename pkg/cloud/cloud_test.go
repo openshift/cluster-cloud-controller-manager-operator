@@ -99,37 +99,43 @@ func TestGetResources(t *testing.T) {
 	}{{
 		name:                  "AWS resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AWSPlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 3,
 		expectedResourcesKindName: []string{
 			"Deployment/aws-cloud-controller-manager",
 			"PodDisruptionBudget/aws-cloud-controller-manager",
+			"Service/aws-cloud-controller-manager",
 		},
 	}, {
-		name:                      "AWS resources returned as expected with single node cluster",
-		testPlatform:              platformsMap[string(configv1.AWSPlatformType)],
-		expectedResourceCount:     1,
-		singleReplica:             true,
-		expectedResourcesKindName: []string{"Deployment/aws-cloud-controller-manager"},
+		name:                  "AWS resources returned as expected with single node cluster",
+		testPlatform:          platformsMap[string(configv1.AWSPlatformType)],
+		expectedResourceCount: 2,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/aws-cloud-controller-manager",
+			"Service/aws-cloud-controller-manager",
+		},
 	}, {
 		name:                  "OpenStack resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.OpenStackPlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 3,
 		expectedResourcesKindName: []string{
 			"Deployment/openstack-cloud-controller-manager",
 			"PodDisruptionBudget/openstack-cloud-controller-manager",
+			"Service/openstack-cloud-controller-manager",
 		},
 	}, {
 		name:                  "OpenStack resources returned as expected with signle node cluster",
 		testPlatform:          platformsMap[string(configv1.OpenStackPlatformType)],
-		expectedResourceCount: 1,
+		expectedResourceCount: 2,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/openstack-cloud-controller-manager",
+			"Service/openstack-cloud-controller-manager",
 		},
 	}, {
 		name:                  "GCP resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.GCPPlatformType)],
-		expectedResourceCount: 6,
+		expectedResourceCount: 7,
 		expectedResourcesKindName: []string{
 			"Deployment/gcp-cloud-controller-manager",
 			"PodDisruptionBudget/gcp-cloud-controller-manager",
@@ -137,11 +143,12 @@ func TestGetResources(t *testing.T) {
 			"ClusterRoleBinding/gcp-cloud-controller-manager:cloud-provider",
 			"ValidatingAdmissionPolicyBinding/network-tier-annotation-binding",
 			"ValidatingAdmissionPolicy/network-tier-annotation-validation-policy",
+			"Service/gcp-cloud-controller-manager",
 		},
 	}, {
 		name:                  "GCP resources returned as expected with single node cluster",
 		testPlatform:          platformsMap[string(configv1.GCPPlatformType)],
-		expectedResourceCount: 5,
+		expectedResourceCount: 6,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/gcp-cloud-controller-manager",
@@ -149,11 +156,12 @@ func TestGetResources(t *testing.T) {
 			"ClusterRoleBinding/gcp-cloud-controller-manager:cloud-provider",
 			"ValidatingAdmissionPolicyBinding/network-tier-annotation-binding",
 			"ValidatingAdmissionPolicy/network-tier-annotation-validation-policy",
+			"Service/gcp-cloud-controller-manager",
 		},
 	}, {
 		name:                  "Azure resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 11,
+		expectedResourceCount: 12,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
@@ -166,11 +174,12 @@ func TestGetResources(t *testing.T) {
 			"ValidatingAdmissionPolicyBinding/azure-load-balancer-tcp-idle-timeout-validation-annotation-binding",
 			"ValidatingAdmissionPolicy/azure-load-balancer-tcp-idle-timeout-annotation-validation-policy",
 			"PodDisruptionBudget/azure-cloud-controller-manager",
+			"Service/azure-cloud-controller-manager",
 		},
 	}, {
 		name:                  "Azure resources returned as expected with single node cluster",
 		testPlatform:          platformsMap[string(configv1.AzurePlatformType)],
-		expectedResourceCount: 10,
+		expectedResourceCount: 11,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
@@ -183,33 +192,36 @@ func TestGetResources(t *testing.T) {
 			"ValidatingAdmissionPolicyBinding/openshift-cloud-controller-manager-cloud-provider-azure-node-admission",
 			"ValidatingAdmissionPolicyBinding/azure-load-balancer-tcp-idle-timeout-validation-annotation-binding",
 			"ValidatingAdmissionPolicy/azure-load-balancer-tcp-idle-timeout-annotation-validation-policy",
+			"Service/azure-cloud-controller-manager",
 		},
 	}, {
 		name:                  "Azure Stack resources returned as expected",
 		testPlatform:          platformsMap["AzureStackHub"],
-		expectedResourceCount: 5,
+		expectedResourceCount: 6,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
 			"Role/azure-cloud-provider",
 			"RoleBinding/azure-cloud-provider:azure-cloud-provider",
 			"PodDisruptionBudget/azure-cloud-controller-manager",
+			"Service/azure-cloud-controller-manager",
 		},
 	}, {
 		name:                  "Azure Stack resources returned as expected with single node",
 		testPlatform:          platformsMap["AzureStackHub"],
-		expectedResourceCount: 4,
+		expectedResourceCount: 5,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/azure-cloud-controller-manager",
 			"DaemonSet/azure-cloud-node-manager",
 			"Role/azure-cloud-provider",
 			"RoleBinding/azure-cloud-provider:azure-cloud-provider",
+			"Service/azure-cloud-controller-manager",
 		},
 	}, {
 		name:                  "VSphere resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.VSpherePlatformType)],
-		expectedResourceCount: 8,
+		expectedResourceCount: 9,
 		expectedResourcesKindName: []string{
 			"Deployment/vsphere-cloud-controller-manager",
 			"PodDisruptionBudget/vsphere-cloud-controller-manager",
@@ -219,11 +231,12 @@ func TestGetResources(t *testing.T) {
 			"ClusterRole/vsphere-cloud-controller-manager",
 			"ClusterRoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
 			"ClusterRoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
+			"Service/vsphere-cloud-controller-manager",
 		},
 	}, {
 		name:                  "VSphere resources returned as expected with single node",
 		testPlatform:          platformsMap[string(configv1.VSpherePlatformType)],
-		expectedResourceCount: 7,
+		expectedResourceCount: 8,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/vsphere-cloud-controller-manager",
@@ -233,6 +246,7 @@ func TestGetResources(t *testing.T) {
 			"ClusterRole/vsphere-cloud-controller-manager",
 			"ClusterRoleBinding/vsphere-cloud-controller-manager:vsphere-cloud-controller-manager",
 			"ClusterRoleBinding/vsphere-cloud-controller-manager:cloud-controller-manager",
+			"Service/vsphere-cloud-controller-manager",
 		},
 	}, {
 		name:         "OVirt resources are empty, as the platform is not yet supported",
@@ -240,32 +254,40 @@ func TestGetResources(t *testing.T) {
 	}, {
 		name:                  "IBMCloud resources",
 		testPlatform:          platformsMap[string(configv1.IBMCloudPlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 3,
 		expectedResourcesKindName: []string{
 			"Deployment/ibm-cloud-controller-manager",
 			"PodDisruptionBudget/ibmcloud-cloud-controller-manager",
+			"Service/ibmcloud-cloud-controller-manager",
 		},
 	}, {
-		name:                      "IBMCloud resources with single node cluster",
-		testPlatform:              platformsMap[string(configv1.IBMCloudPlatformType)],
-		expectedResourceCount:     1,
-		singleReplica:             true,
-		expectedResourcesKindName: []string{"Deployment/ibm-cloud-controller-manager"},
+		name:                  "IBMCloud resources with single node cluster",
+		testPlatform:          platformsMap[string(configv1.IBMCloudPlatformType)],
+		expectedResourceCount: 2,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/ibm-cloud-controller-manager",
+			"Service/ibmcloud-cloud-controller-manager",
+		},
 	}, {
 		name:                  "PowerVS resources",
 		testPlatform:          platformsMap[string(configv1.PowerVSPlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 3,
 		singleReplica:         false,
 		expectedResourcesKindName: []string{
 			"Deployment/powervs-cloud-controller-manager",
 			"PodDisruptionBudget/powervs-cloud-controller-manager",
+			"Service/powervs-cloud-controller-manager",
 		},
 	}, {
-		name:                      "PowerVS resources with single node cluster",
-		testPlatform:              platformsMap[string(configv1.PowerVSPlatformType)],
-		expectedResourceCount:     1,
-		singleReplica:             true,
-		expectedResourcesKindName: []string{"Deployment/powervs-cloud-controller-manager"},
+		name:                  "PowerVS resources with single node cluster",
+		testPlatform:          platformsMap[string(configv1.PowerVSPlatformType)],
+		expectedResourceCount: 2,
+		singleReplica:         true,
+		expectedResourcesKindName: []string{
+			"Deployment/powervs-cloud-controller-manager",
+			"Service/powervs-cloud-controller-manager",
+		},
 	}, {
 		name:         "Libvirt resources are empty",
 		testPlatform: platformsMap[string(configv1.LibvirtPlatformType)],

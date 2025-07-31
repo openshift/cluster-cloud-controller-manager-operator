@@ -354,7 +354,8 @@ var _ = Describe("Apply resources should", func() {
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
-		// two resources should report successful update, deployment and pdb
+		// three resources should report successful update, deployment, pdb and service
+		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
