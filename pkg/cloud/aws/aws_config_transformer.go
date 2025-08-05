@@ -13,8 +13,11 @@ import (
 	awsconfig "k8s.io/cloud-provider-aws/pkg/providers/v1/config"
 )
 
+const defaultConfig = `[Global]
+`
+
 // CloudConfigTransformer is used to inject OpenShift configuration defaults into the Cloud Provider config
-// for the AWS Cloud Provider.
+// for the AWS Cloud Provider. If an empty source string is provided, a minimal default configuration will be created.
 func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
 	cfg, err := readAWSConfig(source)
 	if err != nil {
@@ -26,13 +29,19 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 	return marshalAWSConfig(cfg)
 }
 
+// readAWSConfig will parse a source string into a proper *awsconfig.CloudConfig.
+// If an empty source string is provided, a default configuration will be used.
 func readAWSConfig(source string) (*awsconfig.CloudConfig, error) {
+	cfg := &awsconfig.CloudConfig{}
+
+	// There are cases in which a cloud config was not installed with a cluster, and this is valid.
+	// We should, however, populate the configuration so that it doesn't fail on later versions that require
+	// a cloud.conf.
 	if len(source) == 0 {
-		return nil, fmt.Errorf("empty INI file")
+		source = defaultConfig
 	}
 
 	// Use the same method the AWS CCM uses to load configuration.
-	cfg := &awsconfig.CloudConfig{}
 	if err := gcfg.FatalOnly(gcfg.ReadStringInto(cfg, source)); err != nil {
 		return nil, fmt.Errorf("failed to parse INI file: %w", err)
 	}
