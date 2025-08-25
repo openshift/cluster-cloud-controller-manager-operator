@@ -1,6 +1,6 @@
 module github.com/openshift/cluster-cloud-controller-manager-operator
 
-go 1.24.0
+go 1.24.4
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
@@ -292,3 +292,6 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.6.0 // indirect
 )
+
+// version SPLAT-2253-nlb-sg-config from PR https://github.com/kubernetes/cloud-provider-aws/pull/1158
+replace k8s.io/cloud-provider-aws => github.com/mtulio/openshift-cloud-provider-aws v0.0.0-20250819000304-7a7ac8da0970

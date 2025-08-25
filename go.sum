@@ -373,6 +373,8 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/moricho/tparallel v0.3.2 h1:odr8aZVFA3NZrNybggMkYO3rgPRcqjeQUlBBFVxKHTI=
 github.com/moricho/tparallel v0.3.2/go.mod h1:OQ+K3b4Ln3l2TZveGCywybl68glfLEwFGqvnjok8b+U=
+github.com/mtulio/openshift-cloud-provider-aws v0.0.0-20250819000304-7a7ac8da0970 h1:B08/GXiKbGtdaND5XEZuoJqKjcAPvRfwgmtzqodhdPk=
+github.com/mtulio/openshift-cloud-provider-aws v0.0.0-20250819000304-7a7ac8da0970/go.mod h1:zVTdlEtix4k/sY0Yu3X0ytAh1LSOiyJit1Wdd3zQ+nw=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/nakabonne/nestif v0.3.1 h1:wm28nZjhQY5HyYPx+weN3Q65k6ilSBxDb8v5S81B81U=
@@ -754,8 +756,6 @@ k8s.io/apiserver v0.33.2 h1:KGTRbxn2wJagJowo29kKBp4TchpO1DRO3g+dB/KOJN4=
 k8s.io/apiserver v0.33.2/go.mod h1:9qday04wEAMLPWWo9AwqCZSiIn3OYSZacDyu/AcoM/M=
 k8s.io/client-go v0.33.2 h1:z8CIcc0P581x/J1ZYf4CNzRKxRvQAwoAolYPbtQes+E=
 k8s.io/client-go v0.33.2/go.mod h1:9mCgT4wROvL948w6f6ArJNb7yQd7QsvqavDeZHvNmHo=
-k8s.io/cloud-provider-aws v1.33.1 h1:SE3wVO+v56m5q9b7ZxYI4ItR5ylzAH/kwPnlCvivNLk=
-k8s.io/cloud-provider-aws v1.33.1/go.mod h1:BzECBDbzJxWigvFka7BAx/CSgFj5B9zIuKVafSkIGto=
 k8s.io/cloud-provider-vsphere v1.33.0 h1:5UyHWd7aImdxRhYhIBoSfPSMDLodTU6S03q6jW+Rf/U=
 k8s.io/cloud-provider-vsphere v1.33.0/go.mod h1:T7ALMwmncKO4QCOKejnDzZAnsdXlLt4xMF83+Nw+NVg=
 k8s.io/component-base v0.33.2 h1:sCCsn9s/dG3ZrQTX/Us0/Sx2R0G5kwa0wbZFYoVp/+0=
