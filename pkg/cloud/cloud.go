@@ -25,10 +25,6 @@ import (
 // consumer of the transformer.
 type cloudConfigTransformer func(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error)
 
-// defaultCloudConfig returns a default cloud configuration in the event that a cluster does not have a source config map.
-// Clusters created prior to 4.14 do not always have a source config map.
-type defaultCloudConfig func(platform configv1.PlatformType) (string, error)
-
 // GetCloudConfigTransformer returns the function that should be used to transform
 // the cloud configuration config map, and a boolean to indicate if the config should
 // be synced from the CCO namespace before applying the transformation.

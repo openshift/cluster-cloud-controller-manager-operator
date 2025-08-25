@@ -115,12 +115,13 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Namespace: OpenshiftConfigNamespace,
 		}
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); errors.IsNotFound(err) {
-			klog.Warningf("unmanaged cloud-config is not found, falling back to default cloud config.")
+			klog.Warningf("managed cloud-config is not found, falling back to default cloud config.")
 		} else if err != nil {
-			klog.Errorf("unable to get cloud-config for sync")
+			klog.Errorf("unable to get cloud-config for sync: %v", err)
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 			}
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -206,6 +207,9 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 
 // prepareSourceConfigMap creates a usable ConfigMap for further processing into a cloud.conf file.
 func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap, infra *configv1.Infrastructure) (*corev1.ConfigMap, error) {
+	if source == nil {
+		return nil, fmt.Errorf("received empty configmap for cloud config")
+	}
 	cloudConfCm := source.DeepCopy()
 	// We might have an empty ConfigMap in clusters created before 4.14.
 	if cloudConfCm.Data == nil {
@@ -216,23 +220,26 @@ func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap,
 	// Always use "cloud.conf" which is default one across openshift
 	if _, ok := cloudConfCm.Data[defaultConfigKey]; ok {
 		return cloudConfCm, nil
+	} else {
+		// Make an entry for the default key even if it didn't exist.
+		cloudConfCm.Data[defaultConfigKey] = ""
 	}
 
-	// If a user provides their own cloud config, copy that over into the default key.
+	// If a user provides their own cloud config...
 	infraConfigKey := infra.Spec.CloudConfig.Key
-	if val, ok := cloudConfCm.Data[infraConfigKey]; ok {
-		cloudConfCm.Data[defaultConfigKey] = val
-		delete(cloudConfCm.Data, infraConfigKey)
-		return cloudConfCm, nil
-	} else if !ok && len(cloudConfCm.Data) > 0 {
-		// Return an error if they provided a non-existent one and there was a cloud.conf specified.
-		return nil, fmt.Errorf("key %s specified in infra resource does not exist in source configmap %s",
-			infraConfigKey, client.ObjectKeyFromObject(source),
-		)
+	if infraConfigKey != "" {
+		if val, ok := cloudConfCm.Data[infraConfigKey]; ok {
+			// ..., copy that over into the default key.
+			cloudConfCm.Data[defaultConfigKey] = val
+			delete(cloudConfCm.Data, infraConfigKey)
+			return cloudConfCm, nil
+		} else if !ok {
+			// Return an error if they provided a non-existent one and there was a cloud.conf specified.
+			return nil, fmt.Errorf("key %s specified in infra resource does not exist in source configmap %s",
+				infraConfigKey, client.ObjectKeyFromObject(source),
+			)
+		}
 	}
-
-	// If there was no data in the configmap and the user didn't specify their own make a default entry for it.
-	cloudConfCm.Data[defaultConfigKey] = ""
 
 	return cloudConfCm, nil
 }
