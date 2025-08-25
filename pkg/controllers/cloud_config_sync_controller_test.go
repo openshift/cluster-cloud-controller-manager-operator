@@ -462,6 +462,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		It("should sync a default config AWS platform if there is no reference in infra resource", func() {
 			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
 			infraResource.Spec.CloudConfig.Name = ""
+			infraResource.Spec.CloudConfig.Key = ""
 			Expect(cl.Create(ctx, infraResource)).To(Succeed())
 
 			infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
@@ -509,7 +510,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
 
 			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-			Expect(err).To(Not(BeNil()))
+			Expect(err.Error()).To(ContainSubstring("specified in infra resource does not exist in source configmap"))
 
 		})
 	})

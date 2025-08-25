@@ -13,9 +13,18 @@ func TestCloudConfigTransformer(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "empty source",
+			name: "default source",
 			source: `[Global]
 			`, // This is the default that gets created for any OpenShift Cluster.
+			expected: `[Global]
+DisableSecurityGroupIngress                     = false
+ClusterServiceLoadBalancerHealthProbeMode       = Shared
+ClusterServiceSharedLoadBalancerHealthProbePort = 0
+`,
+		},
+		{
+			name:   "completely empty source",
+			source: "", // This could happen in cases where the cluster was born prior to a cloud.conf being required.
 			expected: `[Global]
 DisableSecurityGroupIngress                     = false
 ClusterServiceLoadBalancerHealthProbeMode       = Shared

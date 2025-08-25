@@ -13,6 +13,8 @@ import (
 	awsconfig "k8s.io/cloud-provider-aws/pkg/providers/v1/config"
 )
 
+// defaultConfig is a string holding the absolute bare minimum INI string that the AWS CCM needs to start.
+// The value will be further customized for OCP in the CloudConfigTransformer.
 const defaultConfig = `[Global]
 `
 
