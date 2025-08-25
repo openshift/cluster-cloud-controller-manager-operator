@@ -11,11 +11,13 @@ import (
 	"gopkg.in/ini.v1"
 
 	awsconfig "k8s.io/cloud-provider-aws/pkg/providers/v1/config"
+
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 // CloudConfigTransformer is used to inject OpenShift configuration defaults into the Cloud Provider config
 // for the AWS Cloud Provider.
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error) {
 	cfg, err := readAWSConfig(source)
 	if err != nil {
 		return "", fmt.Errorf("failed to read the cloud.conf: %w", err)

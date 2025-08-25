@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -21,6 +22,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 const (
@@ -112,7 +115,9 @@ func makeManagedCloudConfig(platform configv1.PlatformType) *corev1.ConfigMap {
 }
 
 var _ = Describe("isCloudConfigEqual reconciler method", func() {
-	reconciler := &CloudConfigReconciler{}
+	reconciler := &CloudConfigReconciler{
+		FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+	}
 
 	It("should return 'true' if ConfigMaps content are equal", func() {
 		Expect(reconciler.isCloudConfigEqual(makeManagedCloudConfig(configv1.AzurePlatformType), makeManagedCloudConfig(configv1.AzurePlatformType))).Should(BeTrue())
@@ -130,7 +135,9 @@ var _ = Describe("isCloudConfigEqual reconciler method", func() {
 })
 
 var _ = Describe("prepareSourceConfigMap reconciler method", func() {
-	reconciler := &CloudConfigReconciler{}
+	reconciler := &CloudConfigReconciler{
+		FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+	}
 	infra := makeInfrastructureResource(configv1.AzurePlatformType)
 	infraCloudConfig := makeInfraCloudConfig(configv1.AzurePlatformType)
 	managedCloudConfig := makeManagedCloudConfig(configv1.AzurePlatformType)
@@ -207,7 +214,8 @@ var _ = Describe("Cloud config sync controller", func() {
 				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				ManagedNamespace: targetNamespaceName,
 			},
-			Scheme: scheme.Scheme,
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
 		}
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
@@ -408,7 +416,8 @@ var _ = Describe("Cloud config sync reconciler", func() {
 				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				ManagedNamespace: targetNamespaceName,
 			},
-			Scheme: scheme.Scheme,
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
 		}
 
 		networkResource := makeNetworkResource()
@@ -549,5 +558,154 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		Expect(cl.Create(ctx, infraResource)).To(Succeed())
 		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 		Expect(err.Error()).Should(BeEquivalentTo("platformStatus is required"))
+	})
+})
+
+var _ = Describe("Feature gate handling in CloudConfigReconciler", func() {
+	var reconciler *CloudConfigReconciler
+	ctx := context.Background()
+
+	BeforeEach(func() {
+		reconciler = &CloudConfigReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
+				ManagedNamespace: testManagedNamespace,
+			},
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+		}
+
+		// Create required infrastructure resource
+		infraResource := makeInfrastructureResource(configv1.AzurePlatformType)
+		Expect(cl.Create(ctx, infraResource)).To(Succeed())
+		infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+		Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+		// Create required network resource
+		networkResource := makeNetworkResource()
+		Expect(cl.Create(ctx, networkResource)).To(Succeed())
+
+		// Create source config map
+		Expect(cl.Create(ctx, makeInfraCloudConfig(configv1.AzurePlatformType))).To(Succeed())
+	})
+
+	AfterEach(func() {
+		// Clean up test resources
+		deleteOptions := &client.DeleteOptions{
+			GracePeriodSeconds: ptr.To[int64](0),
+		}
+
+		// Clean up cluster operator
+		co := &configv1.ClusterOperator{}
+		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		if err == nil || !apierrors.IsNotFound(err) {
+			Eventually(func() error {
+				return cl.Delete(context.Background(), co)
+			}).Should(SatisfyAny(
+				Not(HaveOccurred()),
+				MatchError(apierrors.IsNotFound, "IsNotFound"),
+			))
+		}
+		Eventually(func() error {
+			return cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+
+		// Clean up infrastructure
+		infra := &configv1.Infrastructure{
+			ObjectMeta: metav1.ObjectMeta{Name: infrastructureResourceName},
+		}
+		Eventually(func() error {
+			return cl.Delete(ctx, infra, deleteOptions)
+		}).Should(SatisfyAny(
+			Not(HaveOccurred()),
+			MatchError(apierrors.IsNotFound, "IsNotFound"),
+		))
+		Eventually(func() error {
+			return cl.Get(ctx, client.ObjectKeyFromObject(infra), infra)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+
+		// Clean up network
+		network := makeNetworkResource()
+		Eventually(func() error {
+			return cl.Delete(ctx, network, deleteOptions)
+		}).Should(SatisfyAny(
+			Not(HaveOccurred()),
+			MatchError(apierrors.IsNotFound, "IsNotFound"),
+		))
+		Eventually(func() error {
+			return cl.Get(ctx, client.ObjectKeyFromObject(network), network)
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+
+		// Clean up config maps
+		cm := makeInfraCloudConfig(configv1.AzurePlatformType)
+		Eventually(func() error {
+			return cl.Delete(ctx, cm, deleteOptions)
+		}).Should(SatisfyAny(
+			Not(HaveOccurred()),
+			MatchError(apierrors.IsNotFound, "IsNotFound"),
+		))
+		Eventually(func() error {
+			return cl.Get(ctx, client.ObjectKeyFromObject(cm), &corev1.ConfigMap{})
+		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+	})
+
+	Context("when feature gate access succeeds", func() {
+		It("should continue with reconcile when no gates are enabled", func() {
+			reconciler.FeatureGateAccess = featuregates.NewHardcodedFeatureGateAccessForTesting(
+				nil, // no enabled gates
+				nil, // no disabled gates
+				nil, // no initial observed channel
+				nil, // no error
+			)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal(ctrl.Result{}))
+		})
+
+		It("should continue with reconcile when feature gates are available", func() {
+			reconciler.FeatureGateAccess = featuregates.NewHardcodedFeatureGateAccessForTesting(
+				[]configv1.FeatureGateName{"CloudControllerManagerWebhook", "ChocobombVanilla", "ChocobombStrawberry"},
+				nil, // no disabled gates
+				nil, // no initial observed channel
+				nil, // no error
+			)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal(ctrl.Result{}))
+		})
+	})
+
+	Context("when feature gate access fails", func() {
+		It("should return error and set degraded condition when feature gate access fails", func() {
+			testError := fmt.Errorf("feature gate access failed")
+			reconciler.FeatureGateAccess = featuregates.NewHardcodedFeatureGateAccessForTesting(
+				nil,       // no enabled gates
+				nil,       // no disabled gates
+				nil,       // no initial observed channel
+				testError, // simulate error
+			)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("feature gate access failed"))
+			Expect(result).To(Equal(ctrl.Result{}))
+
+			// Verify degraded condition was set
+			Eventually(func() bool {
+				co := &configv1.ClusterOperator{}
+				if err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); err != nil {
+					return false
+				}
+				for _, condition := range co.Status.Conditions {
+					if condition.Type == cloudConfigControllerDegradedCondition && condition.Status == configv1.ConditionTrue {
+						return true
+					}
+				}
+				return false
+			}).Should(BeTrue(), "Expected degraded condition to be set to true")
+		})
 	})
 })
