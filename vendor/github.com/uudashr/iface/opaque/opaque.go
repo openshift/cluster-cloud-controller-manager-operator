@@ -157,12 +157,15 @@ func (r *runner) run(pass *analysis.Pass) (interface{}, error) {
 						}
 
 						typ := pass.TypesInfo.TypeOf(res)
+						isNilStmt := isUntypedNil(typ)
 
 						if r.debug {
-							fmt.Printf("        Ident type: %v %v interface=%t\n", typ, reflect.TypeOf(typ), types.IsInterface(typ))
+							fmt.Printf("        Ident type: %v %v interface=%t, untypedNil=%t\n", typ, reflect.TypeOf(typ), types.IsInterface(typ), isNilStmt)
 						}
 
-						retStmtTypes[i][typ] = struct{}{}
+						if !isNilStmt {
+							retStmtTypes[i][typ] = struct{}{}
+						}
 					case *ast.UnaryExpr:
 						if r.debug {
 							fmt.Printf("       UnaryExpr X: %v \n", res.X)
@@ -274,16 +277,40 @@ func (r *runner) run(pass *analysis.Pass) (interface{}, error) {
 				stmtTypName = removePkgPrefix(stmtTypName)
 			}
 
-			pass.Reportf(result.Pos(),
-				"%s function return %s interface at the %s result, abstract a single concrete implementation of %s",
+			msg := fmt.Sprintf("%s function return %s interface at the %s result, abstract a single concrete implementation of %s",
 				funcDecl.Name.Name,
 				retTypeName,
 				positionStr(currentIdx),
 				stmtTypName)
+
+			pass.Report(analysis.Diagnostic{
+				Pos:     result.Pos(),
+				Message: msg,
+				SuggestedFixes: []analysis.SuggestedFix{
+					{
+						Message: "Replace the interface return type with the concrete type",
+						TextEdits: []analysis.TextEdit{
+							{
+								Pos:     result.Pos(),
+								End:     result.End(),
+								NewText: []byte(stmtTypName),
+							},
+						},
+					},
+				},
+			})
 		}
 	})
 
 	return nil, nil
+}
+
+func isUntypedNil(typ types.Type) bool {
+	if b, ok := typ.(*types.Basic); ok {
+		return b.Kind() == types.UntypedNil
+	}
+
+	return false
 }
 
 func positionStr(idx int) string {
