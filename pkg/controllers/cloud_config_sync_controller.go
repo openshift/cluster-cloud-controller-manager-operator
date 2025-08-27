@@ -108,13 +108,16 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	if !managedConfigFound {
+	// Only look for an unmanaged config if the managed one isn't found and a name was specified.
+	if !managedConfigFound && infra.Spec.CloudConfig.Name != "" {
 		openshiftUnmanagedCMKey := client.ObjectKey{
 			Name:      infra.Spec.CloudConfig.Name,
 			Namespace: OpenshiftConfigNamespace,
 		}
-		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); err != nil {
-			klog.Errorf("unable to get cloud-config for sync")
+		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); errors.IsNotFound(err) {
+			klog.Warningf("managed cloud-config is not found, falling back to default cloud config.")
+		} else if err != nil {
+			klog.Errorf("unable to get cloud-config for sync: %v", err)
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 			}
@@ -188,7 +191,8 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 		return false, fmt.Errorf("platformStatus is required")
 	}
 	switch platformStatus.Type {
-	case configv1.AzurePlatformType,
+	case configv1.AWSPlatformType,
+		configv1.AzurePlatformType,
 		configv1.GCPPlatformType,
 		configv1.VSpherePlatformType,
 		configv1.IBMCloudPlatformType,
@@ -196,32 +200,48 @@ func (r *CloudConfigReconciler) isCloudConfigSyncNeeded(platformStatus *configv1
 		configv1.OpenStackPlatformType,
 		configv1.NutanixPlatformType:
 		return true, nil
-	case configv1.AWSPlatformType:
-		// Some of AWS regions might require to sync a cloud-config, in such case reference in infra resource will be presented
-		return infraCloudConfigRef.Name != "", nil
 	default:
 		return false, nil
 	}
 }
 
+// prepareSourceConfigMap creates a usable ConfigMap for further processing into a cloud.conf file.
 func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap, infra *configv1.Infrastructure) (*corev1.ConfigMap, error) {
-	// Keys might be different between openshift-config/cloud-config and openshift-config-managed/kube-cloud-config
-	// Always use "cloud.conf" which is default one across openshift
+	if source == nil {
+		return nil, fmt.Errorf("received empty configmap for cloud config")
+	}
 	cloudConfCm := source.DeepCopy()
-	if _, ok := cloudConfCm.Data[defaultConfigKey]; ok {
-		return cloudConfCm, nil
+	// We might have an empty ConfigMap in clusters created before 4.14.
+	if cloudConfCm.Data == nil {
+		cloudConfCm.Data = make(map[string]string)
 	}
 
-	infraConfigKey := infra.Spec.CloudConfig.Key
-	if val, ok := cloudConfCm.Data[infraConfigKey]; ok {
-		cloudConfCm.Data[defaultConfigKey] = val
-		delete(cloudConfCm.Data, infraConfigKey)
+	// Keys might be different between openshift-config/cloud-config and openshift-config-managed/kube-cloud-config
+	// Always use "cloud.conf" which is default one across openshift
+	if _, ok := cloudConfCm.Data[defaultConfigKey]; ok {
 		return cloudConfCm, nil
+	} else {
+		// Make an entry for the default key even if it didn't exist.
+		cloudConfCm.Data[defaultConfigKey] = ""
 	}
-	return nil, fmt.Errorf(
-		"key %s specified in infra resource does not found in source configmap %s",
-		infraConfigKey, client.ObjectKeyFromObject(source),
-	)
+
+	// If a user provides their own cloud config...
+	infraConfigKey := infra.Spec.CloudConfig.Key
+	if infraConfigKey != "" {
+		if val, ok := cloudConfCm.Data[infraConfigKey]; ok {
+			// ..., copy that over into the default key.
+			cloudConfCm.Data[defaultConfigKey] = val
+			delete(cloudConfCm.Data, infraConfigKey)
+			return cloudConfCm, nil
+		} else if !ok {
+			// Return an error if they provided a non-existent one and there was a cloud.conf specified.
+			return nil, fmt.Errorf("key %s specified in infra resource does not exist in source configmap %s",
+				infraConfigKey, client.ObjectKeyFromObject(source),
+			)
+		}
+	}
+
+	return cloudConfCm, nil
 }
 
 func (r *CloudConfigReconciler) isCloudConfigEqual(source *corev1.ConfigMap, target *corev1.ConfigMap) bool {

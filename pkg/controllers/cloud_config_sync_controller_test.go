@@ -28,6 +28,8 @@ const (
 	infraCloudConfKey  = "foo"
 
 	defaultAzureConfig = `{"cloud":"AzurePublicCloud","tenantId":"0000000-0000-0000-0000-000000000000","Entries":null,"subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
+	defaultAWSConfig   = `[Global]
+`
 )
 
 func makeInfrastructureResource(platform configv1.PlatformType) *configv1.Infrastructure {
@@ -84,8 +86,7 @@ func makeInfraStatus(platform configv1.PlatformType) configv1.InfrastructureStat
 }
 
 func makeInfraCloudConfig(platform configv1.PlatformType) *corev1.ConfigMap {
-	defaultConfig := `[Global]
-`
+	defaultConfig := defaultAWSConfig
 
 	if platform == configv1.AzurePlatformType {
 		defaultConfig = defaultAzureConfig
@@ -98,8 +99,7 @@ func makeInfraCloudConfig(platform configv1.PlatformType) *corev1.ConfigMap {
 }
 
 func makeManagedCloudConfig(platform configv1.PlatformType) *corev1.ConfigMap {
-	defaultConfig := `[Global]
-`
+	defaultConfig := defaultAWSConfig
 
 	if platform == configv1.AzurePlatformType {
 		defaultConfig = defaultAzureConfig
@@ -149,14 +149,6 @@ var _ = Describe("prepareSourceConfigMap reconciler method", func() {
 		_, ok = preparedConfig.Data[defaultConfigKey]
 		Expect(ok).Should(BeTrue())
 		Expect(reconciler.isCloudConfigEqual(preparedConfig, managedCloudConfig)).Should(BeTrue())
-	})
-
-	It("config preparation should fail if key from infra resource does not found", func() {
-		brokenInfraConfig := infraCloudConfig.DeepCopy()
-		brokenInfraConfig.Data = map[string]string{"hehehehehe": "bar"}
-		_, err := reconciler.prepareSourceConfigMap(brokenInfraConfig, infra)
-		Expect(err).Should(Not(Succeed()))
-		Expect(err.Error()).Should(BeEquivalentTo("key foo specified in infra resource does not found in source configmap openshift-config/test-config"))
 	})
 
 	It("config preparation should not touch extra fields in infra ConfigMap", func() {
@@ -467,13 +459,18 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			Expect(cl.Create(ctx, makeInfraCloudConfig(configv1.AWSPlatformType))).To(Succeed())
 		})
 
-		It("should skip config sync for AWS platform if there is no reference in infra resource", func() {
+		It("should sync a default config AWS platform if there is no reference in infra resource", func() {
 			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
 			infraResource.Spec.CloudConfig.Name = ""
+			infraResource.Spec.CloudConfig.Key = ""
 			Expect(cl.Create(ctx, infraResource)).To(Succeed())
 
 			infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
 			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+			fetchedResource := &configv1.Infrastructure{}
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(infraResource), fetchedResource)).To(Succeed())
+			Expect(fetchedResource.Spec.CloudConfig.Name).To(Equal(""))
 
 			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 			Expect(err).To(BeNil())
@@ -481,7 +478,10 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			allCMs := &corev1.ConfigMapList{}
 			Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
 
-			Expect(len(allCMs.Items)).To(BeZero())
+			Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
+			// Our code ensures that there is at a minimum a global section.
+			// The CCM itself may end up defaulting values for us, so don't use exact string matching.
+			Expect(allCMs.Items[0].Data[defaultConfigKey]).To(HavePrefix(defaultAWSConfig))
 		})
 
 		It("should perform config sync for AWS platform if there is a reference in infra resource", func() {
@@ -499,6 +499,19 @@ var _ = Describe("Cloud config sync reconciler", func() {
 
 			Expect(len(allCMs.Items)).NotTo(BeZero())
 			Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
+		})
+
+		It("should error if a user-specified configmap key isn't present", func() {
+			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+			infraResource.Spec.CloudConfig.Key = "notfound"
+			Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+			infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+			Expect(err.Error()).To(ContainSubstring("specified in infra resource does not exist in source configmap"))
+
 		})
 	})
 
