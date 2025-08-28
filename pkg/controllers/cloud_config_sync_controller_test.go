@@ -21,6 +21,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 const (
@@ -112,7 +114,9 @@ func makeManagedCloudConfig(platform configv1.PlatformType) *corev1.ConfigMap {
 }
 
 var _ = Describe("isCloudConfigEqual reconciler method", func() {
-	reconciler := &CloudConfigReconciler{}
+	reconciler := &CloudConfigReconciler{
+		FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+	}
 
 	It("should return 'true' if ConfigMaps content are equal", func() {
 		Expect(reconciler.isCloudConfigEqual(makeManagedCloudConfig(configv1.AzurePlatformType), makeManagedCloudConfig(configv1.AzurePlatformType))).Should(BeTrue())
@@ -130,7 +134,9 @@ var _ = Describe("isCloudConfigEqual reconciler method", func() {
 })
 
 var _ = Describe("prepareSourceConfigMap reconciler method", func() {
-	reconciler := &CloudConfigReconciler{}
+	reconciler := &CloudConfigReconciler{
+		FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+	}
 	infra := makeInfrastructureResource(configv1.AzurePlatformType)
 	infraCloudConfig := makeInfraCloudConfig(configv1.AzurePlatformType)
 	managedCloudConfig := makeManagedCloudConfig(configv1.AzurePlatformType)
@@ -199,7 +205,8 @@ var _ = Describe("Cloud config sync controller", func() {
 				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				ManagedNamespace: targetNamespaceName,
 			},
-			Scheme: scheme.Scheme,
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
 		}
 		Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
@@ -400,7 +407,8 @@ var _ = Describe("Cloud config sync reconciler", func() {
 				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
 				ManagedNamespace: targetNamespaceName,
 			},
-			Scheme: scheme.Scheme,
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
 		}
 
 		networkResource := makeNetworkResource()
