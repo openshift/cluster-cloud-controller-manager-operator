@@ -83,6 +83,20 @@ URL           = https://s3.foo.bar
 SigningRegion = signing_region
 `, // Ordered based on the order of fields in the AWS CloudConfig struct.
 		},
+		{
+			name: "with NodeIPFamilies",
+			source: `[Global]
+NodeIPFamilies = ipv4
+NodeIPFamilies = ipv6
+			`,
+			expected: `[Global]
+DisableSecurityGroupIngress                     = false
+NodeIPFamilies                                  = ipv4
+NodeIPFamilies                                  = ipv6
+ClusterServiceLoadBalancerHealthProbeMode       = Shared
+ClusterServiceSharedLoadBalancerHealthProbePort = 0
+`,
+		},
 	}
 
 	for _, tc := range testCases {
