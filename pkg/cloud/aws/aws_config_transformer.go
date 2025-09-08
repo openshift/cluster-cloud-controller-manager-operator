@@ -66,16 +66,6 @@ func marshalAWSConfig(cfg *awsconfig.CloudConfig) (string, error) {
 		}
 	}
 
-	for _, section := range file.Sections() {
-		for key, value := range section.KeysHash() {
-			// Ignore anything that is the zero value for its type.
-			// Everything appears as a string in the INI file, so 0 and false are also considered zero values.
-			if value == "" {
-				section.DeleteKey(key)
-			}
-		}
-	}
-
 	// Ensure service override sections are last and ordered numerically.
 	// We need to create a new file with sorted sections because file.Sections()
 	// returns a new slice each time, so sorting it doesn't modify the original.
@@ -85,7 +75,8 @@ func marshalAWSConfig(cfg *awsconfig.CloudConfig) (string, error) {
 	})
 
 	// Create a new INI file with sections in sorted order
-	sortedFile := ini.Empty()
+	// Configure iniv1 to allow shadow fields to enable multiple entries of NodeIPFamilies.
+	sortedFile := ini.Empty(ini.LoadOptions{AllowShadows: true})
 	for _, section := range sections {
 		newSection, err := sortedFile.NewSection(section.Name())
 		if err != nil {
@@ -93,6 +84,35 @@ func marshalAWSConfig(cfg *awsconfig.CloudConfig) (string, error) {
 		}
 		for _, key := range section.Keys() {
 			newSection.Key(key.Name()).SetValue(key.Value())
+		}
+	}
+
+	// In dual-stack environment, the CCM expects NodeIPFamilies to be in the format:
+	//
+	// NodeIPFamilies=ipv4
+	// NodeIPFamilies=ipv6
+	//
+	// However, iniv1 is serializing go slices as comma-separated list, for example:
+	//
+	// NodeIPFamilies=ipv4,ipv6
+	//
+	// Below logic ensures the original NodeIPFamilies field is kept as-is after transforming.
+	nodeIPKey := sortedFile.Section("Global").Key("NodeIPFamilies")
+	for i, ipFamily := range cfg.Global.NodeIPFamilies {
+		if i == 0 {
+			nodeIPKey.SetValue(ipFamily)
+		} else if err := nodeIPKey.AddShadow(ipFamily); err != nil {
+			return "", fmt.Errorf("failed to set NodeIPFamilies: %w", err)
+		}
+	}
+
+	for _, section := range sortedFile.Sections() {
+		for key, value := range section.KeysHash() {
+			// Ignore anything that is the zero value for its type.
+			// Everything appears as a string in the INI file, so 0 and false are also considered zero values.
+			if value == "" {
+				section.DeleteKey(key)
+			}
 		}
 	}
 
