@@ -9,6 +9,7 @@ import (
 	"github.com/onsi/gomega/format"
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/stretchr/testify/assert"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -259,7 +260,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 			src, err := json.Marshal(tc.source)
 			g.Expect(err).NotTo(HaveOccurred(), "Marshal of source data should succeed")
 
-			actual, err := CloudConfigTransformer(string(src), tc.infra, nil)
+			actual, err := CloudConfigTransformer(string(src), tc.infra, nil, featuregates.NewFeatureGate(nil, nil))
 			if tc.errMsg != "" {
 				g.Expect(err).Should(MatchError(tc.errMsg))
 				g.Expect(actual).Should(Equal(""))

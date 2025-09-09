@@ -8,6 +8,7 @@ import (
 	"k8s.io/utils/net"
 
 	ccmConfig "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere/vsphere_cloud_config"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 // Well-known OCP-specific vSphere tags. These values are going to the "labels" sections in CCM cloud-config.
@@ -27,7 +28,7 @@ const (
 // Currently, CloudConfigTransformer is responsible to populate vcenters, labels, and node networking parameters from
 // the Infrastructure resource.
 // Also, this function converts legacy deprecated INI configuration format to a YAML-based one.
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error) {
 	if infra.Status.PlatformStatus == nil ||
 		infra.Status.PlatformStatus.Type != configv1.VSpherePlatformType {
 		return "", fmt.Errorf("invalid platform, expected to be %s", configv1.VSpherePlatformType)

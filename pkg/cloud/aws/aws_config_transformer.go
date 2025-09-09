@@ -11,6 +11,8 @@ import (
 	"gopkg.in/ini.v1"
 
 	awsconfig "k8s.io/cloud-provider-aws/pkg/providers/v1/config"
+
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 // defaultConfig is a string holding the absolute bare minimum INI string that the AWS CCM needs to start.
@@ -20,7 +22,7 @@ const defaultConfig = `[Global]
 
 // CloudConfigTransformer is used to inject OpenShift configuration defaults into the Cloud Provider config
 // for the AWS Cloud Provider. If an empty source string is provided, a minimal default configuration will be created.
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error) {
 	cfg, err := readAWSConfig(source)
 	if err != nil {
 		return "", fmt.Errorf("failed to read the cloud.conf: %w", err)
