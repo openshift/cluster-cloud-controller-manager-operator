@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
+	"k8s.io/klog/v2"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -32,7 +33,6 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
-	"k8s.io/klog/v2/textlogger"
 	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -65,8 +65,7 @@ func init() {
 }
 
 func main() {
-	textLoggerCfg := textlogger.NewConfig()
-	textLoggerCfg.AddFlags(flag.CommandLine)
+	klog.InitFlags(flag.CommandLine)
 
 	healthAddr := flag.String(
 		"health-addr",
@@ -86,7 +85,7 @@ func main() {
 	options.BindLeaderElectionFlags(&leaderElectionConfig, pflag.CommandLine)
 	pflag.Parse()
 
-	ctrl.SetLogger(textlogger.NewLogger(textLoggerCfg).WithName("CCCMOConfigSyncControllers"))
+	ctrl.SetLogger(klog.NewKlogr().WithName("CCCMOConfigSyncControllers"))
 
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionDefaults(restConfig, configv1.LeaderElection{
