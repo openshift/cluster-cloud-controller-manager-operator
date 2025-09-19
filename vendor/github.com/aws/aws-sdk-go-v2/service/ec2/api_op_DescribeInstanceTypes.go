@@ -80,8 +80,8 @@ type DescribeInstanceTypesInput struct {
 	//   - ebs-info.nvme-support - Indicates whether non-volatile memory express (NVMe)
 	//   is supported for EBS volumes ( required | supported | unsupported ).
 	//
-	//   - free-tier-eligible - Indicates whether the instance type is eligible to use
-	//   in the free tier ( true | false ).
+	//   - free-tier-eligible - A Boolean that indicates whether this instance type can
+	//   be used under the Amazon Web Services Free Tier ( true | false ).
 	//
 	//   - hibernation-supported - Indicates whether On-Demand hibernation is supported
 	//   ( true | false ).
@@ -165,6 +165,9 @@ type DescribeInstanceTypesInput struct {
 	//
 	//   - processor-info.supported-features - The supported CPU features ( amd-sev-snp
 	//   ).
+	//
+	//   - reboot-migration-support - Indicates whether enabling reboot migration is
+	//   supported ( supported | unsupported ).
 	//
 	//   - supported-boot-mode - The boot mode ( legacy-bios | uefi ).
 	//
@@ -305,6 +308,36 @@ func (c *Client) addOperationDescribeInstanceTypesMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
 		return err
 	}
 	if err = addSpanInitializeStart(stack); err != nil {

@@ -1270,21 +1270,21 @@ func (m *validateOpCreateCustomerGateway) HandleInitialize(ctx context.Context, 
 	return next.HandleInitialize(ctx, in)
 }
 
-type validateOpCreateDefaultSubnet struct {
+type validateOpCreateDelegateMacVolumeOwnershipTask struct {
 }
 
-func (*validateOpCreateDefaultSubnet) ID() string {
+func (*validateOpCreateDelegateMacVolumeOwnershipTask) ID() string {
 	return "OperationInputValidation"
 }
 
-func (m *validateOpCreateDefaultSubnet) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+func (m *validateOpCreateDelegateMacVolumeOwnershipTask) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
 	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
 ) {
-	input, ok := in.Parameters.(*CreateDefaultSubnetInput)
+	input, ok := in.Parameters.(*CreateDelegateMacVolumeOwnershipTaskInput)
 	if !ok {
 		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
 	}
-	if err := validateOpCreateDefaultSubnetInput(input); err != nil {
+	if err := validateOpCreateDelegateMacVolumeOwnershipTaskInput(input); err != nil {
 		return out, metadata, err
 	}
 	return next.HandleInitialize(ctx, in)
@@ -1405,6 +1405,26 @@ func (m *validateOpCreateImage) HandleInitialize(ctx context.Context, in middlew
 		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
 	}
 	if err := validateOpCreateImageInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpCreateImageUsageReport struct {
+}
+
+func (*validateOpCreateImageUsageReport) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpCreateImageUsageReport) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*CreateImageUsageReportInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpCreateImageUsageReportInput(input); err != nil {
 		return out, metadata, err
 	}
 	return next.HandleInitialize(ctx, in)
@@ -1685,6 +1705,26 @@ func (m *validateOpCreateLocalGatewayVirtualInterface) HandleInitialize(ctx cont
 		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
 	}
 	if err := validateOpCreateLocalGatewayVirtualInterfaceInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpCreateMacSystemIntegrityProtectionModificationTask struct {
+}
+
+func (*validateOpCreateMacSystemIntegrityProtectionModificationTask) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpCreateMacSystemIntegrityProtectionModificationTask) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*CreateMacSystemIntegrityProtectionModificationTaskInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpCreateMacSystemIntegrityProtectionModificationTaskInput(input); err != nil {
 		return out, metadata, err
 	}
 	return next.HandleInitialize(ctx, in)
@@ -2470,26 +2510,6 @@ func (m *validateOpCreateVerifiedAccessTrustProvider) HandleInitialize(ctx conte
 	return next.HandleInitialize(ctx, in)
 }
 
-type validateOpCreateVolume struct {
-}
-
-func (*validateOpCreateVolume) ID() string {
-	return "OperationInputValidation"
-}
-
-func (m *validateOpCreateVolume) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
-	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
-) {
-	input, ok := in.Parameters.(*CreateVolumeInput)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
-	}
-	if err := validateOpCreateVolumeInput(input); err != nil {
-		return out, metadata, err
-	}
-	return next.HandleInitialize(ctx, in)
-}
-
 type validateOpCreateVpcBlockPublicAccessExclusion struct {
 }
 
@@ -2845,6 +2865,26 @@ func (m *validateOpDeleteFpgaImage) HandleInitialize(ctx context.Context, in mid
 		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
 	}
 	if err := validateOpDeleteFpgaImageInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpDeleteImageUsageReport struct {
+}
+
+func (*validateOpDeleteImageUsageReport) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpDeleteImageUsageReport) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*DeleteImageUsageReportInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpDeleteImageUsageReportInput(input); err != nil {
 		return out, metadata, err
 	}
 	return next.HandleInitialize(ctx, in)
@@ -4550,6 +4590,26 @@ func (m *validateOpDescribeImageAttribute) HandleInitialize(ctx context.Context,
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpDescribeImageReferences struct {
+}
+
+func (*validateOpDescribeImageReferences) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpDescribeImageReferences) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*DescribeImageReferencesInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpDescribeImageReferencesInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpDescribeInstanceAttribute struct {
 }
 
@@ -5845,6 +5905,26 @@ func (m *validateOpExportVerifiedAccessInstanceClientConfiguration) HandleInitia
 		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
 	}
 	if err := validateOpExportVerifiedAccessInstanceClientConfigurationInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpGetActiveVpnTunnelStatus struct {
+}
+
+func (*validateOpGetActiveVpnTunnelStatus) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpGetActiveVpnTunnelStatus) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*GetActiveVpnTunnelStatusInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpGetActiveVpnTunnelStatusInput(input); err != nil {
 		return out, metadata, err
 	}
 	return next.HandleInitialize(ctx, in)
@@ -7170,6 +7250,26 @@ func (m *validateOpModifyInstanceCapacityReservationAttributes) HandleInitialize
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpModifyInstanceConnectEndpoint struct {
+}
+
+func (*validateOpModifyInstanceConnectEndpoint) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpModifyInstanceConnectEndpoint) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*ModifyInstanceConnectEndpointInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpModifyInstanceConnectEndpointInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpModifyInstanceCpuOptions struct {
 }
 
@@ -7505,6 +7605,26 @@ func (m *validateOpModifyPrivateDnsNameOptions) HandleInitialize(ctx context.Con
 		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
 	}
 	if err := validateOpModifyPrivateDnsNameOptionsInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpModifyPublicIpDnsNameOptions struct {
+}
+
+func (*validateOpModifyPublicIpDnsNameOptions) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpModifyPublicIpDnsNameOptions) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*ModifyPublicIpDnsNameOptionsInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpModifyPublicIpDnsNameOptionsInput(input); err != nil {
 		return out, metadata, err
 	}
 	return next.HandleInitialize(ctx, in)
@@ -9842,8 +9962,8 @@ func addOpCreateCustomerGatewayValidationMiddleware(stack *middleware.Stack) err
 	return stack.Initialize.Add(&validateOpCreateCustomerGateway{}, middleware.After)
 }
 
-func addOpCreateDefaultSubnetValidationMiddleware(stack *middleware.Stack) error {
-	return stack.Initialize.Add(&validateOpCreateDefaultSubnet{}, middleware.After)
+func addOpCreateDelegateMacVolumeOwnershipTaskValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpCreateDelegateMacVolumeOwnershipTask{}, middleware.After)
 }
 
 func addOpCreateDhcpOptionsValidationMiddleware(stack *middleware.Stack) error {
@@ -9868,6 +9988,10 @@ func addOpCreateFpgaImageValidationMiddleware(stack *middleware.Stack) error {
 
 func addOpCreateImageValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpCreateImage{}, middleware.After)
+}
+
+func addOpCreateImageUsageReportValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpCreateImageUsageReport{}, middleware.After)
 }
 
 func addOpCreateInstanceConnectEndpointValidationMiddleware(stack *middleware.Stack) error {
@@ -9924,6 +10048,10 @@ func addOpCreateLocalGatewayVirtualInterfaceGroupValidationMiddleware(stack *mid
 
 func addOpCreateLocalGatewayVirtualInterfaceValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpCreateLocalGatewayVirtualInterface{}, middleware.After)
+}
+
+func addOpCreateMacSystemIntegrityProtectionModificationTaskValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpCreateMacSystemIntegrityProtectionModificationTask{}, middleware.After)
 }
 
 func addOpCreateManagedPrefixListValidationMiddleware(stack *middleware.Stack) error {
@@ -10082,10 +10210,6 @@ func addOpCreateVerifiedAccessTrustProviderValidationMiddleware(stack *middlewar
 	return stack.Initialize.Add(&validateOpCreateVerifiedAccessTrustProvider{}, middleware.After)
 }
 
-func addOpCreateVolumeValidationMiddleware(stack *middleware.Stack) error {
-	return stack.Initialize.Add(&validateOpCreateVolume{}, middleware.After)
-}
-
 func addOpCreateVpcBlockPublicAccessExclusionValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpCreateVpcBlockPublicAccessExclusion{}, middleware.After)
 }
@@ -10156,6 +10280,10 @@ func addOpDeleteFlowLogsValidationMiddleware(stack *middleware.Stack) error {
 
 func addOpDeleteFpgaImageValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpDeleteFpgaImage{}, middleware.After)
+}
+
+func addOpDeleteImageUsageReportValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpDeleteImageUsageReport{}, middleware.After)
 }
 
 func addOpDeleteInstanceConnectEndpointValidationMiddleware(stack *middleware.Stack) error {
@@ -10498,6 +10626,10 @@ func addOpDescribeImageAttributeValidationMiddleware(stack *middleware.Stack) er
 	return stack.Initialize.Add(&validateOpDescribeImageAttribute{}, middleware.After)
 }
 
+func addOpDescribeImageReferencesValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpDescribeImageReferences{}, middleware.After)
+}
+
 func addOpDescribeInstanceAttributeValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpDescribeInstanceAttribute{}, middleware.After)
 }
@@ -10756,6 +10888,10 @@ func addOpExportTransitGatewayRoutesValidationMiddleware(stack *middleware.Stack
 
 func addOpExportVerifiedAccessInstanceClientConfigurationValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpExportVerifiedAccessInstanceClientConfiguration{}, middleware.After)
+}
+
+func addOpGetActiveVpnTunnelStatusValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpGetActiveVpnTunnelStatus{}, middleware.After)
 }
 
 func addOpGetAssociatedEnclaveCertificateIamRolesValidationMiddleware(stack *middleware.Stack) error {
@@ -11022,6 +11158,10 @@ func addOpModifyInstanceCapacityReservationAttributesValidationMiddleware(stack 
 	return stack.Initialize.Add(&validateOpModifyInstanceCapacityReservationAttributes{}, middleware.After)
 }
 
+func addOpModifyInstanceConnectEndpointValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpModifyInstanceConnectEndpoint{}, middleware.After)
+}
+
 func addOpModifyInstanceCpuOptionsValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpModifyInstanceCpuOptions{}, middleware.After)
 }
@@ -11088,6 +11228,10 @@ func addOpModifyNetworkInterfaceAttributeValidationMiddleware(stack *middleware.
 
 func addOpModifyPrivateDnsNameOptionsValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpModifyPrivateDnsNameOptions{}, middleware.After)
+}
+
+func addOpModifyPublicIpDnsNameOptionsValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpModifyPublicIpDnsNameOptions{}, middleware.After)
 }
 
 func addOpModifyReservedInstancesValidationMiddleware(stack *middleware.Stack) error {
@@ -13410,9 +13554,6 @@ func validateOpCreateClientVpnEndpointInput(v *CreateClientVpnEndpointInput) err
 		return nil
 	}
 	invalidParams := smithy.InvalidParamsError{Context: "CreateClientVpnEndpointInput"}
-	if v.ClientCidrBlock == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("ClientCidrBlock"))
-	}
 	if v.ServerCertificateArn == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("ServerCertificateArn"))
 	}
@@ -13498,13 +13639,16 @@ func validateOpCreateCustomerGatewayInput(v *CreateCustomerGatewayInput) error {
 	}
 }
 
-func validateOpCreateDefaultSubnetInput(v *CreateDefaultSubnetInput) error {
+func validateOpCreateDelegateMacVolumeOwnershipTaskInput(v *CreateDelegateMacVolumeOwnershipTaskInput) error {
 	if v == nil {
 		return nil
 	}
-	invalidParams := smithy.InvalidParamsError{Context: "CreateDefaultSubnetInput"}
-	if v.AvailabilityZone == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("AvailabilityZone"))
+	invalidParams := smithy.InvalidParamsError{Context: "CreateDelegateMacVolumeOwnershipTaskInput"}
+	if v.InstanceId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("InstanceId"))
+	}
+	if v.MacCredentials == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("MacCredentials"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -13612,6 +13756,24 @@ func validateOpCreateImageInput(v *CreateImageInput) error {
 	}
 	if v.Name == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("Name"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpCreateImageUsageReportInput(v *CreateImageUsageReportInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "CreateImageUsageReportInput"}
+	if v.ImageId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ImageId"))
+	}
+	if v.ResourceTypes == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ResourceTypes"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -13860,6 +14022,24 @@ func validateOpCreateLocalGatewayVirtualInterfaceInput(v *CreateLocalGatewayVirt
 	}
 	if v.PeerAddress == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("PeerAddress"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpCreateMacSystemIntegrityProtectionModificationTaskInput(v *CreateMacSystemIntegrityProtectionModificationTaskInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "CreateMacSystemIntegrityProtectionModificationTaskInput"}
+	if v.InstanceId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("InstanceId"))
+	}
+	if len(v.MacSystemIntegrityProtectionStatus) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("MacSystemIntegrityProtectionStatus"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -14599,21 +14779,6 @@ func validateOpCreateVerifiedAccessTrustProviderInput(v *CreateVerifiedAccessTru
 	}
 }
 
-func validateOpCreateVolumeInput(v *CreateVolumeInput) error {
-	if v == nil {
-		return nil
-	}
-	invalidParams := smithy.InvalidParamsError{Context: "CreateVolumeInput"}
-	if v.AvailabilityZone == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("AvailabilityZone"))
-	}
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	} else {
-		return nil
-	}
-}
-
 func validateOpCreateVpcBlockPublicAccessExclusionInput(v *CreateVpcBlockPublicAccessExclusionInput) error {
 	if v == nil {
 		return nil
@@ -14894,6 +15059,21 @@ func validateOpDeleteFpgaImageInput(v *DeleteFpgaImageInput) error {
 	invalidParams := smithy.InvalidParamsError{Context: "DeleteFpgaImageInput"}
 	if v.FpgaImageId == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("FpgaImageId"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpDeleteImageUsageReportInput(v *DeleteImageUsageReportInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DeleteImageUsageReportInput"}
+	if v.ReportId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ReportId"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -16210,6 +16390,21 @@ func validateOpDescribeImageAttributeInput(v *DescribeImageAttributeInput) error
 	}
 }
 
+func validateOpDescribeImageReferencesInput(v *DescribeImageReferencesInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DescribeImageReferencesInput"}
+	if v.ImageIds == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ImageIds"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateOpDescribeInstanceAttributeInput(v *DescribeInstanceAttributeInput) error {
 	if v == nil {
 		return nil
@@ -17297,6 +17492,24 @@ func validateOpExportVerifiedAccessInstanceClientConfigurationInput(v *ExportVer
 	}
 }
 
+func validateOpGetActiveVpnTunnelStatusInput(v *GetActiveVpnTunnelStatusInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "GetActiveVpnTunnelStatusInput"}
+	if v.VpnConnectionId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("VpnConnectionId"))
+	}
+	if v.VpnTunnelOutsideIpAddress == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("VpnTunnelOutsideIpAddress"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateOpGetAssociatedEnclaveCertificateIamRolesInput(v *GetAssociatedEnclaveCertificateIamRolesInput) error {
 	if v == nil {
 		return nil
@@ -18105,9 +18318,6 @@ func validateOpImportVolumeInput(v *ImportVolumeInput) error {
 		return nil
 	}
 	invalidParams := smithy.InvalidParamsError{Context: "ImportVolumeInput"}
-	if v.AvailabilityZone == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("AvailabilityZone"))
-	}
 	if v.Image == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("Image"))
 	} else if v.Image != nil {
@@ -18392,6 +18602,21 @@ func validateOpModifyInstanceCapacityReservationAttributesInput(v *ModifyInstanc
 	}
 	if v.CapacityReservationSpecification == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("CapacityReservationSpecification"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpModifyInstanceConnectEndpointInput(v *ModifyInstanceConnectEndpointInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "ModifyInstanceConnectEndpointInput"}
+	if v.InstanceConnectEndpointId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("InstanceConnectEndpointId"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -18688,6 +18913,24 @@ func validateOpModifyPrivateDnsNameOptionsInput(v *ModifyPrivateDnsNameOptionsIn
 	invalidParams := smithy.InvalidParamsError{Context: "ModifyPrivateDnsNameOptionsInput"}
 	if v.InstanceId == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("InstanceId"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpModifyPublicIpDnsNameOptionsInput(v *ModifyPublicIpDnsNameOptionsInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "ModifyPublicIpDnsNameOptionsInput"}
+	if v.NetworkInterfaceId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("NetworkInterfaceId"))
+	}
+	if len(v.HostnameType) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("HostnameType"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
