@@ -99,7 +99,8 @@ spec:
                 --leader-elect-retry-period=26s \
                 --leader-elect-resource-namespace=openshift-cloud-controller-manager \
                 --feature-gates={{ .featureGates }} \
-                --use-service-account-credentials=true
+                --use-service-account-credentials=true \
+                --secure-port=0
           volumeMounts:
             - name: host-etc-kube
               mountPath: /etc/kubernetes

@@ -42,6 +42,7 @@ spec:
           --leader-elect-renew-deadline=107s \
           --leader-elect-retry-period=26s \
           --leader-elect-resource-namespace=openshift-cloud-controller-manager \
+          --secure-port=0 \
           -v=2
         image: {{ .images.CloudControllerManager }}
         imagePullPolicy: IfNotPresent
