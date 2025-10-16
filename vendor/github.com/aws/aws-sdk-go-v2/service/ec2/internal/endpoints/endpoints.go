@@ -160,6 +160,9 @@ var defaultPartitions = endpoints.Partitions{
 				Hostname: "ec2.ap-east-1.api.aws",
 			},
 			endpoints.EndpointKey{
+				Region: "ap-east-2",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
 				Region: "ap-northeast-1",
 			}: endpoints.Endpoint{},
 			endpoints.EndpointKey{
@@ -218,6 +221,9 @@ var defaultPartitions = endpoints.Partitions{
 			}: endpoints.Endpoint{},
 			endpoints.EndpointKey{
 				Region: "ap-southeast-5",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region: "ap-southeast-6",
 			}: endpoints.Endpoint{},
 			endpoints.EndpointKey{
 				Region: "ap-southeast-7",
