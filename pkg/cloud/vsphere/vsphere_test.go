@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/api/features"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	"github.com/stretchr/testify/assert"
 
@@ -11,6 +13,7 @@ import (
 )
 
 func TestResourcesRenderingSmoke(t *testing.T) {
+	customFeatureGates := featuregates.NewFeatureGate([]configv1.FeatureGateName{"SomeOtherFeatureGate", features.FeatureGateVSphereMixedNodeEnv}, nil)
 
 	tc := []struct {
 		name       string
@@ -40,6 +43,18 @@ func TestResourcesRenderingSmoke(t *testing.T) {
 				},
 				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.VSpherePlatformType},
 				InfrastructureName: "infra",
+			},
+		}, {
+			name: "FeatureGate FeatureGateVSphereMixedNodeEnv=true results in node-labels generated without error",
+			config: config.OperatorConfig{
+				ManagedNamespace: "my-cool-namespace",
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerVSphere: "CloudControllerManagerVsphere",
+				},
+				PlatformStatus:     &configv1.PlatformStatus{Type: configv1.VSpherePlatformType},
+				InfrastructureName: "infra",
+				FeatureGates:       "FeatureGateVSphereMixedNodeEnv=true",
+				OCPFeatureGates:    customFeatureGates,
 			},
 		},
 	}

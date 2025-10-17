@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/openshift/api/features"
 	appsv1 "k8s.io/api/apps/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,6 +19,8 @@ const (
 
 	// see manifests/0000_26_cloud-controller-manager-operator_16_credentialsrequest-vsphere.yaml
 	globalCredsSecretName = "vsphere-cloud-credentials"
+
+	vSpherePlatformTypeLabel = "node.openshift.io/platform-type=vsphere"
 )
 
 var (
@@ -45,6 +48,7 @@ var templateValuesValidationMap = map[string]interface{}{
 	"globalCredsSecretName":      "required,type(string)",
 	"cloudproviderName":          "required,type(string)",
 	"featureGates":               "type(string)",
+	"additionalLabels":           "type(string)",
 }
 
 type vsphereAssets struct {
@@ -57,6 +61,12 @@ func (assets *vsphereAssets) GetRenderedResources() []client.Object {
 }
 
 func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
+	additionalLabels := ""
+
+	// We are only going to set the new platform-type node labels if the featuregate is enabled.
+	if operatorConfig.OCPFeatureGates != nil && operatorConfig.OCPFeatureGates.Enabled(features.FeatureGateVSphereMixedNodeEnv) {
+		additionalLabels = vSpherePlatformTypeLabel
+	}
 	values := common.TemplateValues{
 		"images":                     images,
 		"infrastructureName":         operatorConfig.InfrastructureName,
@@ -64,6 +74,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 		"globalCredsSecretName":      globalCredsSecretName,
 		"cloudproviderName":          operatorConfig.GetPlatformNameString(),
 		"featureGates":               operatorConfig.FeatureGates,
+		"additionalLabels":           additionalLabels,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
