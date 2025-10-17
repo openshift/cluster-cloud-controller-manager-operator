@@ -235,6 +235,10 @@ func TestComposeConfig(t *testing.T) {
 			// longer appears in the features package linked above. You'll need to
 			// choose something present in the vendored k8s version.
 			FeatureGates: "CloudControllerManagerWebhook=true",
+			OCPFeatureGates: featuregates.NewFeatureGate(
+				[]configv1.FeatureGateName{"CloudControllerManagerWebhook", "ChocobombVanilla", "ChocobombStrawberry"},
+				[]configv1.FeatureGateName{"ChocobombBlueberry", "ChocobombBanana"},
+			),
 		},
 	}, {
 		name:        "Empty infrastructure should return error",
