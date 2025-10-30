@@ -99,8 +99,7 @@ spec:
                 --leader-elect-retry-period=26s \
                 --leader-elect-resource-namespace=openshift-cloud-controller-manager \
                 --feature-gates={{ .featureGates }} \
-                --use-service-account-credentials=true \
-                --secure-port=0
+                --use-service-account-credentials=true
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: host-etc-kube

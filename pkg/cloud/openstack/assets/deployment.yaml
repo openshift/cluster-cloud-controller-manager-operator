@@ -78,8 +78,7 @@ spec:
             --leader-elect-renew-deadline=107s \
             --leader-elect-retry-period=26s \
             --leader-elect-resource-namespace=openshift-cloud-controller-manager \
-            --feature-gates={{ .featureGates }} \
-            --secure-port=0
+            --feature-gates={{ .featureGates }}
           ports:
           - containerPort: 10258
             name: https

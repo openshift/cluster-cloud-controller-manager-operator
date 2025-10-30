@@ -147,8 +147,7 @@ spec:
                 --leader-elect-lease-duration=137s \
                 --leader-elect-renew-deadline=107s \
                 --leader-elect-retry-period=26s \
-                --leader-elect-resource-namespace=openshift-cloud-controller-manager \
-                --secure-port=0
+                --leader-elect-resource-namespace=openshift-cloud-controller-manager
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: host-etc-kube
