@@ -68,6 +68,8 @@ spec:
               value: {{ .globalCredsSecretName }}
             - name: ENABLE_ALPHA_DUAL_STACK
               value: "true"
+            - name: ADDITIONAL_NODE_LABELS
+              value: {{ .additionalLabels }}
           resources:
             requests:
               cpu: 200m
@@ -100,6 +102,9 @@ spec:
                 --leader-elect-resource-namespace=openshift-cloud-controller-manager \
                 --feature-gates={{ .featureGates }} \
                 --use-service-account-credentials=true \
+                {{- if .additionalLabels }}
+                --node-labels="$(ADDITIONAL_NODE_LABELS)" \
+                {{- end}}
                 --secure-port=0
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
