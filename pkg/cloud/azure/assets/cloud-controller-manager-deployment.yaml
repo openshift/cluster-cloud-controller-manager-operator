@@ -139,7 +139,8 @@ spec:
                 --leader-elect-lease-duration=137s \
                 --leader-elect-renew-deadline=107s \
                 --leader-elect-retry-period=26s \
-                --leader-elect-resource-namespace=openshift-cloud-controller-manager
+                --leader-elect-resource-namespace=openshift-cloud-controller-manager \
+                --secure-port=0
           volumeMounts:
             - name: host-etc-kube
               mountPath: /etc/kubernetes
