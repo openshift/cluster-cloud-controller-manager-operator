@@ -174,7 +174,7 @@ func (s *Store) Add(ctx context.Context, item Item, contents io.Reader) (resErr 
 		}
 		if err := func() error { // IIFE to get the defer properly in a loop
 			defer binOut.Close()
-			if _, err := io.Copy(binOut, tarReader); err != nil { //nolint:gosec
+			if _, err := io.Copy(binOut, tarReader); err != nil {
 				return fmt.Errorf("unable to write file %s from archive to disk for version-platform pair %s", targetPath, itemName)
 			}
 			return nil
