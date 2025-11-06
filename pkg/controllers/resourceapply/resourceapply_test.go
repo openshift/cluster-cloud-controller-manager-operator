@@ -1,6 +1,7 @@
 package resourceapply
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -148,7 +149,7 @@ var _ = Describe("applyConfigMap", func() {
 	)
 })
 
-type deploymentSupplier func(string) *appsv1.Deployment
+type deploymentSupplier func(context.Context, appsclientv1.Client, string) *appsv1.Deployment
 
 type applyDeploymentArguments struct {
 	desiredFn    deploymentSupplier
@@ -183,10 +184,10 @@ var _ = Describe("applyDeployment", func() {
 		func(args applyDeploymentArguments) {
 			eventRecorder := record.NewFakeRecorder(1000)
 
-			desiredDeployment := args.desiredFn(namespaceName)
+			desiredDeployment := args.desiredFn(ctx, k8sClient, namespaceName)
 
 			if args.actualFn != nil {
-				actualDeployment := args.actualFn(namespaceName)
+				actualDeployment := args.actualFn(ctx, k8sClient, namespaceName)
 				Expect(k8sClient.Create(ctx, actualDeployment)).To(Succeed())
 			}
 
@@ -207,7 +208,7 @@ var _ = Describe("applyDeployment", func() {
 			deploymentObjectKey := appsclientv1.ObjectKeyFromObject(desiredDeployment)
 			Expect(k8sClient.Get(ctx, deploymentObjectKey, updatedDeployment)).To(Succeed())
 
-			expectedDeployment := args.expectedFn(namespaceName)
+			expectedDeployment := args.expectedFn(ctx, k8sClient, namespaceName)
 			Expect(equality.Semantic.DeepDerivative(expectedDeployment.Spec, updatedDeployment.Spec)).To(BeTrue(), fmt.Sprintf("Expected deployment: %+v, got %+v", expectedDeployment, updatedDeployment))
 			Expect(expectedDeployment.Annotations[specHashAnnotation]).Should(BeEquivalentTo(updatedDeployment.Annotations[specHashAnnotation]))
 		},
@@ -231,16 +232,17 @@ var _ = Describe("applyDeployment", func() {
 		),
 		Entry("When the deployment is updated due to a change in the spec it is updated",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeployment(ctx, client, namespace)
 					w.Spec.Template.Finalizers = []string{"newFinalizer"}
 					return w
 				},
 				actualFn: workloadDeploymentWithDefaultSpecHash,
-				expectedFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeployment(namespace)
-					w.Annotations["operator.openshift.io/spec-hash"] = "a188738eb8e2da21166bc0bfaeb7c87a9c7422f426591e7e3cd52f300cb0785d"
+				expectedFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeployment(ctx, client, namespace)
 					w.Spec.Template.Finalizers = []string{"newFinalizer"}
+					_ = annotatePodSpecWithRelatedConfigsHash(ctx, client, w.Namespace, &w.Spec.Template)
+					_ = setSpecHashAnnotation(&w.ObjectMeta, w.Spec)
 					return w
 				},
 				expectError:  false,
@@ -249,14 +251,14 @@ var _ = Describe("applyDeployment", func() {
 		),
 		Entry("When the deployment is updated due to a change in the labels field it is updated",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeployment(ctx, client, namespace)
 					w.Labels["newLabel"] = "newValue"
 					return w
 				},
 				actualFn: workloadDeploymentWithDefaultSpecHash,
-				expectedFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeploymentWithDefaultSpecHash(namespace)
+				expectedFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeploymentWithDefaultSpecHash(ctx, client, namespace)
 					w.Labels["newLabel"] = "newValue"
 					return w
 				},
@@ -266,14 +268,14 @@ var _ = Describe("applyDeployment", func() {
 		),
 		Entry("When the deployment is updated due to a change in the Annotations field",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeployment(ctx, client, namespace)
 					w.Annotations["newAnnotation"] = "newValue"
 					return w
 				},
 				actualFn: workloadDeploymentWithDefaultSpecHash,
-				expectedFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeploymentWithDefaultSpecHash(namespace)
+				expectedFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeploymentWithDefaultSpecHash(ctx, client, namespace)
 					w.Annotations["newAnnotation"] = "newValue"
 					return w
 				},
@@ -287,11 +289,11 @@ var _ = Describe("applyDeployment", func() {
 		func(args applyDeploymentArguments) {
 			eventRecorder := record.NewFakeRecorder(1000)
 
-			actualDeployment := args.actualFn(namespaceName)
+			actualDeployment := args.actualFn(ctx, k8sClient, namespaceName)
 			Expect(k8sClient.Create(ctx, actualDeployment)).To(Succeed())
 			Expect(actualDeployment.UID).NotTo(BeNil())
 
-			desiredDeployment := args.desiredFn(namespaceName)
+			desiredDeployment := args.desiredFn(ctx, k8sClient, namespaceName)
 			_, err := applyDeployment(ctx, k8sClient, eventRecorder, desiredDeployment)
 			if args.expectError {
 				Expect(err).To(HaveOccurred(), "expected error")
@@ -310,7 +312,7 @@ var _ = Describe("applyDeployment", func() {
 				Expect(actualDeployment.UID).Should(BeEquivalentTo(updatedDeployment.UID))
 			}
 
-			expectedDeployment := args.expectedFn(namespaceName)
+			expectedDeployment := args.expectedFn(ctx, k8sClient, namespaceName)
 			Expect(equality.Semantic.DeepDerivative(expectedDeployment.Spec, updatedDeployment.Spec)).To(BeTrue(), fmt.Sprintf("Expected deployment: %+v, got %+v", expectedDeployment, updatedDeployment))
 
 			Expect(expectedDeployment.Annotations[specHashAnnotation]).To(BeEquivalentTo(updatedDeployment.Annotations[specHashAnnotation]))
@@ -321,8 +323,8 @@ var _ = Describe("applyDeployment", func() {
 		},
 		Entry("When the deployment is recreated due to a change in the match labels field",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeployment(ctx, client, namespace)
 					w.Spec.Selector = &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"bar": "baz",
@@ -332,15 +334,16 @@ var _ = Describe("applyDeployment", func() {
 					return w
 				},
 				actualFn: workloadDeploymentWithDefaultSpecHash,
-				expectedFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeploymentWithDefaultSpecHash(namespace)
+				expectedFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeployment(ctx, client, namespace)
 					w.Spec.Selector = &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"bar": "baz",
 						},
 					}
 					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-					w.Annotations[specHashAnnotation] = "ad5da8e55a1a2c05026368f3b68f5625f7fd038b38ac8a4aa1358e2e1a07a85d"
+					_ = annotatePodSpecWithRelatedConfigsHash(ctx, client, w.Namespace, &w.Spec.Template)
+					_ = setSpecHashAnnotation(&w.ObjectMeta, w.Spec)
 					return w
 				},
 				expectError:  false,
@@ -349,8 +352,8 @@ var _ = Describe("applyDeployment", func() {
 		),
 		Entry("When a resource is malformed an error is reported",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeployment(ctx, client, namespace)
 					w.Spec.Selector = &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"bar": "baz",
@@ -368,8 +371,8 @@ var _ = Describe("applyDeployment", func() {
 		),
 		Entry("When resource deletion is stuck an error is reported",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					w := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					w := workloadDeployment(ctx, client, namespace)
 					w.Spec.Selector = &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"bar": "baz",
@@ -378,8 +381,8 @@ var _ = Describe("applyDeployment", func() {
 					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
 					return w
 				},
-				actualFn: func(namespace string) *appsv1.Deployment {
-					d := workloadDeploymentWithDefaultSpecHash(namespace)
+				actualFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					d := workloadDeploymentWithDefaultSpecHash(ctx, client, namespace)
 					d.Finalizers = []string{"foo.bar/baz"}
 					return d
 				},
@@ -403,7 +406,7 @@ var _ = Describe("applyDeployment", func() {
 			Expect(k8sClient.Create(ctx, initialConfigMap)).To(Succeed())
 			Expect(initialSecret.UID).NotTo(BeNil())
 
-			deployment := args.desiredFn(namespaceName)
+			deployment := args.desiredFn(ctx, k8sClient, namespaceName)
 			_, err := applyDeployment(ctx, k8sClient, eventRecorder, deployment)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -419,8 +422,8 @@ var _ = Describe("applyDeployment", func() {
 		},
 		Entry("When related config specified in volumes did not change it is not updated",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					d := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					d := workloadDeployment(ctx, client, namespace)
 					addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "secret", "secret")
 					addConfigMapVolumeToPodSpec(&d.Spec.Template.Spec, "configmap", "configmap")
 					return d
@@ -431,8 +434,8 @@ var _ = Describe("applyDeployment", func() {
 		),
 		Entry("When related configs are changed it is updated",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					d := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					d := workloadDeployment(ctx, client, namespace)
 					addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "secret", "secret")
 					addConfigMapVolumeToPodSpec(&d.Spec.Template.Spec, "configmap", "configmap")
 					return d
@@ -445,8 +448,8 @@ var _ = Describe("applyDeployment", func() {
 		),
 		Entry("When non-existent config is specified it is not updated",
 			applyDeploymentArguments{
-				desiredFn: func(namespace string) *appsv1.Deployment {
-					d := workloadDeployment(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+					d := workloadDeployment(ctx, client, namespace)
 					addSecretVolumeToPodSpec(&d.Spec.Template.Spec, "non-existed", "non-existed")
 					return d
 				},
@@ -458,7 +461,7 @@ var _ = Describe("applyDeployment", func() {
 
 })
 
-type daemonSetSupplier func(string) *appsv1.DaemonSet
+type daemonSetSupplier func(context.Context, appsclientv1.Client, string) *appsv1.DaemonSet
 
 type applyDaemonSetArguments struct {
 	desiredFn    daemonSetSupplier
@@ -494,11 +497,11 @@ var _ = Describe("applyDaemonSet", func() {
 			eventRecorder := record.NewFakeRecorder(1000)
 
 			if args.actualFn != nil {
-				actualDaemonSet := args.actualFn(namespaceName)
+				actualDaemonSet := args.actualFn(ctx, k8sClient, namespaceName)
 				Expect(k8sClient.Create(ctx, actualDaemonSet)).To(Succeed())
 			}
 
-			desiredDaemonSet := args.desiredFn(namespaceName)
+			desiredDaemonSet := args.desiredFn(ctx, k8sClient, namespaceName)
 			updated, err := applyDaemonSet(ctx, k8sClient, eventRecorder, desiredDaemonSet)
 			// TODO (elmiko) add some test cases to exercise the error failure modes
 			if args.expectError {
@@ -515,7 +518,7 @@ var _ = Describe("applyDaemonSet", func() {
 			updatedDaemonSet := &appsv1.DaemonSet{}
 			Expect(k8sClient.Get(ctx, appsclientv1.ObjectKeyFromObject(desiredDaemonSet), updatedDaemonSet)).To(Succeed())
 
-			expectedDaemonSet := args.expectedFn(namespaceName)
+			expectedDaemonSet := args.expectedFn(ctx, k8sClient, namespaceName)
 			Expect(equality.Semantic.DeepDerivative(expectedDaemonSet.Spec, updatedDaemonSet.Spec)).To(BeTrue(), fmt.Sprintf("Expected DaemonSet: %+v, got %+v", expectedDaemonSet, updatedDaemonSet))
 
 			Expect(expectedDaemonSet.Annotations).Should(HaveKeyWithValue(specHashAnnotation, updatedDaemonSet.Annotations[specHashAnnotation]))
@@ -540,16 +543,17 @@ var _ = Describe("applyDaemonSet", func() {
 		),
 		Entry("When there is a change in the spec it is updated",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(ctx, client, namespace)
 					w.Spec.Template.Finalizers = []string{"newFinalizer"}
 					return w
 				},
 				actualFn: workloadDaemonSetWithDefaultSpecHash,
-				expectedFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSet(namespace)
-					w.Annotations["operator.openshift.io/spec-hash"] = "cb44c29fda480ea0b4e7a08dda99db54c46d7ed21a8d9360b6b701864fe7cbbb"
+				expectedFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(ctx, client, namespace)
 					w.Spec.Template.Finalizers = []string{"newFinalizer"}
+					_ = annotatePodSpecWithRelatedConfigsHash(ctx, client, w.Namespace, &w.Spec.Template)
+					_ = setSpecHashAnnotation(&w.ObjectMeta, w.Spec)
 					return w
 				},
 				expectError:  false,
@@ -558,14 +562,14 @@ var _ = Describe("applyDaemonSet", func() {
 		),
 		Entry("When there is a change in the labels field it is updated",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(ctx, client, namespace)
 					w.Labels["newLabel"] = "newValue"
 					return w
 				},
 				actualFn: workloadDaemonSetWithDefaultSpecHash,
-				expectedFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSetWithDefaultSpecHash(namespace)
+				expectedFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSetWithDefaultSpecHash(ctx, client, namespace)
 					w.Labels["newLabel"] = "newValue"
 					return w
 				},
@@ -575,14 +579,14 @@ var _ = Describe("applyDaemonSet", func() {
 		),
 		Entry("When there is a change in the annotations field it is updated",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(ctx, client, namespace)
 					w.Annotations["newAnnotation"] = "newValue"
 					return w
 				},
 				actualFn: workloadDaemonSetWithDefaultSpecHash,
-				expectedFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSetWithDefaultSpecHash(namespace)
+				expectedFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSetWithDefaultSpecHash(ctx, client, namespace)
 					w.Annotations["newAnnotation"] = "newValue"
 					return w
 				},
@@ -596,11 +600,11 @@ var _ = Describe("applyDaemonSet", func() {
 		func(args applyDaemonSetArguments) {
 			eventRecorder := record.NewFakeRecorder(1000)
 
-			actualDaemonSet := args.actualFn(namespaceName)
+			actualDaemonSet := args.actualFn(ctx, k8sClient, namespaceName)
 			Expect(k8sClient.Create(ctx, actualDaemonSet)).To(Succeed())
 			Expect(actualDaemonSet.UID).NotTo(BeNil())
 
-			desiredDaemonSet := args.desiredFn(namespaceName)
+			desiredDaemonSet := args.desiredFn(ctx, k8sClient, namespaceName)
 			_, err := applyDaemonSet(ctx, k8sClient, eventRecorder, desiredDaemonSet)
 			if args.expectError {
 				Expect(err).To(HaveOccurred(), "expected error")
@@ -619,7 +623,7 @@ var _ = Describe("applyDaemonSet", func() {
 				Expect(actualDaemonSet.UID).Should(BeEquivalentTo(updatedDaemonSet.UID))
 			}
 
-			expectedDaemonSet := args.expectedFn(namespaceName)
+			expectedDaemonSet := args.expectedFn(ctx, k8sClient, namespaceName)
 			Expect(equality.Semantic.DeepDerivative(expectedDaemonSet.Spec, updatedDaemonSet.Spec)).To(BeTrue(), fmt.Sprintf("Expected deployment: %+v, got %+v", expectedDaemonSet, updatedDaemonSet))
 
 			Expect(expectedDaemonSet.Annotations).Should(HaveKeyWithValue(specHashAnnotation, updatedDaemonSet.Annotations[specHashAnnotation]))
@@ -630,8 +634,8 @@ var _ = Describe("applyDaemonSet", func() {
 		},
 		Entry("When there is a change in the match labels field it is recreated",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(ctx, client, namespace)
 					w.Spec.Selector = &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"bar": "baz",
@@ -641,15 +645,16 @@ var _ = Describe("applyDaemonSet", func() {
 					return w
 				},
 				actualFn: workloadDaemonSetWithDefaultSpecHash,
-				expectedFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSet(namespace)
+				expectedFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(ctx, client, namespace)
 					w.Spec.Selector = &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"bar": "baz",
 						},
 					}
 					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
-					w.Annotations[specHashAnnotation] = "4c860db5451a859e104e640b8315da4bb6ece3fb8143344c8fcdf1ba95431dd9"
+					_ = annotatePodSpecWithRelatedConfigsHash(ctx, client, w.Namespace, &w.Spec.Template)
+					_ = setSpecHashAnnotation(&w.ObjectMeta, w.Spec)
 					return w
 				},
 				expectError:  false,
@@ -658,8 +663,8 @@ var _ = Describe("applyDaemonSet", func() {
 		),
 		Entry("When the resource is malformed an error is reported",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(ctx, client, namespace)
 					w.Spec.Selector = &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"bar": "baz",
@@ -677,8 +682,8 @@ var _ = Describe("applyDaemonSet", func() {
 		),
 		Entry("When the resource deletion is stuck it should report an error",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					w := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					w := workloadDaemonSet(ctx, client, namespace)
 					w.Spec.Selector = &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"bar": "baz",
@@ -687,8 +692,8 @@ var _ = Describe("applyDaemonSet", func() {
 					w.Spec.Template.Labels = map[string]string{"bar": "baz"}
 					return w
 				},
-				actualFn: func(namespace string) *appsv1.DaemonSet {
-					ds := workloadDaemonSetWithDefaultSpecHash(namespace)
+				actualFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					ds := workloadDaemonSetWithDefaultSpecHash(ctx, client, namespace)
 					ds.Finalizers = []string{"foo.bar/baz"}
 					return ds
 				},
@@ -712,7 +717,7 @@ var _ = Describe("applyDaemonSet", func() {
 			Expect(k8sClient.Create(ctx, initialConfigMap)).To(Succeed())
 			Expect(initialSecret.UID).NotTo(BeNil())
 
-			daemonSet := args.desiredFn(namespaceName)
+			daemonSet := args.desiredFn(ctx, k8sClient, namespaceName)
 			_, err := applyDaemonSet(ctx, k8sClient, eventRecorder, daemonSet)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -728,8 +733,8 @@ var _ = Describe("applyDaemonSet", func() {
 		},
 		Entry("When related config specified in volumes did not change it is not updated",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					ds := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					ds := workloadDaemonSet(ctx, client, namespace)
 					addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "secret", "secret")
 					addConfigMapVolumeToPodSpec(&ds.Spec.Template.Spec, "configmap", "configmap")
 					return ds
@@ -740,8 +745,8 @@ var _ = Describe("applyDaemonSet", func() {
 		),
 		Entry("When related config is changed it is updated",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					ds := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					ds := workloadDaemonSet(ctx, client, namespace)
 					addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "secret", "secret")
 					addConfigMapVolumeToPodSpec(&ds.Spec.Template.Spec, "configmap", "configmap")
 					return ds
@@ -754,8 +759,8 @@ var _ = Describe("applyDaemonSet", func() {
 		),
 		Entry("When non-existent config is specified it is not updated",
 			applyDaemonSetArguments{
-				desiredFn: func(namespace string) *appsv1.DaemonSet {
-					ds := workloadDaemonSet(namespace)
+				desiredFn: func(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+					ds := workloadDaemonSet(ctx, client, namespace)
 					addSecretVolumeToPodSpec(&ds.Spec.Template.Spec, "non-existed", "non-existed")
 					return ds
 				},
@@ -854,7 +859,7 @@ var _ = Describe("applyPodDisruptionBudget", func() {
 	)
 })
 
-func workloadDeployment(namespace string) *appsv1.Deployment {
+func workloadDeployment(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
@@ -896,9 +901,11 @@ func workloadDeployment(namespace string) *appsv1.Deployment {
 	}
 }
 
-func workloadDeploymentWithDefaultSpecHash(namespace string) *appsv1.Deployment {
-	w := workloadDeployment(namespace)
-	w.Annotations[specHashAnnotation] = "8b26fe4cab14c9368f2ca916f59fafdc62f312544d7994a1580db80758b50f05"
+func workloadDeploymentWithDefaultSpecHash(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.Deployment {
+	w := workloadDeployment(ctx, client, namespace)
+	// Apply the same hash calculation logic used in production code
+	_ = annotatePodSpecWithRelatedConfigsHash(ctx, client, w.Namespace, &w.Spec.Template)
+	_ = setSpecHashAnnotation(&w.ObjectMeta, w.Spec)
 	return w
 }
 
@@ -946,7 +953,7 @@ func addConfigMapVolumeToPodSpec(spec *corev1.PodSpec, cmName string, volumeName
 	spec.Volumes = append(spec.Volumes, volume)
 }
 
-func workloadDaemonSet(namespace string) *appsv1.DaemonSet {
+func workloadDaemonSet(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
 	return &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "DaemonSet",
@@ -985,9 +992,11 @@ func workloadDaemonSet(namespace string) *appsv1.DaemonSet {
 	}
 }
 
-func workloadDaemonSetWithDefaultSpecHash(namespace string) *appsv1.DaemonSet {
-	w := workloadDaemonSet(namespace)
-	w.Annotations[specHashAnnotation] = "b9f17f24c21dbab45ba7b59d458142cf6aab160ec03a471272e561a062e57107"
+func workloadDaemonSetWithDefaultSpecHash(ctx context.Context, client appsclientv1.Client, namespace string) *appsv1.DaemonSet {
+	w := workloadDaemonSet(ctx, client, namespace)
+	// Apply the same hash calculation logic used in production code
+	_ = annotatePodSpecWithRelatedConfigsHash(ctx, client, w.Namespace, &w.Spec.Template)
+	_ = setSpecHashAnnotation(&w.ObjectMeta, w.Spec)
 	return w
 }
 
