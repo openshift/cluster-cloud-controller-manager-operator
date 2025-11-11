@@ -22,7 +22,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.34.1
 	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v0.34.1
-	k8s.io/cloud-provider-aws v1.34.1
+	k8s.io/cloud-provider-aws v1.34.1-0.20250912204608-8a0025b4efb1
 	k8s.io/cloud-provider-vsphere v1.34.0
 	k8s.io/component-base v0.34.1
 	k8s.io/controller-manager v0.34.0
