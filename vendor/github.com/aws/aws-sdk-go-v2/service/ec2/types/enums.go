@@ -988,6 +988,59 @@ func (CapacityBlockExtensionStatus) Values() []CapacityBlockExtensionStatus {
 	}
 }
 
+type CapacityBlockInterconnectStatus string
+
+// Enum values for CapacityBlockInterconnectStatus
+const (
+	CapacityBlockInterconnectStatusOk               CapacityBlockInterconnectStatus = "ok"
+	CapacityBlockInterconnectStatusImpaired         CapacityBlockInterconnectStatus = "impaired"
+	CapacityBlockInterconnectStatusInsufficientData CapacityBlockInterconnectStatus = "insufficient-data"
+)
+
+// Values returns all known values for CapacityBlockInterconnectStatus. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (CapacityBlockInterconnectStatus) Values() []CapacityBlockInterconnectStatus {
+	return []CapacityBlockInterconnectStatus{
+		"ok",
+		"impaired",
+		"insufficient-data",
+	}
+}
+
+type CapacityBlockResourceState string
+
+// Enum values for CapacityBlockResourceState
+const (
+	CapacityBlockResourceStateActive         CapacityBlockResourceState = "active"
+	CapacityBlockResourceStateExpired        CapacityBlockResourceState = "expired"
+	CapacityBlockResourceStateUnavailable    CapacityBlockResourceState = "unavailable"
+	CapacityBlockResourceStateCancelled      CapacityBlockResourceState = "cancelled"
+	CapacityBlockResourceStateFailed         CapacityBlockResourceState = "failed"
+	CapacityBlockResourceStateScheduled      CapacityBlockResourceState = "scheduled"
+	CapacityBlockResourceStatePaymentPending CapacityBlockResourceState = "payment-pending"
+	CapacityBlockResourceStatePaymentFailed  CapacityBlockResourceState = "payment-failed"
+)
+
+// Values returns all known values for CapacityBlockResourceState. Note that this
+// can be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (CapacityBlockResourceState) Values() []CapacityBlockResourceState {
+	return []CapacityBlockResourceState{
+		"active",
+		"expired",
+		"unavailable",
+		"cancelled",
+		"failed",
+		"scheduled",
+		"payment-pending",
+		"payment-failed",
+	}
+}
+
 type CapacityReservationBillingRequestStatus string
 
 // Enum values for CapacityReservationBillingRequestStatus
@@ -1159,6 +1212,7 @@ const (
 	CapacityReservationStateAssessing      CapacityReservationState = "assessing"
 	CapacityReservationStateDelayed        CapacityReservationState = "delayed"
 	CapacityReservationStateUnsupported    CapacityReservationState = "unsupported"
+	CapacityReservationStateUnavailable    CapacityReservationState = "unavailable"
 )
 
 // Values returns all known values for CapacityReservationState. Note that this
@@ -1178,6 +1232,7 @@ func (CapacityReservationState) Values() []CapacityReservationState {
 		"assessing",
 		"delayed",
 		"unsupported",
+		"unavailable",
 	}
 }
 
@@ -1989,6 +2044,9 @@ const (
 	Ec2InstanceConnectEndpointStateDeleteInProgress Ec2InstanceConnectEndpointState = "delete-in-progress"
 	Ec2InstanceConnectEndpointStateDeleteComplete   Ec2InstanceConnectEndpointState = "delete-complete"
 	Ec2InstanceConnectEndpointStateDeleteFailed     Ec2InstanceConnectEndpointState = "delete-failed"
+	Ec2InstanceConnectEndpointStateUpdateInProgress Ec2InstanceConnectEndpointState = "update-in-progress"
+	Ec2InstanceConnectEndpointStateUpdateComplete   Ec2InstanceConnectEndpointState = "update-complete"
+	Ec2InstanceConnectEndpointStateUpdateFailed     Ec2InstanceConnectEndpointState = "update-failed"
 )
 
 // Values returns all known values for Ec2InstanceConnectEndpointState. Note that
@@ -2004,6 +2062,9 @@ func (Ec2InstanceConnectEndpointState) Values() []Ec2InstanceConnectEndpointStat
 		"delete-in-progress",
 		"delete-complete",
 		"delete-failed",
+		"update-in-progress",
+		"update-complete",
+		"update-failed",
 	}
 }
 
@@ -2118,6 +2179,27 @@ func (EndDateType) Values() []EndDateType {
 	return []EndDateType{
 		"unlimited",
 		"limited",
+	}
+}
+
+type EndpointIpAddressType string
+
+// Enum values for EndpointIpAddressType
+const (
+	EndpointIpAddressTypeIpv4      EndpointIpAddressType = "ipv4"
+	EndpointIpAddressTypeIpv6      EndpointIpAddressType = "ipv6"
+	EndpointIpAddressTypeDualStack EndpointIpAddressType = "dual-stack"
+)
+
+// Values returns all known values for EndpointIpAddressType. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (EndpointIpAddressType) Values() []EndpointIpAddressType {
+	return []EndpointIpAddressType{
+		"ipv4",
+		"ipv6",
+		"dual-stack",
 	}
 }
 
@@ -2917,6 +2999,50 @@ func (ImageBlockPublicAccessEnabledState) Values() []ImageBlockPublicAccessEnabl
 	}
 }
 
+type ImageReferenceOptionName string
+
+// Enum values for ImageReferenceOptionName
+const (
+	ImageReferenceOptionNameStateName    ImageReferenceOptionName = "state-name"
+	ImageReferenceOptionNameVersionDepth ImageReferenceOptionName = "version-depth"
+)
+
+// Values returns all known values for ImageReferenceOptionName. Note that this
+// can be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ImageReferenceOptionName) Values() []ImageReferenceOptionName {
+	return []ImageReferenceOptionName{
+		"state-name",
+		"version-depth",
+	}
+}
+
+type ImageReferenceResourceType string
+
+// Enum values for ImageReferenceResourceType
+const (
+	ImageReferenceResourceTypeEc2Instance                 ImageReferenceResourceType = "ec2:Instance"
+	ImageReferenceResourceTypeEc2LaunchTemplate           ImageReferenceResourceType = "ec2:LaunchTemplate"
+	ImageReferenceResourceTypeSsmParameter                ImageReferenceResourceType = "ssm:Parameter"
+	ImageReferenceResourceTypeImageBuilderImageRecipe     ImageReferenceResourceType = "imagebuilder:ImageRecipe"
+	ImageReferenceResourceTypeImageBuilderContainerRecipe ImageReferenceResourceType = "imagebuilder:ContainerRecipe"
+)
+
+// Values returns all known values for ImageReferenceResourceType. Note that this
+// can be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ImageReferenceResourceType) Values() []ImageReferenceResourceType {
+	return []ImageReferenceResourceType{
+		"ec2:Instance",
+		"ec2:LaunchTemplate",
+		"ssm:Parameter",
+		"imagebuilder:ImageRecipe",
+		"imagebuilder:ContainerRecipe",
+	}
+}
+
 type ImageState string
 
 // Enum values for ImageState
@@ -2983,6 +3109,25 @@ const (
 func (ImdsSupportValues) Values() []ImdsSupportValues {
 	return []ImdsSupportValues{
 		"v2.0",
+	}
+}
+
+type InitializationType string
+
+// Enum values for InitializationType
+const (
+	InitializationTypeDefault         InitializationType = "default"
+	InitializationTypeProvisionedRate InitializationType = "provisioned-rate"
+)
+
+// Values returns all known values for InitializationType. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (InitializationType) Values() []InitializationType {
+	return []InitializationType{
+		"default",
+		"provisioned-rate",
 	}
 }
 
@@ -3310,6 +3455,26 @@ func (InstanceMetadataTagsState) Values() []InstanceMetadataTagsState {
 	return []InstanceMetadataTagsState{
 		"disabled",
 		"enabled",
+	}
+}
+
+type InstanceRebootMigrationState string
+
+// Enum values for InstanceRebootMigrationState
+const (
+	InstanceRebootMigrationStateDisabled InstanceRebootMigrationState = "disabled"
+	InstanceRebootMigrationStateDefault  InstanceRebootMigrationState = "default"
+)
+
+// Values returns all known values for InstanceRebootMigrationState. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (InstanceRebootMigrationState) Values() []InstanceRebootMigrationState {
+	return []InstanceRebootMigrationState{
+		"disabled",
+		"default",
 	}
 }
 
@@ -4254,6 +4419,75 @@ const (
 	InstanceTypeF212xlarge         InstanceType = "f2.12xlarge"
 	InstanceTypeF248xlarge         InstanceType = "f2.48xlarge"
 	InstanceTypeTrn248xlarge       InstanceType = "trn2.48xlarge"
+	InstanceTypeC7iFlex12xlarge    InstanceType = "c7i-flex.12xlarge"
+	InstanceTypeC7iFlex16xlarge    InstanceType = "c7i-flex.16xlarge"
+	InstanceTypeM7iFlex12xlarge    InstanceType = "m7i-flex.12xlarge"
+	InstanceTypeM7iFlex16xlarge    InstanceType = "m7i-flex.16xlarge"
+	InstanceTypeI7ieMetal24xl      InstanceType = "i7ie.metal-24xl"
+	InstanceTypeI7ieMetal48xl      InstanceType = "i7ie.metal-48xl"
+	InstanceTypeI8g48xlarge        InstanceType = "i8g.48xlarge"
+	InstanceTypeC8gdMedium         InstanceType = "c8gd.medium"
+	InstanceTypeC8gdLarge          InstanceType = "c8gd.large"
+	InstanceTypeC8gdXlarge         InstanceType = "c8gd.xlarge"
+	InstanceTypeC8gd2xlarge        InstanceType = "c8gd.2xlarge"
+	InstanceTypeC8gd4xlarge        InstanceType = "c8gd.4xlarge"
+	InstanceTypeC8gd8xlarge        InstanceType = "c8gd.8xlarge"
+	InstanceTypeC8gd12xlarge       InstanceType = "c8gd.12xlarge"
+	InstanceTypeC8gd16xlarge       InstanceType = "c8gd.16xlarge"
+	InstanceTypeC8gd24xlarge       InstanceType = "c8gd.24xlarge"
+	InstanceTypeC8gd48xlarge       InstanceType = "c8gd.48xlarge"
+	InstanceTypeC8gdMetal24xl      InstanceType = "c8gd.metal-24xl"
+	InstanceTypeC8gdMetal48xl      InstanceType = "c8gd.metal-48xl"
+	InstanceTypeI7iLarge           InstanceType = "i7i.large"
+	InstanceTypeI7iXlarge          InstanceType = "i7i.xlarge"
+	InstanceTypeI7i2xlarge         InstanceType = "i7i.2xlarge"
+	InstanceTypeI7i4xlarge         InstanceType = "i7i.4xlarge"
+	InstanceTypeI7i8xlarge         InstanceType = "i7i.8xlarge"
+	InstanceTypeI7i12xlarge        InstanceType = "i7i.12xlarge"
+	InstanceTypeI7i16xlarge        InstanceType = "i7i.16xlarge"
+	InstanceTypeI7i24xlarge        InstanceType = "i7i.24xlarge"
+	InstanceTypeI7i48xlarge        InstanceType = "i7i.48xlarge"
+	InstanceTypeI7iMetal24xl       InstanceType = "i7i.metal-24xl"
+	InstanceTypeI7iMetal48xl       InstanceType = "i7i.metal-48xl"
+	InstanceTypeP6B20048xlarge     InstanceType = "p6-b200.48xlarge"
+	InstanceTypeM8gdMedium         InstanceType = "m8gd.medium"
+	InstanceTypeM8gdLarge          InstanceType = "m8gd.large"
+	InstanceTypeM8gdXlarge         InstanceType = "m8gd.xlarge"
+	InstanceTypeM8gd2xlarge        InstanceType = "m8gd.2xlarge"
+	InstanceTypeM8gd4xlarge        InstanceType = "m8gd.4xlarge"
+	InstanceTypeM8gd8xlarge        InstanceType = "m8gd.8xlarge"
+	InstanceTypeM8gd12xlarge       InstanceType = "m8gd.12xlarge"
+	InstanceTypeM8gd16xlarge       InstanceType = "m8gd.16xlarge"
+	InstanceTypeM8gd24xlarge       InstanceType = "m8gd.24xlarge"
+	InstanceTypeM8gd48xlarge       InstanceType = "m8gd.48xlarge"
+	InstanceTypeM8gdMetal24xl      InstanceType = "m8gd.metal-24xl"
+	InstanceTypeM8gdMetal48xl      InstanceType = "m8gd.metal-48xl"
+	InstanceTypeR8gdMedium         InstanceType = "r8gd.medium"
+	InstanceTypeR8gdLarge          InstanceType = "r8gd.large"
+	InstanceTypeR8gdXlarge         InstanceType = "r8gd.xlarge"
+	InstanceTypeR8gd2xlarge        InstanceType = "r8gd.2xlarge"
+	InstanceTypeR8gd4xlarge        InstanceType = "r8gd.4xlarge"
+	InstanceTypeR8gd8xlarge        InstanceType = "r8gd.8xlarge"
+	InstanceTypeR8gd12xlarge       InstanceType = "r8gd.12xlarge"
+	InstanceTypeR8gd16xlarge       InstanceType = "r8gd.16xlarge"
+	InstanceTypeR8gd24xlarge       InstanceType = "r8gd.24xlarge"
+	InstanceTypeR8gd48xlarge       InstanceType = "r8gd.48xlarge"
+	InstanceTypeR8gdMetal24xl      InstanceType = "r8gd.metal-24xl"
+	InstanceTypeR8gdMetal48xl      InstanceType = "r8gd.metal-48xl"
+	InstanceTypeC8gnMedium         InstanceType = "c8gn.medium"
+	InstanceTypeC8gnLarge          InstanceType = "c8gn.large"
+	InstanceTypeC8gnXlarge         InstanceType = "c8gn.xlarge"
+	InstanceTypeC8gn2xlarge        InstanceType = "c8gn.2xlarge"
+	InstanceTypeC8gn4xlarge        InstanceType = "c8gn.4xlarge"
+	InstanceTypeC8gn8xlarge        InstanceType = "c8gn.8xlarge"
+	InstanceTypeC8gn12xlarge       InstanceType = "c8gn.12xlarge"
+	InstanceTypeC8gn16xlarge       InstanceType = "c8gn.16xlarge"
+	InstanceTypeC8gn24xlarge       InstanceType = "c8gn.24xlarge"
+	InstanceTypeC8gn48xlarge       InstanceType = "c8gn.48xlarge"
+	InstanceTypeC8gnMetal24xl      InstanceType = "c8gn.metal-24xl"
+	InstanceTypeC8gnMetal48xl      InstanceType = "c8gn.metal-48xl"
+	InstanceTypeF26xlarge          InstanceType = "f2.6xlarge"
+	InstanceTypeP6eGb20036xlarge   InstanceType = "p6e-gb200.36xlarge"
 )
 
 // Values returns all known values for InstanceType. Note that this can be
@@ -5152,6 +5386,75 @@ func (InstanceType) Values() []InstanceType {
 		"f2.12xlarge",
 		"f2.48xlarge",
 		"trn2.48xlarge",
+		"c7i-flex.12xlarge",
+		"c7i-flex.16xlarge",
+		"m7i-flex.12xlarge",
+		"m7i-flex.16xlarge",
+		"i7ie.metal-24xl",
+		"i7ie.metal-48xl",
+		"i8g.48xlarge",
+		"c8gd.medium",
+		"c8gd.large",
+		"c8gd.xlarge",
+		"c8gd.2xlarge",
+		"c8gd.4xlarge",
+		"c8gd.8xlarge",
+		"c8gd.12xlarge",
+		"c8gd.16xlarge",
+		"c8gd.24xlarge",
+		"c8gd.48xlarge",
+		"c8gd.metal-24xl",
+		"c8gd.metal-48xl",
+		"i7i.large",
+		"i7i.xlarge",
+		"i7i.2xlarge",
+		"i7i.4xlarge",
+		"i7i.8xlarge",
+		"i7i.12xlarge",
+		"i7i.16xlarge",
+		"i7i.24xlarge",
+		"i7i.48xlarge",
+		"i7i.metal-24xl",
+		"i7i.metal-48xl",
+		"p6-b200.48xlarge",
+		"m8gd.medium",
+		"m8gd.large",
+		"m8gd.xlarge",
+		"m8gd.2xlarge",
+		"m8gd.4xlarge",
+		"m8gd.8xlarge",
+		"m8gd.12xlarge",
+		"m8gd.16xlarge",
+		"m8gd.24xlarge",
+		"m8gd.48xlarge",
+		"m8gd.metal-24xl",
+		"m8gd.metal-48xl",
+		"r8gd.medium",
+		"r8gd.large",
+		"r8gd.xlarge",
+		"r8gd.2xlarge",
+		"r8gd.4xlarge",
+		"r8gd.8xlarge",
+		"r8gd.12xlarge",
+		"r8gd.16xlarge",
+		"r8gd.24xlarge",
+		"r8gd.48xlarge",
+		"r8gd.metal-24xl",
+		"r8gd.metal-48xl",
+		"c8gn.medium",
+		"c8gn.large",
+		"c8gn.xlarge",
+		"c8gn.2xlarge",
+		"c8gn.4xlarge",
+		"c8gn.8xlarge",
+		"c8gn.12xlarge",
+		"c8gn.16xlarge",
+		"c8gn.24xlarge",
+		"c8gn.48xlarge",
+		"c8gn.metal-24xl",
+		"c8gn.metal-48xl",
+		"f2.6xlarge",
+		"p6e-gb200.36xlarge",
 	}
 }
 
@@ -6489,6 +6792,68 @@ func (LogDestinationType) Values() []LogDestinationType {
 	}
 }
 
+type MacModificationTaskState string
+
+// Enum values for MacModificationTaskState
+const (
+	MacModificationTaskStateSuccessful MacModificationTaskState = "successful"
+	MacModificationTaskStateFailed     MacModificationTaskState = "failed"
+	MacModificationTaskStateInprogress MacModificationTaskState = "in-progress"
+	MacModificationTaskStatePending    MacModificationTaskState = "pending"
+)
+
+// Values returns all known values for MacModificationTaskState. Note that this
+// can be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (MacModificationTaskState) Values() []MacModificationTaskState {
+	return []MacModificationTaskState{
+		"successful",
+		"failed",
+		"in-progress",
+		"pending",
+	}
+}
+
+type MacModificationTaskType string
+
+// Enum values for MacModificationTaskType
+const (
+	MacModificationTaskTypeSIPModification           MacModificationTaskType = "sip-modification"
+	MacModificationTaskTypeVolumeOwnershipDelegation MacModificationTaskType = "volume-ownership-delegation"
+)
+
+// Values returns all known values for MacModificationTaskType. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (MacModificationTaskType) Values() []MacModificationTaskType {
+	return []MacModificationTaskType{
+		"sip-modification",
+		"volume-ownership-delegation",
+	}
+}
+
+type MacSystemIntegrityProtectionSettingStatus string
+
+// Enum values for MacSystemIntegrityProtectionSettingStatus
+const (
+	MacSystemIntegrityProtectionSettingStatusEnabled  MacSystemIntegrityProtectionSettingStatus = "enabled"
+	MacSystemIntegrityProtectionSettingStatusDisabled MacSystemIntegrityProtectionSettingStatus = "disabled"
+)
+
+// Values returns all known values for MacSystemIntegrityProtectionSettingStatus.
+// Note that this can be expanded in the future, and so it is only as up to date as
+// the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (MacSystemIntegrityProtectionSettingStatus) Values() []MacSystemIntegrityProtectionSettingStatus {
+	return []MacSystemIntegrityProtectionSettingStatus{
+		"enabled",
+		"disabled",
+	}
+}
+
 type ManagedBy string
 
 // Enum values for ManagedBy
@@ -7316,6 +7681,46 @@ func (ProtocolValue) Values() []ProtocolValue {
 	}
 }
 
+type PublicIpDnsOption string
+
+// Enum values for PublicIpDnsOption
+const (
+	PublicIpDnsOptionPublicDualStackDnsName PublicIpDnsOption = "public-dual-stack-dns-name"
+	PublicIpDnsOptionPublicIpv4DnsName      PublicIpDnsOption = "public-ipv4-dns-name"
+	PublicIpDnsOptionPublicIpv6DnsName      PublicIpDnsOption = "public-ipv6-dns-name"
+)
+
+// Values returns all known values for PublicIpDnsOption. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (PublicIpDnsOption) Values() []PublicIpDnsOption {
+	return []PublicIpDnsOption{
+		"public-dual-stack-dns-name",
+		"public-ipv4-dns-name",
+		"public-ipv6-dns-name",
+	}
+}
+
+type RebootMigrationSupport string
+
+// Enum values for RebootMigrationSupport
+const (
+	RebootMigrationSupportUnsupported RebootMigrationSupport = "unsupported"
+	RebootMigrationSupportSupported   RebootMigrationSupport = "supported"
+)
+
+// Values returns all known values for RebootMigrationSupport. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (RebootMigrationSupport) Values() []RebootMigrationSupport {
+	return []RebootMigrationSupport{
+		"unsupported",
+		"supported",
+	}
+}
+
 type RecurringChargeFrequency string
 
 // Enum values for RecurringChargeFrequency
@@ -7559,6 +7964,7 @@ const (
 	ResourceTypeFpgaImage                                              ResourceType = "fpga-image"
 	ResourceTypeHostReservation                                        ResourceType = "host-reservation"
 	ResourceTypeImage                                                  ResourceType = "image"
+	ResourceTypeImageUsageReport                                       ResourceType = "image-usage-report"
 	ResourceTypeImportImageTask                                        ResourceType = "import-image-task"
 	ResourceTypeImportSnapshotTask                                     ResourceType = "import-snapshot-task"
 	ResourceTypeInstance                                               ResourceType = "instance"
@@ -7636,6 +8042,8 @@ const (
 	ResourceTypeInstanceConnectEndpoint                                ResourceType = "instance-connect-endpoint"
 	ResourceTypeVerifiedAccessEndpointTarget                           ResourceType = "verified-access-endpoint-target"
 	ResourceTypeIpamExternalResourceVerificationToken                  ResourceType = "ipam-external-resource-verification-token"
+	ResourceTypeCapacityBlock                                          ResourceType = "capacity-block"
+	ResourceTypeMacModificationTask                                    ResourceType = "mac-modification-task"
 )
 
 // Values returns all known values for ResourceType. Note that this can be
@@ -7661,6 +8069,7 @@ func (ResourceType) Values() []ResourceType {
 		"fpga-image",
 		"host-reservation",
 		"image",
+		"image-usage-report",
 		"import-image-task",
 		"import-snapshot-task",
 		"instance",
@@ -7738,6 +8147,8 @@ func (ResourceType) Values() []ResourceType {
 		"instance-connect-endpoint",
 		"verified-access-endpoint-target",
 		"ipam-external-resource-verification-token",
+		"capacity-block",
+		"mac-modification-task",
 	}
 }
 
@@ -7790,6 +8201,7 @@ const (
 	RouteOriginCreateRouteTable          RouteOrigin = "CreateRouteTable"
 	RouteOriginCreateRoute               RouteOrigin = "CreateRoute"
 	RouteOriginEnableVgwRoutePropagation RouteOrigin = "EnableVgwRoutePropagation"
+	RouteOriginAdvertisement             RouteOrigin = "Advertisement"
 )
 
 // Values returns all known values for RouteOrigin. Note that this can be expanded
@@ -7801,6 +8213,7 @@ func (RouteOrigin) Values() []RouteOrigin {
 		"CreateRouteTable",
 		"CreateRoute",
 		"EnableVgwRoutePropagation",
+		"Advertisement",
 	}
 }
 
@@ -8079,6 +8492,7 @@ type RouteState string
 const (
 	RouteStateActive    RouteState = "active"
 	RouteStateBlackhole RouteState = "blackhole"
+	RouteStateFiltered  RouteState = "filtered"
 )
 
 // Values returns all known values for RouteState. Note that this can be expanded
@@ -8089,6 +8503,7 @@ func (RouteState) Values() []RouteState {
 	return []RouteState{
 		"active",
 		"blackhole",
+		"filtered",
 	}
 }
 
@@ -8409,6 +8824,31 @@ func (SnapshotLocationEnum) Values() []SnapshotLocationEnum {
 	return []SnapshotLocationEnum{
 		"regional",
 		"local",
+	}
+}
+
+type SnapshotReturnCodes string
+
+// Enum values for SnapshotReturnCodes
+const (
+	SnapshotReturnCodesSuccess                 SnapshotReturnCodes = "success"
+	SnapshotReturnCodesWarnSkipped             SnapshotReturnCodes = "skipped"
+	SnapshotReturnCodesErrorMissingPermissions SnapshotReturnCodes = "missing-permissions"
+	SnapshotReturnCodesErrorCodeInternalError  SnapshotReturnCodes = "internal-error"
+	SnapshotReturnCodesErrorCodeClientError    SnapshotReturnCodes = "client-error"
+)
+
+// Values returns all known values for SnapshotReturnCodes. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (SnapshotReturnCodes) Values() []SnapshotReturnCodes {
+	return []SnapshotReturnCodes{
+		"success",
+		"skipped",
+		"missing-permissions",
+		"internal-error",
+		"client-error",
 	}
 }
 
@@ -8769,9 +9209,11 @@ type SubnetState string
 
 // Enum values for SubnetState
 const (
-	SubnetStatePending     SubnetState = "pending"
-	SubnetStateAvailable   SubnetState = "available"
-	SubnetStateUnavailable SubnetState = "unavailable"
+	SubnetStatePending                    SubnetState = "pending"
+	SubnetStateAvailable                  SubnetState = "available"
+	SubnetStateUnavailable                SubnetState = "unavailable"
+	SubnetStateFailed                     SubnetState = "failed"
+	SubnetStateFailedInsufficientCapacity SubnetState = "failed-insufficient-capacity"
 )
 
 // Values returns all known values for SubnetState. Note that this can be expanded
@@ -8783,6 +9225,8 @@ func (SubnetState) Values() []SubnetState {
 		"pending",
 		"available",
 		"unavailable",
+		"failed",
+		"failed-insufficient-capacity",
 	}
 }
 
@@ -8995,6 +9439,27 @@ func (TrafficDirection) Values() []TrafficDirection {
 	}
 }
 
+type TrafficIpAddressType string
+
+// Enum values for TrafficIpAddressType
+const (
+	TrafficIpAddressTypeIpv4      TrafficIpAddressType = "ipv4"
+	TrafficIpAddressTypeIpv6      TrafficIpAddressType = "ipv6"
+	TrafficIpAddressTypeDualStack TrafficIpAddressType = "dual-stack"
+)
+
+// Values returns all known values for TrafficIpAddressType. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (TrafficIpAddressType) Values() []TrafficIpAddressType {
+	return []TrafficIpAddressType{
+		"ipv4",
+		"ipv6",
+		"dual-stack",
+	}
+}
+
 type TrafficMirrorFilterRuleField string
 
 // Enum values for TrafficMirrorFilterRuleField
@@ -9171,6 +9636,7 @@ const (
 	TransitGatewayAttachmentResourceTypeConnect              TransitGatewayAttachmentResourceType = "connect"
 	TransitGatewayAttachmentResourceTypePeering              TransitGatewayAttachmentResourceType = "peering"
 	TransitGatewayAttachmentResourceTypeTgwPeering           TransitGatewayAttachmentResourceType = "tgw-peering"
+	TransitGatewayAttachmentResourceTypeNetworkFunction      TransitGatewayAttachmentResourceType = "network-function"
 )
 
 // Values returns all known values for TransitGatewayAttachmentResourceType. Note
@@ -9186,6 +9652,7 @@ func (TransitGatewayAttachmentResourceType) Values() []TransitGatewayAttachmentR
 		"connect",
 		"peering",
 		"tgw-peering",
+		"network-function",
 	}
 }
 
@@ -9915,6 +10382,7 @@ const (
 	VolumeStatusInfoStatusOk               VolumeStatusInfoStatus = "ok"
 	VolumeStatusInfoStatusImpaired         VolumeStatusInfoStatus = "impaired"
 	VolumeStatusInfoStatusInsufficientData VolumeStatusInfoStatus = "insufficient-data"
+	VolumeStatusInfoStatusWarning          VolumeStatusInfoStatus = "warning"
 )
 
 // Values returns all known values for VolumeStatusInfoStatus. Note that this can
@@ -9926,6 +10394,7 @@ func (VolumeStatusInfoStatus) Values() []VolumeStatusInfoStatus {
 		"ok",
 		"impaired",
 		"insufficient-data",
+		"warning",
 	}
 }
 
@@ -9933,8 +10402,9 @@ type VolumeStatusName string
 
 // Enum values for VolumeStatusName
 const (
-	VolumeStatusNameIoEnabled     VolumeStatusName = "io-enabled"
-	VolumeStatusNameIoPerformance VolumeStatusName = "io-performance"
+	VolumeStatusNameIoEnabled           VolumeStatusName = "io-enabled"
+	VolumeStatusNameIoPerformance       VolumeStatusName = "io-performance"
+	VolumeStatusNameInitializationState VolumeStatusName = "initialization-state"
 )
 
 // Values returns all known values for VolumeStatusName. Note that this can be
@@ -9945,6 +10415,7 @@ func (VolumeStatusName) Values() []VolumeStatusName {
 	return []VolumeStatusName{
 		"io-enabled",
 		"io-performance",
+		"initialization-state",
 	}
 }
 
@@ -10346,6 +10817,27 @@ const (
 func (VpnStaticRouteSource) Values() []VpnStaticRouteSource {
 	return []VpnStaticRouteSource{
 		"Static",
+	}
+}
+
+type VpnTunnelProvisioningStatus string
+
+// Enum values for VpnTunnelProvisioningStatus
+const (
+	VpnTunnelProvisioningStatusAvailable VpnTunnelProvisioningStatus = "available"
+	VpnTunnelProvisioningStatusPending   VpnTunnelProvisioningStatus = "pending"
+	VpnTunnelProvisioningStatusFailed    VpnTunnelProvisioningStatus = "failed"
+)
+
+// Values returns all known values for VpnTunnelProvisioningStatus. Note that this
+// can be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (VpnTunnelProvisioningStatus) Values() []VpnTunnelProvisioningStatus {
+	return []VpnTunnelProvisioningStatus{
+		"available",
+		"pending",
+		"failed",
 	}
 }
 

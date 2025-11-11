@@ -12,6 +12,8 @@ import (
 )
 
 // Describes the Outposts link aggregation groups (LAGs).
+//
+// LAGs are only available for second-generation Outposts racks at this time.
 func (c *Client) DescribeOutpostLags(ctx context.Context, params *DescribeOutpostLagsInput, optFns ...func(*Options)) (*DescribeOutpostLagsOutput, error) {
 	if params == nil {
 		params = &DescribeOutpostLagsInput{}
@@ -176,6 +178,36 @@ func (c *Client) addOperationDescribeOutpostLagsMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
 		return err
 	}
 	if err = addSpanInitializeStart(stack); err != nil {
