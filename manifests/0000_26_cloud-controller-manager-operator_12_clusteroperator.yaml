@@ -22,3 +22,6 @@ status:
     - group: ""
       name: openshift-cloud-controller-manager-operator
       resource: namespaces
+    - group: rbac.authorization.k8s.io
+      name: cloud-controller-manager
+      resource: clusterroles
