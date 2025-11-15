@@ -2097,7 +2097,7 @@ k8s.io/client-go/util/homedir
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
-# k8s.io/cloud-provider-aws v1.34.1
+# k8s.io/cloud-provider-aws v1.34.1-0.20250912204608-8a0025b4efb1
 ## explicit; go 1.24.4
 k8s.io/cloud-provider-aws/pkg/providers/v1/config
 # k8s.io/cloud-provider-vsphere v1.34.0
