@@ -55,7 +55,8 @@ func readAWSConfig(source string) (*awsconfig.CloudConfig, error) {
 }
 
 func marshalAWSConfig(cfg *awsconfig.CloudConfig) (string, error) {
-	file := ini.Empty()
+	// Configure iniv1 to allow shadow fields to enable multiple entries of NodeIPFamilies.
+	file := ini.Empty(ini.LoadOptions{AllowShadows: true})
 	if err := file.Section("Global").ReflectFrom(&cfg.Global); err != nil {
 		return "", fmt.Errorf("failed to reflect global config: %w", err)
 	}
@@ -63,6 +64,25 @@ func marshalAWSConfig(cfg *awsconfig.CloudConfig) (string, error) {
 	for id, override := range cfg.ServiceOverride {
 		if err := file.Section(fmt.Sprintf("ServiceOverride %q", id)).ReflectFrom(override); err != nil {
 			return "", fmt.Errorf("failed to reflect service override: %w", err)
+		}
+	}
+
+	// In dual-stack environment, the CCM expects NodeIPFamilies to be in the format:
+	//
+	// NodeIPFamilies=ipv4
+	// NodeIPFamilies=ipv6
+	//
+	// However, iniv1 is serializing go slices as comma-separated list, for example:
+	//
+	// NodeIPFamilies=ipv4,ipv6
+	//
+	// Below logic ensures the original NodeIPFamilies field is kept as-is after transforming.
+	nodeIPKey := file.Section("Global").Key("NodeIPFamilies")
+	for i, ipFamily := range cfg.Global.NodeIPFamilies {
+		if i == 0 {
+			nodeIPKey.SetValue(ipFamily)
+		} else if err := nodeIPKey.AddShadow(ipFamily); err != nil {
+			return "", fmt.Errorf("failed to set NodeIPFamilies: %w", err)
 		}
 	}
 
