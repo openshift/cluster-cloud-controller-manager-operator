@@ -207,6 +207,7 @@ func (r *ClusterOperatorStatusClient) relatedObjects() []configv1.ObjectReferenc
 		{Resource: "namespaces", Name: defaultManagementNamespace},
 		{Group: configv1.GroupName, Resource: "clusteroperators", Name: clusterOperatorName},
 		{Resource: "namespaces", Name: r.ManagedNamespace},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: clusterOperatorName},
 	}
 }
 
