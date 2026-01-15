@@ -99,20 +99,24 @@ func TestGetResources(t *testing.T) {
 	}{{
 		name:                  "AWS resources returned as expected",
 		testPlatform:          platformsMap[string(configv1.AWSPlatformType)],
-		expectedResourceCount: 3,
+		expectedResourceCount: 5,
 		expectedResourcesKindName: []string{
 			"Deployment/aws-cloud-controller-manager",
+			"ValidatingAdmissionPolicy/openshift-cloud-controller-manager-cloud-provider-aws",
+			"ValidatingAdmissionPolicyBinding/openshift-cloud-controller-manager-cloud-provider-aws",
 			"PodDisruptionBudget/aws-cloud-controller-manager",
 			"Service/aws-cloud-controller-manager",
 		},
 	}, {
 		name:                  "AWS resources returned as expected with single node cluster",
 		testPlatform:          platformsMap[string(configv1.AWSPlatformType)],
-		expectedResourceCount: 2,
+		expectedResourceCount: 4,
 		singleReplica:         true,
 		expectedResourcesKindName: []string{
 			"Deployment/aws-cloud-controller-manager",
 			"Service/aws-cloud-controller-manager",
+			"ValidatingAdmissionPolicy/openshift-cloud-controller-manager-cloud-provider-aws",
+			"ValidatingAdmissionPolicyBinding/openshift-cloud-controller-manager-cloud-provider-aws",
 		},
 	}, {
 		name:                  "OpenStack resources returned as expected",
