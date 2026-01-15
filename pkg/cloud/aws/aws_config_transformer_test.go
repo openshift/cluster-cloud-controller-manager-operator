@@ -183,6 +183,20 @@ ClusterServiceSharedLoadBalancerHealthProbePort = 0
 `,
 			features: mockDisabledFeatureGates,
 		},
+		{
+			name: "with NodeIPFamilies",
+			source: `[Global]
+NodeIPFamilies = ipv4
+NodeIPFamilies = ipv6
+			`,
+			expected: `[Global]
+DisableSecurityGroupIngress                     = false
+NodeIPFamilies                                  = ipv4
+NodeIPFamilies                                  = ipv6
+ClusterServiceLoadBalancerHealthProbeMode       = Shared
+ClusterServiceSharedLoadBalancerHealthProbePort = 0
+`,
+		},
 	}
 
 	for _, tc := range testCases {
