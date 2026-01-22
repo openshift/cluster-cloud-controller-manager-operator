@@ -46,6 +46,7 @@ rules:
   - featuregates
   - networks
   - proxies
+  - apiservers
   verbs:
   - get
   - list
@@ -87,6 +88,20 @@ rules:
   - create
   - update
   - patch
+
+# for metrics RBACs
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
 
 # vSphere has a separate node manager that uses the service account kube-system/vsphere-cloud-controller-manager.
 # The operator must have these permissions to then grant them to the vSphere node manager.
