@@ -104,7 +104,13 @@ spec:
                 --use-service-account-credentials=true \
                 {{- if .additionalLabels }}
                 --node-labels="$(ADDITIONAL_NODE_LABELS)" \
-                {{- end}}
+                {{- end }}
+                {{- if .tlsCipherSuites }}
+                --tls-cipher-suites={{ .tlsCipherSuites }} \
+                {{- end }}
+                {{- if .tlsMinVersion }}
+                --tls-min-version={{ .tlsMinVersion }} \
+                {{- end }}
                 --secure-port=0
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:

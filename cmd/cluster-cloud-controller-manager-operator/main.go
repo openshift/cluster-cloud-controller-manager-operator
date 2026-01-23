@@ -265,6 +265,7 @@ func main() {
 		Scheme:            mgr.GetScheme(),
 		ImagesFile:        *imagesFile,
 		FeatureGateAccess: featureGateAccessor,
+		TLSProfileSpec:    tlsProfileSpec,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterOperator")
 		os.Exit(1)

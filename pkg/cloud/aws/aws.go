@@ -33,6 +33,8 @@ type imagesReference struct {
 var templateValuesValidationMap = map[string]interface{}{
 	"images":            "required",
 	"cloudproviderName": "required,type(string)",
+	"tlsCipherSuites":   "type(string)",
+	"tlsMinVersion":     "type(string)",
 }
 
 type awsAssets struct {
@@ -48,6 +50,8 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 	values := common.TemplateValues{
 		"images":            images,
 		"cloudproviderName": operatorConfig.GetPlatformNameString(),
+		"tlsCipherSuites":   operatorConfig.TLSCipherSuites,
+		"tlsMinVersion":     operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {

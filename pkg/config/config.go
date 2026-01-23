@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"k8s.io/klog/v2"
 
 	configv1 "github.com/openshift/api/config/v1"
+	libgocrypto "github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
@@ -41,6 +43,10 @@ type OperatorConfig struct {
 	ClusterProxy       *configv1.Proxy
 	FeatureGates       string
 	OCPFeatureGates    featuregates.FeatureGate
+	// TLSCipherSuites is a comma-separated list of TLS cipher suites for CCM --tls-cipher-suites flag
+	TLSCipherSuites string
+	// TLSMinVersion is the minimum TLS version for CCM --tls-min-version flag
+	TLSMinVersion string
 }
 
 func (cfg *OperatorConfig) GetPlatformNameString() string {
@@ -79,7 +85,7 @@ func getImagesFromJSONFile(filePath string) (ImagesReference, error) {
 }
 
 // ComposeConfig creates a Config for operator
-func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess) (OperatorConfig, error) {
+func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess, tlsProfile configv1.TLSProfileSpec) (OperatorConfig, error) {
 	err := checkInfrastructureResource(infrastructure)
 	if err != nil {
 		klog.Errorf("Unable to get platform from infrastructure: %s", err)
@@ -106,6 +112,9 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		featureGatesString = util.BuildFeatureGateString(enabled, nil)
 	}
 
+	// Convert OpenSSL cipher names from the TLS profile to IANA names expected by CCM CLI flags.
+	ianaCiphers := libgocrypto.OpenSSLToIANACipherSuites(tlsProfile.Ciphers)
+
 	config := OperatorConfig{
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
 		ClusterProxy:       clusterProxy,
@@ -115,6 +124,8 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		IsSingleReplica:    infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
 		FeatureGates:       featureGatesString,
 		OCPFeatureGates:    features,
+		TLSCipherSuites:    strings.Join(ianaCiphers, ","),
+		TLSMinVersion:      string(tlsProfile.MinTLSVersion),
 	}
 
 	return config, nil

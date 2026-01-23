@@ -54,6 +54,7 @@ type CloudOperatorReconciler struct {
 	watcher           ObjectWatcher
 	ImagesFile        string
 	FeatureGateAccess featuregates.FeatureGateAccess
+	TLSProfileSpec    configv1.TLSProfileSpec
 }
 
 // +kubebuilder:rbac:groups=config.openshift.io,resources=clusteroperators,verbs=get;list;watch;create;update;patch;delete
@@ -104,7 +105,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	operatorConfig, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace, r.FeatureGateAccess)
+	operatorConfig, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace, r.FeatureGateAccess, r.TLSProfileSpec)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
 		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {

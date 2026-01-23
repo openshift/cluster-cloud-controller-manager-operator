@@ -37,6 +37,8 @@ var templateValuesValidationMap = map[string]interface{}{
 	"cloudproviderName":  "required,type(string)",
 	"featureGates":       "type(string)",
 	"infrastructureName": "required,type(string)",
+	"tlsCipherSuites":    "type(string)",
+	"tlsMinVersion":      "type(string)",
 }
 
 type openstackAssets struct {
@@ -54,6 +56,8 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 		"cloudproviderName":  operatorConfig.GetPlatformNameString(),
 		"featureGates":       operatorConfig.FeatureGates,
 		"infrastructureName": operatorConfig.InfrastructureName,
+		"tlsCipherSuites":    operatorConfig.TLSCipherSuites,
+		"tlsMinVersion":      operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
