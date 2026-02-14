@@ -104,8 +104,19 @@ spec:
                 --use-service-account-credentials=true \
                 {{- if .additionalLabels }}
                 --node-labels="$(ADDITIONAL_NODE_LABELS)" \
-                {{- end}}
-                --secure-port=0
+                {{- end }}
+                {{- if .tlsCipherSuites }}
+                --tls-cipher-suites={{ .tlsCipherSuites }} \
+                {{- end }}
+                {{- if .tlsMinVersion }}
+                --tls-min-version={{ .tlsMinVersion }} \
+                {{- end }}
+                {{- if .tlsCipherSuites }}
+                --webhook-tls-cipher-suites={{ .tlsCipherSuites }} \
+                {{- end }}
+                {{- if .tlsMinVersion }}
+                --webhook-tls-min-version={{ .tlsMinVersion }}
+                {{- end }}
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: host-etc-kube

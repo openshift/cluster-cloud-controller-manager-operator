@@ -79,7 +79,18 @@ spec:
             --leader-elect-retry-period=26s \
             --leader-elect-resource-namespace=openshift-cloud-controller-manager \
             --feature-gates={{ .featureGates }} \
-            --secure-port=0
+            {{- if .tlsCipherSuites }}
+            --tls-cipher-suites={{ .tlsCipherSuites }} \
+            {{- end }}
+            {{- if .tlsMinVersion }}
+            --tls-min-version={{ .tlsMinVersion }} \
+            {{- end }}
+            {{- if .tlsCipherSuites }}
+            --webhook-tls-cipher-suites={{ .tlsCipherSuites }} \
+            {{- end }}
+            {{- if .tlsMinVersion }}
+            --webhook-tls-min-version={{ .tlsMinVersion }}
+            {{- end }}
           ports:
           - containerPort: 10258
             name: https

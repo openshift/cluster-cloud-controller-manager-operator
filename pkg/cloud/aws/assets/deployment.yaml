@@ -42,8 +42,21 @@ spec:
           --leader-elect-lease-duration=137s \
           --leader-elect-renew-deadline=107s \
           --leader-elect-retry-period=26s \
+          --webhooks=* \
+          --feature-gates=CloudControllerManagerWebhook=true \
           --leader-elect-resource-namespace=openshift-cloud-controller-manager \
-          --secure-port=0 \
+          {{- if .tlsCipherSuites }}
+          --tls-cipher-suites={{ .tlsCipherSuites }} \
+          {{- end }}
+          {{- if .tlsMinVersion }}
+          --tls-min-version={{ .tlsMinVersion }} \
+          {{- end }}
+          {{- if .tlsCipherSuites }}
+          --webhook-tls-cipher-suites={{ .tlsCipherSuites }} \
+          {{- end }}
+          {{- if .tlsMinVersion }}
+          --webhook-tls-min-version={{ .tlsMinVersion }} \
+          {{- end }}
           -v=2
         env:
         - name: CLOUD_CONFIG

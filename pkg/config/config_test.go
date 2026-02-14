@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"os"
 	"testing"
 
@@ -166,6 +167,14 @@ func TestComposeConfig(t *testing.T) {
 		CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 	}
 
+	testTLSConfig := &tls.Config{
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		},
+		MinVersion: tls.VersionTLS12,
+	}
+
 	tc := []struct {
 		name          string
 		namespace     string
@@ -175,9 +184,11 @@ func TestComposeConfig(t *testing.T) {
 		expectConfig  OperatorConfig
 		expectError   string
 		featureGates  featuregates.FeatureGateAccess
+		tlsConfig     *tls.Config
 	}{{
 		name:      "Unmarshal images from file",
 		namespace: defaultManagementNamespace,
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				PlatformStatus: &configv1.PlatformStatus{
@@ -190,9 +201,12 @@ func TestComposeConfig(t *testing.T) {
 			ImagesReference:  defaultImagesReference,
 			ManagedNamespace: defaultManagementNamespace,
 			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
+			TLSCipherSuites:  "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+			TLSMinVersion:    "VersionTLS12",
 		},
 	}, {
-		name: "Broken JSON is rejected",
+		name:      "Broken JSON is rejected",
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				ControlPlaneTopology: configv1.SingleReplicaTopologyMode,
@@ -208,6 +222,7 @@ func TestComposeConfig(t *testing.T) {
 	}, {
 		name:      "Single Replica",
 		namespace: defaultManagementNamespace,
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				ControlPlaneTopology: configv1.SingleReplicaTopologyMode,
@@ -239,16 +254,21 @@ func TestComposeConfig(t *testing.T) {
 				[]configv1.FeatureGateName{"CloudControllerManagerWebhook", "ChocobombVanilla", "ChocobombStrawberry"},
 				[]configv1.FeatureGateName{"ChocobombBlueberry", "ChocobombBanana"},
 			),
+			TLSCipherSuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+			TLSMinVersion:   "VersionTLS12",
 		},
 	}, {
 		name:        "Empty infrastructure should return error",
+		tlsConfig:   testTLSConfig,
 		expectError: "platform status is not populated on infrastructure",
 	}, {
 		name:        "Unpopulated infrastructure should return error",
+		tlsConfig:   testTLSConfig,
 		infra:       &configv1.Infrastructure{},
 		expectError: "platform status is not populated on infrastructure",
 	}, {
-		name: "Unpopulated infrastructure status should return error",
+		name:      "Unpopulated infrastructure status should return error",
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				PlatformStatus: nil,
@@ -258,11 +278,13 @@ func TestComposeConfig(t *testing.T) {
 	}, {
 		name:        "Empty infra",
 		namespace:   defaultManagementNamespace,
+		tlsConfig:   testTLSConfig,
 		infra:       nil,
 		expectError: "platform status is not populated on infrastructure",
 	}, {
 		name:      "Empty Infra Status",
 		namespace: defaultManagementNamespace,
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				PlatformStatus: nil,
@@ -272,6 +294,7 @@ func TestComposeConfig(t *testing.T) {
 	}, {
 		name:      "Empty Platform Type",
 		namespace: defaultManagementNamespace,
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				PlatformStatus: &configv1.PlatformStatus{
@@ -295,7 +318,7 @@ func TestComposeConfig(t *testing.T) {
 			_, err = file.WriteString(tc.imagesContent)
 			assert.NoError(t, err)
 
-			config, err := ComposeConfig(tc.infra, tc.clusterProxy, path, tc.namespace, tc.featureGates)
+			config, err := ComposeConfig(tc.infra, tc.clusterProxy, path, tc.namespace, tc.featureGates, tc.tlsConfig)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {
@@ -303,6 +326,46 @@ func TestComposeConfig(t *testing.T) {
 			}
 
 			assert.EqualValues(t, config, tc.expectConfig)
+		})
+	}
+}
+
+func TestFormatCipherSuitesForCLI(t *testing.T) {
+	tests := []struct {
+		name     string
+		ciphers  []string
+		expected string
+	}{
+		{
+			name:     "empty ciphers",
+			ciphers:  []string{},
+			expected: "",
+		},
+		{
+			name:     "single cipher",
+			ciphers:  []string{"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"},
+			expected: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+		},
+		{
+			name: "multiple ciphers",
+			ciphers: []string{
+				"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+				"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+				"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+			},
+			expected: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+		},
+		{
+			name:     "nil ciphers",
+			ciphers:  nil,
+			expected: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := FormatCipherSuitesForCLI(tc.ciphers)
+			assert.Equal(t, tc.expected, result)
 		})
 	}
 }

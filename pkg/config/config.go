@@ -1,10 +1,12 @@
 package config
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"k8s.io/klog/v2"
 
@@ -41,6 +43,10 @@ type OperatorConfig struct {
 	ClusterProxy       *configv1.Proxy
 	FeatureGates       string
 	OCPFeatureGates    featuregates.FeatureGate
+	// TLSCipherSuites is a comma-separated list of TLS cipher suites for CCM --tls-cipher-suites flag
+	TLSCipherSuites string
+	// TLSMinVersion is the minimum TLS version for CCM --tls-min-version flag
+	TLSMinVersion string
 }
 
 func (cfg *OperatorConfig) GetPlatformNameString() string {
@@ -79,7 +85,7 @@ func getImagesFromJSONFile(filePath string) (ImagesReference, error) {
 }
 
 // ComposeConfig creates a Config for operator
-func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess) (OperatorConfig, error) {
+func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess, tlsConfig *tls.Config) (OperatorConfig, error) {
 	err := checkInfrastructureResource(infrastructure)
 	if err != nil {
 		klog.Errorf("Unable to get platform from infrastructure: %s", err)
@@ -106,6 +112,9 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		featureGatesString = util.BuildFeatureGateString(enabled, nil)
 	}
 
+	// Extract TLS cipher suites and min version from the tls.Config
+	tlsCipherSuites, tlsMinVersion := extractTLSSettings(tlsConfig)
+
 	config := OperatorConfig{
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
 		ClusterProxy:       clusterProxy,
@@ -115,7 +124,54 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		IsSingleReplica:    infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
 		FeatureGates:       featureGatesString,
 		OCPFeatureGates:    features,
+		TLSCipherSuites:    tlsCipherSuites,
+		TLSMinVersion:      tlsMinVersion,
 	}
 
 	return config, nil
+}
+
+// FormatCipherSuitesForCLI converts a slice of cipher suite names to a comma-separated string
+// suitable for use with the --tls-cipher-suites CLI flag.
+func FormatCipherSuitesForCLI(ciphers []string) string {
+	return strings.Join(ciphers, ",")
+}
+
+// extractTLSSettings extracts cipher suite names and min TLS version string from a tls.Config.
+// Returns comma-separated cipher suite names and the TLS version string suitable for CLI flags.
+func extractTLSSettings(tlsConfig *tls.Config) (cipherSuites, minVersion string) {
+	if tlsConfig == nil {
+		return "", ""
+	}
+
+	// Convert cipher suite IDs to names
+	var cipherNames []string
+	for _, id := range tlsConfig.CipherSuites {
+		name := tls.CipherSuiteName(id)
+		if name != "" {
+			cipherNames = append(cipherNames, name)
+		}
+	}
+	cipherSuites = strings.Join(cipherNames, ",")
+
+	// Convert min version constant to string
+	minVersion = tlsVersionToString(tlsConfig.MinVersion)
+
+	return cipherSuites, minVersion
+}
+
+// tlsVersionToString converts a TLS version constant to its string representation.
+func tlsVersionToString(version uint16) string {
+	switch version {
+	case tls.VersionTLS10:
+		return "VersionTLS10"
+	case tls.VersionTLS11:
+		return "VersionTLS11"
+	case tls.VersionTLS12:
+		return "VersionTLS12"
+	case tls.VersionTLS13:
+		return "VersionTLS13"
+	default:
+		return ""
+	}
 }
