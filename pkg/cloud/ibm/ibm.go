@@ -32,6 +32,8 @@ var templateValuesValidationMap = map[string]interface{}{
 	"images":               "required",
 	"enablePublicEndpoint": "required",
 	"cloudproviderName":    "required,type(string)",
+	"tlsCipherSuites":      "type(string)",
+	"tlsMinVersion":        "type(string)",
 }
 
 type ibmAssets struct {
@@ -48,6 +50,8 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 		"images":               images,
 		"enablePublicEndpoint": fmt.Sprintf("%t", getEnablePublicEndpointValue(operatorConfig)),
 		"cloudproviderName":    operatorConfig.GetPlatformNameString(),
+		"tlsCipherSuites":      operatorConfig.TLSCipherSuites,
+		"tlsMinVersion":        operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
