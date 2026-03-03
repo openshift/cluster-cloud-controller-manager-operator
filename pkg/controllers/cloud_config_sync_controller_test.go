@@ -509,7 +509,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			Expect(len(allCMs.Items)).To(BeEquivalentTo(1))
 		})
 
-		It("should error if a user-specified configmap key isn't present", func() {
+		It("should degrade immediately if a user-specified configmap key isn't present", func() {
 			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
 			infraResource.Spec.CloudConfig.Key = "notfound"
 			Expect(cl.Create(ctx, infraResource)).To(Succeed())
@@ -518,8 +518,19 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
 
 			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-			Expect(err.Error()).To(ContainSubstring("specified in infra resource does not exist in source configmap"))
+			Expect(err).To(Succeed())
 
+			co := &configv1.ClusterOperator{}
+			Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+			var degradedCond *configv1.ClusterOperatorStatusCondition
+			for i := range co.Status.Conditions {
+				if co.Status.Conditions[i].Type == cloudConfigControllerDegradedCondition {
+					degradedCond = &co.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(degradedCond).NotTo(BeNil())
+			Expect(degradedCond.Status).To(Equal(configv1.ConditionTrue))
 		})
 
 		It("should continue with reconcile when feature gates are available", func() {
@@ -584,15 +595,39 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		})
 	})
 
-	It("reconcile should fail if no infra resource found", func() {
+	It("reconcile should succeed and be available if no infra resource found", func() {
 		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-		Expect(err.Error()).Should(BeEquivalentTo("infrastructures.config.openshift.io \"cluster\" not found"))
+		Expect(err).To(Succeed())
+
+		co := &configv1.ClusterOperator{}
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		var availCond *configv1.ClusterOperatorStatusCondition
+		for i := range co.Status.Conditions {
+			if co.Status.Conditions[i].Type == cloudConfigControllerAvailableCondition {
+				availCond = &co.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(availCond).NotTo(BeNil())
+		Expect(availCond.Status).To(Equal(configv1.ConditionTrue))
 	})
 
-	It("should fail if no PlatformStatus in infra resource presented ", func() {
+	It("should degrade immediately if no PlatformStatus in infra resource", func() {
 		infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
 		Expect(cl.Create(ctx, infraResource)).To(Succeed())
 		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
-		Expect(err.Error()).Should(BeEquivalentTo("platformStatus is required"))
+		Expect(err).To(Succeed())
+
+		co := &configv1.ClusterOperator{}
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		var degradedCond *configv1.ClusterOperatorStatusCondition
+		for i := range co.Status.Conditions {
+			if co.Status.Conditions[i].Type == cloudConfigControllerDegradedCondition {
+				degradedCond = &co.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(degradedCond).NotTo(BeNil())
+		Expect(degradedCond.Status).To(Equal(configv1.ConditionTrue))
 	})
 })
