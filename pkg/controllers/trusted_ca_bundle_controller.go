@@ -61,10 +61,11 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			// Request object not found, could have been deleted after reconcile request.
 			// Return and don't requeue
 			klog.Infof("proxy not found; reconciliation will be skipped")
-			r.clearFailureWindow()
 			if err := r.setAvailableCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 			}
+			// We tolerate the proxy config not being found.
+			r.clearFailureWindow()
 			return reconcile.Result{}, nil
 		}
 		// Non-NotFound: transient API error.

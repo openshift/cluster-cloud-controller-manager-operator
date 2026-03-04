@@ -32,8 +32,9 @@ const (
 	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
 
 	// transientDegradedThreshold is how long transient errors must persist before
-	// the controller sets CloudConfigControllerDegraded=True. This prevents brief
+	// the controller sets Degraded=True. This prevents brief
 	// API server blips during upgrades from immediately degrading the operator.
+	// Applies to both CloudConfigController and TrustedCAController.
 	transientDegradedThreshold = 2 * time.Minute
 )
 
@@ -51,10 +52,11 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); errors.IsNotFound(err) {
 		// No cloud platform: mirror the main controller's behaviour of returning Available.
 		klog.Infof("Infrastructure cluster does not exist. Skipping...")
-		r.clearFailureWindow()
 		if err := r.setAvailableCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 		}
+		// Skip if the infrastructure resource doesn't exist.
+		r.clearFailureWindow()
 		return ctrl.Result{}, nil
 	} else if err != nil {
 		return r.handleTransientError(ctx, err)

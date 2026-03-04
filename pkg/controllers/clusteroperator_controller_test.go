@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -617,4 +618,74 @@ var _ = Describe("Apply resources should", func() {
 		}
 	})
 
+})
+
+var _ = Describe("CloudOperatorReconciler error handling", func() {
+	ctx := context.Background()
+
+	AfterEach(func() {
+		co := &configv1.ClusterOperator{}
+		if err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); err == nil {
+			Eventually(func() bool {
+				err := cl.Delete(ctx, co)
+				return err == nil || apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		}
+		Eventually(apierrors.IsNotFound(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+	})
+
+	It("handleDegradeError should set OperatorDegraded=True immediately and return nil error", func() {
+		reconciler := &CloudOperatorReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
+				ManagedNamespace: defaultManagementNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme: scheme.Scheme,
+		}
+
+		_, err := reconciler.handleDegradeError(ctx, []configv1.ClusterOperatorStatusCondition{}, fmt.Errorf("test persistent error"))
+		Expect(err).NotTo(HaveOccurred())
+
+		co := &configv1.ClusterOperator{}
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, configv1.OperatorDegraded)).To(BeTrue())
+	})
+
+	It("handleTransientError should not degrade before threshold, but degrade after threshold", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		reconciler := &CloudOperatorReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            fakeClock,
+				ManagedNamespace: defaultManagementNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme: scheme.Scheme,
+		}
+
+		// Pre-create the ClusterOperator so that setStatusDegraded can update its status
+		// subresource when the threshold is exceeded (status subresource updates require the
+		// object to already exist in the cluster).
+		co := &configv1.ClusterOperator{}
+		co.SetName(clusterOperatorName)
+		Expect(cl.Create(ctx, co)).To(Succeed())
+
+		// First reconcile: transient failure starts; error returned but no degraded condition set.
+		_, err := reconciler.handleTransientError(ctx, []configv1.ClusterOperatorStatusCondition{}, fmt.Errorf("test transient error"))
+		Expect(err).To(HaveOccurred())
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, configv1.OperatorDegraded)).To(BeFalse(),
+			"should not be degraded before threshold")
+
+		// Advance clock past the degraded threshold.
+		fakeClock.Step(aggregatedTransientDegradedThreshold + time.Second)
+
+		// Second reconcile: threshold exceeded, controller sets degraded.
+		_, err = reconciler.handleTransientError(ctx, []configv1.ClusterOperatorStatusCondition{}, fmt.Errorf("test transient error"))
+		Expect(err).To(HaveOccurred())
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, configv1.OperatorDegraded)).To(BeTrue())
+	})
 })
