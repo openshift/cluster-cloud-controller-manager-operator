@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/openshift/api/annotations"
 	configv1 "github.com/openshift/api/config/v1"
@@ -41,8 +42,9 @@ const (
 
 type TrustedCABundleReconciler struct {
 	ClusterOperatorStatusClient
-	Scheme          *runtime.Scheme
-	trustBundlePath string
+	Scheme                  *runtime.Scheme
+	trustBundlePath         string
+	consecutiveFailureSince *time.Time // nil when the last reconcile succeeded
 }
 
 // isSpecTrustedCASet returns true if spec.trustedCA of proxyConfig is set.
@@ -59,16 +61,14 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			// Request object not found, could have been deleted after reconcile request.
 			// Return and don't requeue
 			klog.Infof("proxy not found; reconciliation will be skipped")
+			r.clearFailureWindow()
 			if err := r.setAvailableCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 			}
 			return reconcile.Result{}, nil
 		}
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		// Error reading the object - requeue the request.
-		return reconcile.Result{}, fmt.Errorf("failed to get proxy '%s': %v", req.Name, err)
+		// Non-NotFound: transient API error.
+		return r.handleTransientError(ctx, fmt.Errorf("failed to get proxy '%s': %v", req.Name, err))
 	}
 
 	// Check if changed config map in 'openshift-config' namespace is proxy trusted ca.
@@ -77,47 +77,78 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		if err := r.setAvailableCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 		}
-
+		// Note: clearFailureWindow is intentionally NOT called here. This path did not
+		// exercise the full reconcile logic, so an ongoing transient failure window
+		// (set by a previous reconcile pass) should not be reset.
 		klog.V(1).Infof("changed config map %s is not a proxy trusted ca, skipping", req)
 		return reconcile.Result{}, nil
 	}
 
 	systemTrustBundle, err := r.getSystemTrustBundle()
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		return reconcile.Result{}, fmt.Errorf("failed to get system trust bundle: %v", err)
+		// Node cert store may be updating during upgrade: transient.
+		return r.handleTransientError(ctx, fmt.Errorf("failed to get system trust bundle: %v", err))
 	}
 
 	proxyCABundle, mergedTrustBundle, err := r.addProxyCABundle(ctx, proxyConfig, systemTrustBundle)
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		return reconcile.Result{}, fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err)
+		// Combined cert bundle is corrupt: persistent.
+		return r.handleDegradeError(ctx, fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err))
 	}
 
 	_, mergedTrustBundle, err = r.addCloudConfigCABundle(ctx, proxyCABundle, mergedTrustBundle)
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		return reconcile.Result{}, fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err)
+		// Combined cert bundle is corrupt: persistent.
+		return r.handleDegradeError(ctx, fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err))
 	}
 
 	ccmTrustedConfigMap := r.makeCABundleConfigMap(mergedTrustBundle)
 	if err := r.createOrUpdateConfigMap(ctx, ccmTrustedConfigMap); err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		return reconcile.Result{}, fmt.Errorf("can not update target trust bundle configmap: %v", err)
+		return r.handleTransientError(ctx, fmt.Errorf("can not update target trust bundle configmap: %v", err))
 	}
 
+	r.clearFailureWindow()
 	if err := r.setAvailableCondition(ctx); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 	}
 
+	return ctrl.Result{}, nil
+}
+
+func (r *TrustedCABundleReconciler) clearFailureWindow() {
+	r.consecutiveFailureSince = nil
+}
+
+// handleTransientError records the start of a failure window and degrades the
+// controller only after transientDegradedThreshold has elapsed. It always
+// returns a non-nil error so controller-runtime requeues with exponential backoff.
+func (r *TrustedCABundleReconciler) handleTransientError(ctx context.Context, err error) (ctrl.Result, error) {
+	now := r.Clock.Now()
+	if r.consecutiveFailureSince == nil {
+		r.consecutiveFailureSince = &now
+		klog.V(4).Infof("TrustedCABundleReconciler: transient failure started (%v), will degrade after %s", err, transientDegradedThreshold)
+		return ctrl.Result{}, err
+	}
+	elapsed := r.Clock.Now().Sub(*r.consecutiveFailureSince)
+	if elapsed < transientDegradedThreshold {
+		klog.V(4).Infof("TrustedCABundleReconciler: transient failure ongoing for %s (threshold %s): %v", elapsed, transientDegradedThreshold, err)
+		return ctrl.Result{}, err
+	}
+	klog.Warningf("TrustedCABundleReconciler: transient failure exceeded threshold (%s), setting degraded: %v", elapsed, err)
+	if setErr := r.setDegradedCondition(ctx); setErr != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %v", setErr)
+	}
+	return ctrl.Result{}, err
+}
+
+// handleDegradeError sets TrustedCABundleControllerControllerDegraded=True immediately and
+// returns nil so controller-runtime does NOT requeue. An existing watch on the
+// relevant resource will re-trigger reconciliation when the problem is fixed.
+func (r *TrustedCABundleReconciler) handleDegradeError(ctx context.Context, err error) (ctrl.Result, error) {
+	klog.Errorf("TrustedCABundleReconciler: persistent error, setting degraded: %v", err)
+	if setErr := r.setDegradedCondition(ctx); setErr != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %v", setErr)
+	}
 	return ctrl.Result{}, nil
 }
 
