@@ -348,8 +348,26 @@ var _ = Describe("Cloud config sync controller", func() {
 			}, timeout).Should(Succeed())
 			initialCMresourceVersion := syncedCloudConfigMap.ResourceVersion
 
+			// Introducing the consecutiveFailureWindow means that there's a field that could be racy
+			// between the manager calling Reconcile and the test calling Reconcile.
+			// In production, we only have 1 instance of the reconciler running.
+			// Create a fresh reconciler that is NOT registered with the manager.
+			// It shares the same API client (thread-safe) but has its own
+			// consecutiveFailureSince field, so no data race with the manager's copy.
+			freshReconciler := &CloudConfigReconciler{
+				ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+					Client:           cl,
+					Clock:            clocktesting.NewFakePassiveClock(time.Now()),
+					ManagedNamespace: targetNamespaceName,
+				},
+				Scheme: scheme.Scheme,
+				FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(
+					nil, []configv1.FeatureGateName{"AWSServiceLBNetworkSecurityGroup"}, nil, nil,
+				),
+			}
+
 			request := reconcile.Request{NamespacedName: client.ObjectKey{Name: "foo", Namespace: "bar"}}
-			_, err := reconciler.Reconcile(ctx, request)
+			_, err := freshReconciler.Reconcile(ctx, request)
 			Expect(err).Should(Succeed())
 
 			Expect(cl.Get(ctx, syncedConfigMapKey, syncedCloudConfigMap)).Should(Succeed())
