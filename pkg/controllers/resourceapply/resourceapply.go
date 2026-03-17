@@ -20,7 +20,6 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	coreclientv1 "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
@@ -67,7 +66,7 @@ func setSpecHashAnnotation(objMeta *metav1.ObjectMeta, spec interface{}) error {
 }
 
 // ApplyResource applies resources of unspecified type
-func ApplyResource(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, resource client.Object) (bool, error) {
+func ApplyResource(ctx context.Context, client coreclientv1.Client, recorder record.EventRecorder, resource coreclientv1.Object) (bool, error) {
 	switch t := resource.(type) {
 	case *appsv1.Deployment:
 		return applyDeployment(ctx, client, recorder, t)
@@ -202,10 +201,7 @@ func applyDeployment(ctx context.Context, client coreclientv1.Client, recorder r
 
 	// Check if deployment recreation needed
 	// Currently it is necessary if pod selector was changed
-	needRecreate := false
-	if !reflect.DeepEqual(existingCopy.Spec.Selector, required.Spec.Selector) {
-		needRecreate = true
-	}
+	needRecreate := !reflect.DeepEqual(existingCopy.Spec.Selector, required.Spec.Selector)
 	if needRecreate {
 		klog.Infof("Deployment need to be recreated with new parameters")
 		recorder.Event(
@@ -291,10 +287,7 @@ func applyDaemonSet(ctx context.Context, client coreclientv1.Client, recorder re
 
 	// Check if ds recreation needed
 	// Currently it is necessary if pod selector was changed
-	needRecreate := false
-	if !reflect.DeepEqual(existingCopy.Spec.Selector, required.Spec.Selector) {
-		needRecreate = true
-	}
+	needRecreate := !reflect.DeepEqual(existingCopy.Spec.Selector, required.Spec.Selector)
 	if needRecreate {
 		klog.Infof("DaemonSet need to be recreated with new parameters")
 		recorder.Event(

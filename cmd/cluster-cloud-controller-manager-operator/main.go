@@ -257,7 +257,7 @@ func main() {
 	if err = (&controllers.CloudOperatorReconciler{
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
-			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"),
+			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator"), //nolint:staticcheck // manager expects legacy recorder interface here
 			Clock:            mgrClock,
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,

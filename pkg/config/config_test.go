@@ -87,7 +87,9 @@ func TestGetImagesFromJSONFile(t *testing.T) {
 				file, err := os.CreateTemp(os.TempDir(), tc.path)
 				path = file.Name()
 				assert.NoError(t, err)
-				defer file.Close()
+				defer func() {
+					assert.NoError(t, file.Close())
+				}()
 
 				_, err = file.WriteString(tc.imagesContent)
 				assert.NoError(t, err)
@@ -309,7 +311,9 @@ func TestComposeConfig(t *testing.T) {
 			file, err := os.CreateTemp(os.TempDir(), "images")
 			path := file.Name()
 			assert.NoError(t, err)
-			defer file.Close()
+			defer func() {
+				assert.NoError(t, file.Close())
+			}()
 
 			if tc.imagesContent == "" {
 				tc.imagesContent = defaultImagesFileContent

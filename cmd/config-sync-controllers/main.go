@@ -177,7 +177,7 @@ func main() {
 	if err = (&controllers.CloudConfigReconciler{
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
-			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator-cloud-config-sync-controller"),
+			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator-cloud-config-sync-controller"), //nolint:staticcheck // manager expects legacy recorder interface here
 			Clock:            sharedClock,
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
@@ -192,7 +192,7 @@ func main() {
 	if err = (&controllers.TrustedCABundleReconciler{
 		ClusterOperatorStatusClient: controllers.ClusterOperatorStatusClient{
 			Client:           mgr.GetClient(),
-			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator-ca-sync-controller"),
+			Recorder:         mgr.GetEventRecorderFor("cloud-controller-manager-operator-ca-sync-controller"), //nolint:staticcheck // manager expects legacy recorder interface here
 			Clock:            sharedClock,
 			ReleaseVersion:   controllers.GetReleaseVersion(),
 			ManagedNamespace: *managedNamespace,
