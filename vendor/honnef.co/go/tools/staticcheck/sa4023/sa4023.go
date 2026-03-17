@@ -79,7 +79,7 @@ Similar situations to those described here can arise whenever
 interfaces are used. Just keep in mind that if any concrete value
 has been stored in the interface, the interface will not be nil.
 For more information, see The Laws of
-Reflection (https://golang.org/doc/articles/laws_of_reflection.html).
+Reflection at https://golang.org/doc/articles/laws_of_reflection.html.
 
 This text has been copied from
 https://golang.org/doc/faq#nil_error, licensed under the Creative
@@ -92,7 +92,7 @@ Commons Attribution 3.0 License.`,
 
 var Analyzer = SCAnalyzer.Analyzer
 
-func run(pass *analysis.Pass) (interface{}, error) {
+func run(pass *analysis.Pass) (any, error) {
 	// The comparison 'fn() == nil' can never be true if fn() returns
 	// an interface value and only returns typed nils. This is usually
 	// a mistake in the function itself, but all we can say for

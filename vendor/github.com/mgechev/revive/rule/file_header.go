@@ -3,16 +3,14 @@ package rule
 import (
 	"fmt"
 	"regexp"
-	"sync"
+	"strings"
 
 	"github.com/mgechev/revive/lint"
 )
 
-// FileHeaderRule lints given else constructs.
+// FileHeaderRule lints the header that each file should have.
 type FileHeaderRule struct {
 	header string
-
-	configureOnce sync.Once
 }
 
 var (
@@ -20,22 +18,24 @@ var (
 	singleRegexp = regexp.MustCompile("^//")
 )
 
-func (r *FileHeaderRule) configure(arguments lint.Arguments) {
+// Configure validates the rule configuration, and configures the rule accordingly.
+//
+// Configuration implements the [lint.ConfigurableRule] interface.
+func (r *FileHeaderRule) Configure(arguments lint.Arguments) error {
 	if len(arguments) < 1 {
-		return
+		return nil
 	}
 
 	var ok bool
 	r.header, ok = arguments[0].(string)
 	if !ok {
-		panic(fmt.Sprintf("invalid argument for \"file-header\" rule: argument should be a string, got %T", arguments[0]))
+		return fmt.Errorf(`invalid argument for "file-header" rule: argument should be a string, got %T`, arguments[0])
 	}
+	return nil
 }
 
 // Apply applies the rule to given file.
-func (r *FileHeaderRule) Apply(file *lint.File, arguments lint.Arguments) []lint.Failure {
-	r.configureOnce.Do(func() { r.configure(arguments) })
-
+func (r *FileHeaderRule) Apply(file *lint.File, _ lint.Arguments) []lint.Failure {
 	if r.header == "" {
 		return nil
 	}
@@ -56,7 +56,7 @@ func (r *FileHeaderRule) Apply(file *lint.File, arguments lint.Arguments) []lint
 	if g == nil {
 		return failure
 	}
-	comment := ""
+	var comment strings.Builder
 	for _, c := range g.List {
 		text := c.Text
 		if multiRegexp.MatchString(text) {
@@ -64,15 +64,15 @@ func (r *FileHeaderRule) Apply(file *lint.File, arguments lint.Arguments) []lint
 		} else if singleRegexp.MatchString(text) {
 			text = text[2:]
 		}
-		comment += text
+		comment.WriteString(text)
 	}
 
 	regex, err := regexp.Compile(r.header)
 	if err != nil {
-		panic(err.Error())
+		return newInternalFailureError(err)
 	}
 
-	if !regex.MatchString(comment) {
+	if !regex.MatchString(comment.String()) {
 		return failure
 	}
 	return nil

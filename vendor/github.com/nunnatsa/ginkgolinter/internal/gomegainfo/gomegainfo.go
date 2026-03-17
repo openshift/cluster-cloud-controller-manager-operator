@@ -3,7 +3,7 @@ package gomegainfo
 import (
 	"go/ast"
 	gotypes "go/types"
-	"regexp"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -36,15 +36,11 @@ var funcOffsetMap = map[string]int{
 	consistentlyWithOffset: 1,
 }
 
-func IsActualMethod(name string) bool {
-	_, found := funcOffsetMap[name]
-	return found
-}
-
 func ActualArgOffset(methodName string) int {
 	funcOffset, ok := funcOffsetMap[methodName]
 	if !ok {
-		return -1
+		// Assume first argument for unknown methods.
+		return 0
 	}
 	return funcOffset
 }
@@ -61,20 +57,9 @@ func GetAllowedAssertionMethods(actualMethodName string) string {
 		return `"Should()", "To()", "ShouldNot()", "ToNot()" or "NotTo()"`
 
 	default:
-		return ""
+		// Unknown wrapper or missing method name, mention all options.
+		return `one of "To/NotTo/ToNot" (for Expect assertions) or "Should/ShouldNot" (for Eventually/Consistently assertions)`
 	}
-}
-
-var asyncFuncSet = map[string]struct{}{
-	eventually:             {},
-	eventuallyWithOffset:   {},
-	consistently:           {},
-	consistentlyWithOffset: {},
-}
-
-func IsAsyncActualMethod(name string) bool {
-	_, ok := asyncFuncSet[name]
-	return ok
 }
 
 func IsAssertionFunc(name string) bool {
@@ -85,29 +70,33 @@ func IsAssertionFunc(name string) bool {
 	return false
 }
 
-var gomegaTypeRegex = regexp.MustCompile(`github\.com/onsi/gomega/(?:internal|types)\.Gomega`)
-
 func IsGomegaVar(x ast.Expr, pass *analysis.Pass) bool {
-	if tx, ok := pass.TypesInfo.Types[x]; ok {
-		return IsGomegaType(tx.Type)
-	}
-
-	return false
-}
-
-func IsGomegaType(t gotypes.Type) bool {
-	var typeStr string
-	switch ttx := t.(type) {
-	case *gotypes.Pointer:
-		tp := ttx.Elem()
-		typeStr = tp.String()
-
-	case *gotypes.Named:
-		typeStr = ttx.String()
-
-	default:
+	if _, isIdent := x.(*ast.Ident); !isIdent {
 		return false
 	}
 
-	return gomegaTypeRegex.MatchString(typeStr)
+	tx, ok := pass.TypesInfo.Types[x]
+	if !ok {
+		return false
+	}
+
+	return IsGomegaType(tx.Type)
+}
+
+const (
+	gomegaStructType = "github.com/onsi/gomega/internal.Gomega"
+	gomegaInterface  = "github.com/onsi/gomega/types.Gomega"
+)
+
+func IsGomegaType(t gotypes.Type) bool {
+	switch ttx := gotypes.Unalias(t).(type) {
+	case *gotypes.Pointer:
+		return IsGomegaType(ttx.Elem())
+
+	case *gotypes.Named:
+		name := ttx.String()
+		return strings.HasSuffix(name, gomegaStructType) || strings.HasSuffix(name, gomegaInterface)
+	}
+
+	return false
 }

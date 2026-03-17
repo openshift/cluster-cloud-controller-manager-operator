@@ -4,23 +4,19 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"sync"
+	"strings"
 	"unicode"
 
 	"github.com/mgechev/revive/lint"
 )
 
-// FilenameFormatRule lints source filenames according to a set of regular expressions given as arguments
+// FilenameFormatRule lints source filenames according to a set of regular expressions given as arguments.
 type FilenameFormatRule struct {
 	format *regexp.Regexp
-
-	configureOnce sync.Once
 }
 
 // Apply applies the rule to the given file.
-func (r *FilenameFormatRule) Apply(file *lint.File, arguments lint.Arguments) []lint.Failure {
-	r.configureOnce.Do(func() { r.configure(arguments) })
-
+func (r *FilenameFormatRule) Apply(file *lint.File, _ lint.Arguments) []lint.Failure {
 	filename := filepath.Base(file.Name)
 	if r.format.MatchString(filename) {
 		return nil
@@ -35,17 +31,17 @@ func (r *FilenameFormatRule) Apply(file *lint.File, arguments lint.Arguments) []
 	}}
 }
 
-func (r *FilenameFormatRule) getMsgForNonASCIIChars(str string) string {
-	result := ""
+func (*FilenameFormatRule) getMsgForNonASCIIChars(str string) string {
+	var result strings.Builder
 	for _, c := range str {
 		if c <= unicode.MaxASCII {
 			continue
 		}
 
-		result += fmt.Sprintf(" Non ASCII character %c (%U) found.", c, c)
+		fmt.Fprintf(&result, " Non ASCII character %c (%U) found.", c, c)
 	}
 
-	return result
+	return result.String()
 }
 
 // Name returns the rule name.
@@ -53,29 +49,34 @@ func (*FilenameFormatRule) Name() string {
 	return "filename-format"
 }
 
-var defaultFormat = regexp.MustCompile("^[_A-Za-z0-9][_A-Za-z0-9-]*.go$")
+var defaultFormat = regexp.MustCompile(`^[_A-Za-z0-9][_A-Za-z0-9-]*\.go$`)
 
-func (r *FilenameFormatRule) configure(arguments lint.Arguments) {
+// Configure validates the rule configuration, and configures the rule accordingly.
+//
+// Configuration implements the [lint.ConfigurableRule] interface.
+func (r *FilenameFormatRule) Configure(arguments lint.Arguments) error {
 	argsCount := len(arguments)
 	if argsCount == 0 {
 		r.format = defaultFormat
-		return
+		return nil
 	}
 
 	if argsCount > 1 {
-		panic(fmt.Sprintf("rule %q expects only one argument, got %d %v", r.Name(), argsCount, arguments))
+		return fmt.Errorf("rule %q expects only one argument, got %d %v", r.Name(), argsCount, arguments)
 	}
 
 	arg := arguments[0]
 	str, ok := arg.(string)
 	if !ok {
-		panic(fmt.Sprintf("rule %q expects a string argument, got %v of type %T", r.Name(), arg, arg))
+		return fmt.Errorf("rule %q expects a string argument, got %v of type %T", r.Name(), arg, arg)
 	}
 
 	format, err := regexp.Compile(str)
 	if err != nil {
-		panic(fmt.Sprintf("rule %q expects a valid regexp argument, got %v for %s", r.Name(), err, arg))
+		return fmt.Errorf("rule %q expects a valid regexp argument, got error for %s: %w", r.Name(), str, err)
 	}
 
 	r.format = format
+
+	return nil
 }

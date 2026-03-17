@@ -1,4 +1,4 @@
-// Package config implements revive's configuration data structures and related methods
+// Package config implements revive's configuration data structures and related methods.
 package config
 
 import (
@@ -83,6 +83,7 @@ var allRules = append([]lint.Rule{
 	&rule.UselessBreak{},
 	&rule.UncheckedTypeAssertionRule{},
 	&rule.TimeEqualRule{},
+	&rule.TimeDateRule{},
 	&rule.BannedCharsRule{},
 	&rule.OptimizeOperandsOrderRule{},
 	&rule.UseAnyRule{},
@@ -98,18 +99,40 @@ var allRules = append([]lint.Rule{
 	&rule.CommentsDensityRule{},
 	&rule.FileLengthLimitRule{},
 	&rule.FilenameFormatRule{},
+	&rule.RedundantBuildTagRule{},
+	&rule.UseErrorsNewRule{},
+	&rule.RedundantTestMainExitRule{},
+	&rule.UnnecessaryFormatRule{},
+	&rule.UseFmtPrintRule{},
+	&rule.EnforceSwitchStyleRule{},
+	&rule.IdenticalSwitchConditionsRule{},
+	&rule.IdenticalIfElseIfConditionsRule{},
+	&rule.IdenticalIfElseIfBranchesRule{},
+	&rule.IdenticalSwitchBranchesRule{},
+	&rule.UselessFallthroughRule{},
+	&rule.PackageDirectoryMismatchRule{},
+	&rule.UseWaitGroupGoRule{},
+	&rule.UnsecureURLSchemeRule{},
+	&rule.InefficientMapLookupRule{},
+	&rule.ForbiddenCallInWgGoRule{},
+	&rule.UnnecessaryIfRule{},
+	&rule.EpochNamingRule{},
+	&rule.UseSlicesSort{},
+	&rule.PackageNamingRule{},
 }, defaultRules...)
 
+// allFormatters is a list of all available formatters to output the linting results.
+// Keep the list sorted and in sync with available formatters in README.md.
 var allFormatters = []lint.Formatter{
-	&formatter.Stylish{},
+	&formatter.Checkstyle{},
+	&formatter.Default{},
 	&formatter.Friendly{},
 	&formatter.JSON{},
 	&formatter.NDJSON{},
-	&formatter.Default{},
-	&formatter.Unix{},
-	&formatter.Checkstyle{},
 	&formatter.Plain{},
 	&formatter.Sarif{},
+	&formatter.Stylish{},
+	&formatter.Unix{},
 }
 
 func getFormatters() map[string]lint.Formatter {
@@ -120,7 +143,7 @@ func getFormatters() map[string]lint.Formatter {
 	return result
 }
 
-// GetLintingRules yields the linting rules that must be applied by the linter
+// GetLintingRules yields the linting rules that must be applied by the linter.
 func GetLintingRules(config *lint.Config, extraRules []lint.Rule) ([]lint.Rule, error) {
 	rulesMap := map[string]lint.Rule{}
 	for _, r := range allRules {
@@ -145,6 +168,12 @@ func GetLintingRules(config *lint.Config, extraRules []lint.Rule) ([]lint.Rule, 
 			continue // skip disabled rules
 		}
 
+		if r, ok := r.(lint.ConfigurableRule); ok {
+			if err := r.Configure(ruleConfig.Arguments); err != nil {
+				return nil, fmt.Errorf("cannot configure rule: %q: %w", name, err)
+			}
+		}
+
 		lintingRules = append(lintingRules, r)
 	}
 
@@ -160,19 +189,15 @@ func actualRuleName(name string) string {
 	}
 }
 
-func parseConfig(path string, config *lint.Config) error {
-	file, err := os.ReadFile(path)
+func parseConfig(data []byte, config *lint.Config) error {
+	err := toml.Unmarshal(data, config)
 	if err != nil {
-		return errors.New("cannot read the config file")
-	}
-	_, err = toml.Decode(string(file), config)
-	if err != nil {
-		return fmt.Errorf("cannot parse the config file: %v", err)
+		return fmt.Errorf("cannot parse the config file: %w", err)
 	}
 	for k, r := range config.Rules {
 		err := r.Initialize()
 		if err != nil {
-			return fmt.Errorf("error in config of rule [%s] : [%v]", k, err)
+			return fmt.Errorf("error in config of rule [%s] : [%w]", k, err)
 		}
 		config.Rules[k] = r
 	}
@@ -180,21 +205,31 @@ func parseConfig(path string, config *lint.Config) error {
 	return nil
 }
 
+func validateConfig(config *lint.Config) error {
+	if config.EnableAllRules && config.EnableDefaultRules {
+		return errors.New("config options enableAllRules and enableDefaultRules cannot be combined")
+	}
+	return nil
+}
+
 func normalizeConfig(config *lint.Config) {
 	if len(config.Rules) == 0 {
 		config.Rules = map[string]lint.RuleConfig{}
 	}
-	if config.EnableAllRules {
-		// Add to the configuration all rules not yet present in it
-		for _, r := range allRules {
+
+	addRules := func(config *lint.Config, rules []lint.Rule) {
+		for _, r := range rules {
 			ruleName := r.Name()
-			_, alreadyInConf := config.Rules[ruleName]
-			if alreadyInConf {
-				continue
+			if _, ok := config.Rules[ruleName]; !ok {
+				config.Rules[ruleName] = lint.RuleConfig{}
 			}
-			// Add the rule with an empty conf for
-			config.Rules[ruleName] = lint.RuleConfig{}
 		}
+	}
+
+	if config.EnableAllRules {
+		addRules(config, allRules)
+	} else if config.EnableDefaultRules {
+		addRules(config, defaultRules)
 	}
 
 	severity := config.Severity
@@ -216,13 +251,17 @@ func normalizeConfig(config *lint.Config) {
 
 const defaultConfidence = 0.8
 
-// GetConfig yields the configuration
+// GetConfig yields the configuration.
 func GetConfig(configPath string) (*lint.Config, error) {
 	config := &lint.Config{}
 	switch {
 	case configPath != "":
 		config.Confidence = defaultConfidence
-		err := parseConfig(configPath, config)
+		data, err := os.ReadFile(configPath) //nolint:gosec // ignore G304: potential file inclusion via variable
+		if err != nil {
+			return nil, errors.New("cannot read the config file")
+		}
+		err = parseConfig(data, config)
 		if err != nil {
 			return nil, err
 		}
@@ -231,22 +270,25 @@ func GetConfig(configPath string) (*lint.Config, error) {
 		config = defaultConfig()
 	}
 
+	if err := validateConfig(config); err != nil {
+		return nil, err
+	}
+
 	normalizeConfig(config)
 	return config, nil
 }
 
-// GetFormatter yields the formatter for lint failures
+// GetFormatter yields the formatter for lint failures.
 func GetFormatter(formatterName string) (lint.Formatter, error) {
 	formatters := getFormatters()
-	fmtr := formatters["default"]
-	if formatterName != "" {
-		f, ok := formatters[formatterName]
-		if !ok {
-			return nil, fmt.Errorf("unknown formatter %v", formatterName)
-		}
-		fmtr = f
+	if formatterName == "" {
+		return formatters["default"], nil
 	}
-	return fmtr, nil
+	f, ok := formatters[formatterName]
+	if !ok {
+		return nil, fmt.Errorf("unknown formatter %v", formatterName)
+	}
+	return f, nil
 }
 
 func defaultConfig() *lint.Config {

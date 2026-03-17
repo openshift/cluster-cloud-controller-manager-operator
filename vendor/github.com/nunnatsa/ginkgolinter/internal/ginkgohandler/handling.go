@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/nunnatsa/ginkgolinter/types"
+	"github.com/nunnatsa/ginkgolinter/config"
 )
 
 const (
@@ -17,14 +17,14 @@ const (
 	useBeforeEachTemplate = "use BeforeEach() to assign variable %s"
 )
 
-func handleGinkgoSpecs(expr ast.Expr, config types.Config, pass *analysis.Pass, ginkgoHndlr Handler) bool {
+func handleGinkgoSpecs(expr ast.Expr, config config.Config, pass *analysis.Pass, ginkgoHndlr Handler) bool {
 	goDeeper := false
 	if exp, ok := expr.(*ast.CallExpr); ok {
-		if bool(config.ForbidFocus) && checkFocusContainer(pass, ginkgoHndlr, exp) {
+		if config.ForbidFocus && checkFocusContainer(pass, ginkgoHndlr, exp) {
 			goDeeper = true
 		}
 
-		if bool(config.ForbidSpecPollution) && checkAssignmentsInContainer(pass, ginkgoHndlr, exp) {
+		if config.ForbidSpecPollution && checkAssignmentsInContainer(pass, ginkgoHndlr, exp) {
 			goDeeper = true
 		}
 	}
