@@ -90,6 +90,13 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return r.handleTransientError(ctx, conditionOverrides, err)
 	}
 
+	// Known limitation: when provisioningAllowed internally calls setStatusDegraded
+	// (e.g. a sub-controller has Degraded=True, or IsCloudProviderExternal errors),
+	// it returns a non-nil error. Reconcile passes that error to handleTransientError,
+	// which starts the 2m30s window. After the threshold, handleTransientError calls
+	// setStatusDegraded again — redundant but harmless, since status is already degraded.
+	// This is a consequence of keeping status-setting inside provisioningAllowed rather
+	// than pushing it into Reconcile.
 	allowedToProvision, err := r.provisioningAllowed(ctx, infra, conditionOverrides)
 	if err != nil {
 		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
@@ -117,6 +124,13 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return r.handleTransientError(ctx, conditionOverrides, err)
 	}
 
+	// Known limitation: setStatusAvailable and clearCloudControllerOwnerCondition
+	// failures return raw errors without calling handleTransientError. These run
+	// after the actual reconcile work has completed successfully, so their errors
+	// are not counted as "cloud controller sync failures". If the status subresource
+	// or condition-cleanup becomes persistently broken, OperatorDegraded=True will
+	// not be set. Controller-runtime requeues on any non-nil error, so recovery
+	// still happens; it just does not trigger the degraded threshold.
 	if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 		klog.Errorf("Unable to sync cluster operator status: %s", err)
 		return ctrl.Result{}, err

@@ -192,6 +192,16 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 // clearFailureWindow resets the transient-error tracking. Call this on every
 // successful reconcile so the 2-minute window restarts fresh on the next failure.
+//
+// Known limitation: clearFailureWindow is called *before* setAvailableCondition
+// on all success paths. If setAvailableCondition subsequently fails (e.g. the
+// ClusterOperator status subresource is unreachable), the failure window has
+// already been cleared but a raw error is returned without calling
+// handleTransientError. Controller-runtime requeues, but repeated status-write
+// failures never accumulate toward the degraded threshold, so a persistent
+// status-subresource outage will not cause CloudConfigControllerDegraded=True.
+// This is intentional: cloud-config sync errors and status-write errors are
+// distinct failure modes and are not conflated here.
 func (r *CloudConfigReconciler) clearFailureWindow() {
 	r.consecutiveFailureSince = nil
 }
