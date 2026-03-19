@@ -349,6 +349,52 @@ var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
 		Expect(availCond.Status).To(Equal(v1.ConditionTrue))
 	})
 
+	It("stale failure window should be restarted when gap since last error exceeds threshold", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		reconciler := &TrustedCABundleReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			trustBundlePath: "/broken/ca/path.pem", // unreadable → transient error
+		}
+
+		// Create a Proxy so the reconcile progresses to getSystemTrustBundle.
+		proxy := &v1.Proxy{ObjectMeta: metav1.ObjectMeta{Name: proxyResourceName}}
+		Expect(cl.Create(ctx, proxy)).To(Succeed())
+		DeferCleanup(func() { _ = cl.Delete(ctx, proxy) })
+
+		// Step 1: First transient error; failure window opens at T0.
+		_, err := reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+		Expect(reconciler.consecutiveFailureSince).NotTo(BeNil())
+
+		// Step 2: Advance clock past the threshold — simulates a gap with no reconciles
+		// (e.g., system recovered, no events fired for a long time).
+		fakeClock.Step(transientDegradedThreshold + time.Second)
+
+		// Step 3: New transient error arrives. The stale-window logic should detect that
+		// lastTransientFailureAt is more than the threshold ago and restart the window
+		// from 'now', NOT degrade immediately.
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+
+		co := &v1.ClusterOperator{}
+		if getErr := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); getErr == nil {
+			for _, cond := range co.Status.Conditions {
+				if cond.Type == trustedCABundleControllerDegradedCondition {
+					Expect(cond.Status).NotTo(Equal(v1.ConditionTrue),
+						"should not degrade immediately after a gap — window should restart")
+				}
+			}
+		}
+		// consecutiveFailureSince should now be 'now', not the original T0.
+		Expect(reconciler.consecutiveFailureSince).NotTo(BeNil())
+		Expect(fakeClock.Now().Sub(*reconciler.consecutiveFailureSince)).To(BeNumerically("<", time.Second),
+			"window should have been restarted to ~now, not retained from original T0")
+	})
+
 	It("should not degrade on transient error before threshold, but degrade after threshold", func() {
 		fakeClock := clocktesting.NewFakeClock(time.Now())
 		reconciler := &TrustedCABundleReconciler{
@@ -365,7 +411,7 @@ var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
 		Expect(cl.Create(ctx, proxy)).To(Succeed())
 		DeferCleanup(func() { _ = cl.Delete(ctx, proxy) })
 
-		// First reconcile: transient failure starts; error is returned but no degraded condition set.
+		// First reconcile at T0: transient failure starts; error is returned but no degraded condition set.
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{})
 		Expect(err).To(HaveOccurred())
 		co := &v1.ClusterOperator{}
@@ -377,10 +423,25 @@ var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
 			}
 		}
 
-		// Advance clock past the degraded threshold.
-		fakeClock.Step(transientDegradedThreshold + time.Second)
+		// Advance clock to mid-window (half the threshold) and reconcile again to simulate
+		// continuous failures. This updates lastTransientFailureAt, keeping it fresh.
+		fakeClock.Step(transientDegradedThreshold / 2)
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+		if getErr := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); getErr == nil {
+			for _, cond := range co.Status.Conditions {
+				if cond.Type == trustedCABundleControllerDegradedCondition {
+					Expect(cond.Status).NotTo(Equal(v1.ConditionTrue), "should not be degraded before threshold")
+				}
+			}
+		}
 
-		// Second reconcile: threshold exceeded, controller sets degraded.
+		// Advance clock so total elapsed from T0 exceeds the threshold, but the gap since the
+		// most recent failure (lastTransientFailureAt) is less than the threshold. This ensures
+		// the degradation path is taken rather than the stale-window restart path.
+		fakeClock.Step(transientDegradedThreshold/2 + time.Second)
+
+		// Final reconcile: threshold exceeded, controller sets degraded.
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
 		Expect(err).To(HaveOccurred())
 		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
