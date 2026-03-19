@@ -72,22 +72,36 @@ type CloudOperatorReconciler struct {
 // +kubebuilder:rbac:groups=config.openshift.io,resources=infrastructures,verbs=get;list;watch
 
 // Reconcile will process the cloud-controller-manager clusterOperator
-func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (result ctrl.Result, retErr error) {
 	conditionOverrides := []configv1.ClusterOperatorStatusCondition{}
+
+	// Deferred dispatcher: classifies the returned error and calls the right handler.
+	// Permanent errors (wrapped with permanent()) degrade immediately without requeue.
+	// Transient errors enter the failure window and only degrade after the threshold.
+	// All nil-error paths clear the failure window.
+	defer func() {
+		if retErr == nil {
+			r.clearFailureWindow()
+			return
+		}
+		if isPermanent(retErr) {
+			result, retErr = r.handleDegradeError(ctx, conditionOverrides, retErr)
+		} else {
+			result, retErr = r.handleTransientError(ctx, conditionOverrides, retErr)
+		}
+	}()
 
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); errors.IsNotFound(err) {
 		klog.Infof("Infrastructure cluster does not exist. Skipping...")
 		if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return r.handleTransientError(ctx, conditionOverrides, err)
+			return ctrl.Result{}, err
 		}
-		// It's ok for the infrastructure cluster to not exist
-		r.clearFailureWindow()
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, nil // defer clears failure window
 	} else if err != nil {
 		klog.Errorf("Unable to retrive Infrastructure object: %v", err)
-		return r.handleTransientError(ctx, conditionOverrides, err)
+		return ctrl.Result{}, err // transient
 	}
 
 	// Known limitation: when provisioningAllowed internally calls setStatusDegraded
@@ -100,37 +114,28 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	allowedToProvision, err := r.provisioningAllowed(ctx, infra, conditionOverrides)
 	if err != nil {
 		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
-		return r.handleTransientError(ctx, conditionOverrides, err)
+		return ctrl.Result{}, err // transient; status already set inside provisioningAllowed
 	} else if !allowedToProvision {
-		// We're not allowed to provision, but didn't have any failures.
-		r.clearFailureWindow()
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, nil // defer clears failure window
 	}
 
 	clusterProxy := &configv1.Proxy{}
 	if err := r.Get(ctx, client.ObjectKey{Name: proxyResourceName}, clusterProxy); err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("Unable to retrive Proxy object: %v", err)
-		return r.handleTransientError(ctx, conditionOverrides, err)
+		return ctrl.Result{}, err // transient
 	}
 
 	operatorConfig, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace, r.FeatureGateAccess, r.TLSProfileSpec)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
-		return r.handleDegradeError(ctx, conditionOverrides, err)
+		return ctrl.Result{}, permanent(err) // permanent: defer calls handleDegradeError
 	}
 
 	if err := r.sync(ctx, operatorConfig, conditionOverrides); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
-		return r.handleTransientError(ctx, conditionOverrides, err)
+		return ctrl.Result{}, err // transient
 	}
 
-	// Known limitation: setStatusAvailable and clearCloudControllerOwnerCondition
-	// failures return raw errors without calling handleTransientError. These run
-	// after the actual reconcile work has completed successfully, so their errors
-	// are not counted as "cloud controller sync failures". If the status subresource
-	// or condition-cleanup becomes persistently broken, OperatorDegraded=True will
-	// not be set. Controller-runtime requeues on any non-nil error, so recovery
-	// still happens; it just does not trigger the degraded threshold.
 	if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 		klog.Errorf("Unable to sync cluster operator status: %s", err)
 		return ctrl.Result{}, err
@@ -141,9 +146,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// successful reconcile, make sure the failure window is cleared.
-	r.clearFailureWindow()
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, nil // defer clears failure window
 }
 
 func (r *CloudOperatorReconciler) clearFailureWindow() {
@@ -153,6 +156,7 @@ func (r *CloudOperatorReconciler) clearFailureWindow() {
 // handleTransientError records the start of a failure window and degrades the
 // operator only after aggregatedTransientDegradedThreshold has elapsed. It always returns
 // a non-nil error so controller-runtime requeues with exponential backoff.
+// Called only from the deferred dispatcher in Reconcile.
 func (r *CloudOperatorReconciler) handleTransientError(ctx context.Context, conditionOverrides []configv1.ClusterOperatorStatusCondition, err error) (ctrl.Result, error) {
 	now := r.Clock.Now()
 	if r.consecutiveFailureSince == nil {
@@ -175,6 +179,7 @@ func (r *CloudOperatorReconciler) handleTransientError(ctx context.Context, cond
 // handleDegradeError sets OperatorDegraded=True immediately and returns nil so
 // controller-runtime does NOT requeue. Existing watches on Infrastructure,
 // ConfigMaps, and Secrets will re-trigger reconciliation when the problem is fixed.
+// Called only from the deferred dispatcher in Reconcile.
 func (r *CloudOperatorReconciler) handleDegradeError(ctx context.Context, conditionOverrides []configv1.ClusterOperatorStatusCondition, err error) (ctrl.Result, error) {
 	klog.Errorf("CloudOperatorReconciler: persistent error, setting degraded: %v", err)
 	if setErr := r.setStatusDegraded(ctx, err, conditionOverrides); setErr != nil {

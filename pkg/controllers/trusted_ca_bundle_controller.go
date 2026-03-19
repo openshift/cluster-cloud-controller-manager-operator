@@ -53,8 +53,31 @@ func isSpecTrustedCASet(proxyConfig *configv1.ProxySpec) bool {
 	return len(proxyConfig.TrustedCA.Name) > 0
 }
 
-func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	klog.V(1).Infof("%s emitted event, syncing %s ConfigMap", req, trustedCAConfigMapName)
+
+	// partialRun is set to true on the early-exit path where the event is for
+	// an unrelated ConfigMap. That path returns available=true but should NOT
+	// reset an ongoing transient failure window from a previous full reconcile.
+	partialRun := false
+
+	// Deferred dispatcher: classifies the returned error and calls the right handler.
+	// Permanent errors (wrapped with permanent()) degrade immediately without requeue.
+	// Transient errors enter the failure window and only degrade after the threshold.
+	// Nil-error paths clear the failure window unless partialRun is set.
+	defer func() {
+		if retErr == nil {
+			if !partialRun {
+				r.clearFailureWindow()
+			}
+			return
+		}
+		if isPermanent(retErr) {
+			result, retErr = r.handleDegradeError(ctx, retErr)
+		} else {
+			result, retErr = r.handleTransientError(ctx, retErr)
+		}
+	}()
 
 	proxyConfig := &configv1.Proxy{}
 	if err := r.Get(ctx, types.NamespacedName{Name: proxyResourceName}, proxyConfig); err != nil {
@@ -65,56 +88,51 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			if err := r.setAvailableCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 			}
-			// We tolerate the proxy config not being found.
-			r.clearFailureWindow()
-			return reconcile.Result{}, nil
+			return reconcile.Result{}, nil // defer clears failure window
 		}
 		// Non-NotFound: transient API error.
-		return r.handleTransientError(ctx, fmt.Errorf("failed to get proxy '%s': %v", req.Name, err))
+		return ctrl.Result{}, fmt.Errorf("failed to get proxy '%s': %v", req.Name, err) // transient
 	}
 
 	// Check if changed config map in 'openshift-config' namespace is proxy trusted ca.
-	// If not, return early
+	// If not, return early without resetting the failure window (partialRun=true).
 	if req.Namespace == OpenshiftConfigNamespace && proxyConfig.Spec.TrustedCA.Name != req.Name {
+		partialRun = true
+		klog.V(1).Infof("changed config map %s is not a proxy trusted ca, skipping", req)
 		if err := r.setAvailableCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 		}
-		// Note: clearFailureWindow is intentionally NOT called here. This path did not
-		// exercise the full reconcile logic, so an ongoing transient failure window
-		// (set by a previous reconcile pass) should not be reset.
-		klog.V(1).Infof("changed config map %s is not a proxy trusted ca, skipping", req)
 		return reconcile.Result{}, nil
 	}
 
 	systemTrustBundle, err := r.getSystemTrustBundle()
 	if err != nil {
 		// Node cert store may be updating during upgrade: transient.
-		return r.handleTransientError(ctx, fmt.Errorf("failed to get system trust bundle: %v", err))
+		return ctrl.Result{}, fmt.Errorf("failed to get system trust bundle: %v", err) // transient
 	}
 
 	proxyCABundle, mergedTrustBundle, err := r.addProxyCABundle(ctx, proxyConfig, systemTrustBundle)
 	if err != nil {
-		// Combined cert bundle is corrupt: persistent.
-		return r.handleDegradeError(ctx, fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err))
+		// Combined cert bundle is corrupt: permanent.
+		return ctrl.Result{}, permanent(fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err))
 	}
 
 	_, mergedTrustBundle, err = r.addCloudConfigCABundle(ctx, proxyCABundle, mergedTrustBundle)
 	if err != nil {
-		// Combined cert bundle is corrupt: persistent.
-		return r.handleDegradeError(ctx, fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err))
+		// Combined cert bundle is corrupt: permanent.
+		return ctrl.Result{}, permanent(fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err))
 	}
 
 	ccmTrustedConfigMap := r.makeCABundleConfigMap(mergedTrustBundle)
 	if err := r.createOrUpdateConfigMap(ctx, ccmTrustedConfigMap); err != nil {
-		return r.handleTransientError(ctx, fmt.Errorf("can not update target trust bundle configmap: %v", err))
+		return ctrl.Result{}, fmt.Errorf("can not update target trust bundle configmap: %v", err) // transient
 	}
 
-	r.clearFailureWindow()
 	if err := r.setAvailableCondition(ctx); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, nil // defer clears failure window
 }
 
 func (r *TrustedCABundleReconciler) clearFailureWindow() {
@@ -125,6 +143,7 @@ func (r *TrustedCABundleReconciler) clearFailureWindow() {
 // handleTransientError records the start of a failure window and degrades the
 // controller only after transientDegradedThreshold has elapsed. It always
 // returns a non-nil error so controller-runtime requeues with exponential backoff.
+// Called only from the deferred dispatcher in Reconcile.
 func (r *TrustedCABundleReconciler) handleTransientError(ctx context.Context, err error) (ctrl.Result, error) {
 	now := r.Clock.Now()
 
@@ -157,6 +176,7 @@ func (r *TrustedCABundleReconciler) handleTransientError(ctx context.Context, er
 // handleDegradeError sets TrustedCABundleControllerControllerDegraded=True immediately and
 // returns nil so controller-runtime does NOT requeue. An existing watch on the
 // relevant resource will re-trigger reconciliation when the problem is fixed.
+// Called only from the deferred dispatcher in Reconcile.
 func (r *TrustedCABundleReconciler) handleDegradeError(ctx context.Context, err error) (ctrl.Result, error) {
 	klog.Errorf("TrustedCABundleReconciler: persistent error, setting degraded: %v", err)
 	if setErr := r.setDegradedCondition(ctx); setErr != nil {
