@@ -45,6 +45,7 @@ type TrustedCABundleReconciler struct {
 	Scheme                  *runtime.Scheme
 	trustBundlePath         string
 	consecutiveFailureSince *time.Time // nil when the last reconcile succeeded
+	lastTransientFailureAt  *time.Time // when the most recent transient error was observed
 }
 
 // isSpecTrustedCASet returns true if spec.trustedCA of proxyConfig is set.
@@ -118,6 +119,7 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 func (r *TrustedCABundleReconciler) clearFailureWindow() {
 	r.consecutiveFailureSince = nil
+	r.lastTransientFailureAt = nil
 }
 
 // handleTransientError records the start of a failure window and degrades the
@@ -125,12 +127,22 @@ func (r *TrustedCABundleReconciler) clearFailureWindow() {
 // returns a non-nil error so controller-runtime requeues with exponential backoff.
 func (r *TrustedCABundleReconciler) handleTransientError(ctx context.Context, err error) (ctrl.Result, error) {
 	now := r.Clock.Now()
-	if r.consecutiveFailureSince == nil {
+
+	// Start or restart the failure window.
+	// Restart if: (a) no window is open, OR (b) the last observed failure was more than
+	// transientDegradedThreshold ago (stale window). Case (b) handles the scenario where
+	// a partialRun reconcile returned nil (no requeue) after the system recovered, leaving
+	// consecutiveFailureSince set but no subsequent successful full reconcile to clear it.
+	staleWindow := r.lastTransientFailureAt != nil && now.Sub(*r.lastTransientFailureAt) > transientDegradedThreshold
+	if r.consecutiveFailureSince == nil || staleWindow {
 		r.consecutiveFailureSince = &now
+		r.lastTransientFailureAt = &now
 		klog.V(4).Infof("TrustedCABundleReconciler: transient failure started (%v), will degrade after %s", err, transientDegradedThreshold)
 		return ctrl.Result{}, err
 	}
-	elapsed := r.Clock.Now().Sub(*r.consecutiveFailureSince)
+
+	r.lastTransientFailureAt = &now
+	elapsed := now.Sub(*r.consecutiveFailureSince)
 	if elapsed < transientDegradedThreshold {
 		klog.V(4).Infof("TrustedCABundleReconciler: transient failure ongoing for %s (threshold %s): %v", elapsed, transientDegradedThreshold, err)
 		return ctrl.Result{}, err
