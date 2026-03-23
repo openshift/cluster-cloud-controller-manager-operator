@@ -29,15 +29,21 @@ func executeCommandC(root *cobra.Command, args ...string) (c *cobra.Command, out
 func Test_mergeCloudConfig(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "cccmo-azure-creds-injector")
 	require.NoError(t, err)
-	defer os.Remove(tmpDir)
+	defer func() {
+		require.NoError(t, os.RemoveAll(tmpDir))
+	}()
 
 	inputFile, err := os.CreateTemp(tmpDir, "dummy-config")
 	require.NoError(t, err)
-	defer os.Remove(inputFile.Name())
+	defer func() {
+		require.NoError(t, os.Remove(inputFile.Name()))
+	}()
 
 	outputFile, err := os.CreateTemp(tmpDir, "dummy-config-merged")
 	require.NoError(t, err)
-	defer os.Remove(outputFile.Name())
+	defer func() {
+		require.NoError(t, os.Remove(outputFile.Name()))
+	}()
 
 	cleanupEnv := func(envVars map[string]string) {
 		for envVarName := range envVars {

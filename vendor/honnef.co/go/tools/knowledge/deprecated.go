@@ -164,7 +164,7 @@ var StdlibDeprecations = map[string]Deprecation{
 	"syscall.GetQueuedCompletionStatus":     {"go1.17", "go1.0"},
 	"syscall.CreateIoCompletionPort":        {"go1.17", "go1.0"},
 
-	// We choose to only track the package itself, even though all functions are derecated individually, too. Anyone
+	// We choose to only track the package itself, even though all functions are deprecated individually, too. Anyone
 	// using ioutil directly will have to import it, and this keeps the noise down.
 	"io/ioutil": {"go1.19", "go1.19"},
 
@@ -188,16 +188,22 @@ var StdlibDeprecations = map[string]Deprecation{
 	"syscall.Syscall6":  {"go1.18", "go1.18"},
 	"syscall.Syscall9":  {"go1.18", "go1.18"},
 
-	"reflect.SliceHeader":                              {"go1.21", "go1.17"},
-	"reflect.StringHeader":                             {"go1.21", "go1.20"},
-	"crypto/elliptic.GenerateKey":                      {"go1.21", "go1.21"},
-	"crypto/elliptic.Marshal":                          {"go1.21", "go1.21"},
-	"crypto/elliptic.Unmarshal":                        {"go1.21", "go1.21"},
-	"(*crypto/elliptic.CurveParams).Add":               {"go1.21", "go1.21"},
-	"(*crypto/elliptic.CurveParams).Double":            {"go1.21", "go1.21"},
-	"(*crypto/elliptic.CurveParams).IsOnCurve":         {"go1.21", "go1.21"},
-	"(*crypto/elliptic.CurveParams).ScalarBaseMult":    {"go1.21", "go1.21"},
-	"(*crypto/elliptic.CurveParams).ScalarMult":        {"go1.21", "go1.21"},
+	"reflect.SliceHeader":                           {"go1.21", "go1.17"},
+	"reflect.StringHeader":                          {"go1.21", "go1.20"},
+	"crypto/elliptic.GenerateKey":                   {"go1.21", "go1.21"},
+	"crypto/elliptic.Marshal":                       {"go1.21", "go1.21"},
+	"crypto/elliptic.Unmarshal":                     {"go1.21", "go1.21"},
+	"(*crypto/elliptic.CurveParams).Add":            {"go1.21", "go1.21"},
+	"(*crypto/elliptic.CurveParams).Double":         {"go1.21", "go1.21"},
+	"(*crypto/elliptic.CurveParams).IsOnCurve":      {"go1.21", "go1.21"},
+	"(*crypto/elliptic.CurveParams).ScalarBaseMult": {"go1.21", "go1.21"},
+	"(*crypto/elliptic.CurveParams).ScalarMult":     {"go1.21", "go1.21"},
+	"(crypto/elliptic.Curve).Add":                   {"go1.21", "go1.21"},
+	"(crypto/elliptic.Curve).Double":                {"go1.21", "go1.21"},
+	"(crypto/elliptic.Curve).IsOnCurve":             {"go1.21", "go1.21"},
+	"(crypto/elliptic.Curve).ScalarBaseMult":        {"go1.21", "go1.21"},
+	"(crypto/elliptic.Curve).ScalarMult":            {"go1.21", "go1.21"},
+
 	"crypto/rsa.GenerateMultiPrimeKey":                 {"go1.21", DeprecatedNeverUse},
 	"(crypto/rsa.PrecomputedValues).CRTValues":         {"go1.21", DeprecatedNeverUse},
 	"(crypto/x509.RevocationList).RevokedCertificates": {"go1.21", "go1.21"},
@@ -209,6 +215,37 @@ var StdlibDeprecations = map[string]Deprecation{
 	"go/ast.Scope":                {"go1.22", "go1.0"},
 	"html/template.ErrJSTemplate": {"go1.22", DeprecatedUseNoLonger},
 	"reflect.PtrTo":               {"go1.22", "go1.18"},
+
+	// Technically, runtime.GOROOT could be considered DeprecatedNeverUse, but
+	// using it used to be a lot more common and accepted.
+	"runtime.GOROOT": {"go1.24", DeprecatedUseNoLonger},
+	// These are never safe to use; a concrete alternative was added in Go 1.2 (crypto/cipher.AEAD).
+	"crypto/cipher.NewCFBDecrypter": {"go1.24", "go1.2"},
+	"crypto/cipher.NewCFBEncrypter": {"go1.24", "go1.2"},
+	"crypto/cipher.NewOFB":          {"go1.24", "go1.2"},
+
+	"go/ast.FilterFuncDuplicates":       {"go1.25", "go1.0"},
+	"go/ast.FilterImportDuplicates":     {"go1.25", "go1.0"},
+	"go/ast.FilterUnassociatedComments": {"go1.25", "go1.0"},
+	"go/ast.FilterPackage":              {"go1.25", "go1.0"},
+	"go/ast.MergePackageFiles":          {"go1.25", "go1.0"},
+	"go/ast.PackageExports":             {"go1.25", "go1.0"},
+	"go/ast.MergeMode":                  {"go1.25", "go1.0"},
+	// Go 1.11 because that's around the time x/tools/go/packages was released.
+	"go/parser.ParseDir": {"go1.25", "go1.11"},
+
+	// Go 1.25 is the first version to provide all of the alternatives mentioned
+	// by the deprecation note.
+	"(crypto/ecdsa.PublicKey).X":  {"go1.26", "go1.25"},
+	"(crypto/ecdsa.PublicKey).Y":  {"go1.26", "go1.25"},
+	"(crypto/ecdsa.PrivateKey).D": {"go1.26", "go1.25"},
+
+	"crypto/rsa.DecryptPKCS1v15":           {"go1.26", DeprecatedNeverUse},
+	"crypto/rsa.DecryptPKCS1v15SessionKey": {"go1.26", DeprecatedNeverUse},
+	"crypto/rsa.PKCS1v15DecryptOptions":    {"go1.26", DeprecatedNeverUse},
+	"crypto/rsa.EncryptPKCS1v15":           {"go1.26", DeprecatedNeverUse},
+
+	"(net/http/httputil.ReverseProxy).Director": {"go1.26", "go1.20"},
 }
 
-// Last imported from Go at e8ee1dc4f9e2632ba1018610d1a1187743ae397f
+// Last imported from GOROOT/api/go1.26.txt at d3ddc4854429185e6e06ca1f7628bb790404abb5.

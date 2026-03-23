@@ -201,7 +201,7 @@ func (b *builder) exprN(fn *Function, e ast.Expr) Value {
 		var c Call
 		b.setCall(fn, e, &c.Call)
 		c.typ = typ
-		return fn.emit(&c, e)
+		return emitCall(fn, &c, e)
 
 	case *ast.IndexExpr:
 		mapt := typeutil.CoreType(fn.Pkg.typeOf(e.X)).Underlying().(*types.Map)
@@ -288,7 +288,12 @@ func (b *builder) builtin(fn *Function, obj *types.Builtin, args []ast.Expr, typ
 		}
 
 	case "new":
-		return emitNew(fn, deref(typ), source, "new")
+		alloc := emitNew(fn, deref(typ), source, "new")
+		if !fn.Pkg.info.Types[args[0]].IsType() {
+			v := b.expr(fn, args[0])
+			emitStore(fn, alloc, v, source)
+		}
+		return alloc
 
 	case "len", "cap":
 		// Special case: len or cap of an array or *array is based on the type, not the value which may be nil. We must
@@ -657,7 +662,7 @@ func (b *builder) expr0(fn *Function, e ast.Expr, tv types.TypeAndValue) Value {
 		var v Call
 		b.setCall(fn, e, &v.Call)
 		v.setType(tv.Type)
-		return fn.emit(&v, e)
+		return emitCall(fn, &v, e)
 
 	case *ast.UnaryExpr:
 		switch e.Op {
@@ -895,7 +900,7 @@ func (b *builder) stmtList(fn *Function, list []ast.Stmt) {
 // returns the effective receiver after applying the implicit field
 // selections of sel.
 //
-// wantAddr requests that the result is an an address.  If
+// wantAddr requests that the result is an address.  If
 // !sel.Indirect(), this may require that e be built in addr() mode; it
 // must thus be addressable.
 //
@@ -2058,7 +2063,7 @@ func (b *builder) forStmtGo122(fn *Function, s *ast.ForStmt, label *lblock) {
 		fn.emit(phi, lhs)
 
 		fn.currentBlock = post
-		// If next is is local, it reuses the address and zeroes the old value so
+		// If next is local, it reuses the address and zeroes the old value so
 		// load before allocating next.
 		load := emitLoad(fn, phi, init)
 		next := emitLocal(fn, v.Type(), lhs, v.Name())
@@ -2726,6 +2731,8 @@ func (b *builder) rangeFunc(fn *Function, x Value, tk, tv types.Type, rng *ast.R
 	b.buildYieldResume(fn, jump, exits, done)
 
 	fn.currentBlock = done
+	// pop the stack for the range-over-func
+	fn.targets = fn.targets.tail
 }
 
 // buildYieldResume emits to fn code for how to resume execution once a call to
@@ -3084,16 +3091,6 @@ func (b *builder) buildFunction(fn *Function) {
 		panic(n)
 	}
 
-	if fn.Package().Pkg.Path() == "syscall" && fn.Name() == "Exit" {
-		// syscall.Exit is a stub and the way os.Exit terminates the
-		// process. Note that there are other functions in the runtime
-		// that also terminate or unwind that we cannot analyze.
-		// However, they aren't stubs, so buildExits ends up getting
-		// called on them, so that's where we handle those special
-		// cases.
-		fn.NoReturn = AlwaysExits
-	}
-
 	if body == nil {
 		// External function.
 		if fn.Params == nil {
@@ -3141,8 +3138,6 @@ func (b *builder) buildFunction(fn *Function) {
 	}
 	optimizeBlocks(fn)
 	buildFakeExits(fn)
-	b.buildExits(fn)
-	b.addUnreachables(fn)
 	fn.finishBody()
 	b.blocksets = fn.blocksets
 	fn.functionBody = nil
@@ -3153,7 +3148,7 @@ func (b *builder) buildFunction(fn *Function) {
 func (b *builder) buildYieldFunc(fn *Function) {
 	// See builder.rangeFunc for detailed documentation on how fn is set up.
 	//
-	// In psuedo-Go this roughly builds:
+	// In pseudo-Go this roughly builds:
 	// func yield(_k tk, _v tv) bool {
 	//         if jump != READY { panic("yield function called after range loop exit") }
 	//     jump = BUSY
@@ -3167,8 +3162,8 @@ func (b *builder) buildYieldFunc(fn *Function) {
 	fn.sourceFn = fn.parent.sourceFn
 	fn.startBody()
 	params := fn.Signature.Params()
-	for i := 0; i < params.Len(); i++ {
-		fn.addParamVar(params.At(i), nil)
+	for v := range params.Variables() {
+		fn.addParamVar(v, nil)
 	}
 	fn.addResultVar(fn.Signature.Results().At(0), nil)
 	fn.exitBlock()
@@ -3186,6 +3181,7 @@ func (b *builder) buildYieldFunc(fn *Function) {
 		}
 	}
 	fn.targets = &targets{
+		tail:      fn.targets,
 		_continue: ycont,
 		// `break` statement targets fn.parent.targets._break.
 	}
@@ -3267,6 +3263,7 @@ func (b *builder) buildYieldFunc(fn *Function) {
 		// unreachable.
 		emitJump(fn, ycont, nil)
 	}
+	fn.targets = fn.targets.tail
 
 	// Clean up exits and promote any unresolved exits to fn.parent.
 	for _, e := range fn.exits {

@@ -6,20 +6,18 @@ GOPROXY ?=
 export GOPROXY
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.28
+ENVTEST_K8S_VERSION = 1.34.1
 
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 ENVTEST = go run ${PROJECT_DIR}/vendor/sigs.k8s.io/controller-runtime/tools/setup-envtest
-GOLANGCI_LINT = go run ${PROJECT_DIR}/vendor/github.com/golangci/golangci-lint/cmd/golangci-lint
+GOLANGCI_LINT = go run ${PROJECT_DIR}/vendor/github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
 .PHONY: all
 all: lint unit
 
-.PHONY: vendor
-vendor: ## Update vendor directory
-	go mod tidy
-	go mod vendor
-	go mod verify
+.PHONY: lint-fix
+lint-fix: ## Go lint and fix your code
+	( GOLANGCI_LINT_CACHE=$(PROJECT_DIR)/.cache $(GOLANGCI_LINT) run --fix --config ../.golangci.yaml --timeout 10m )
 
 .PHONY: lint
 lint: ## Go lint your code
@@ -27,7 +25,7 @@ lint: ## Go lint your code
 
 .PHONY: unit
 unit: ## Run unit tests
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path --bin-dir $(PROJECT_DIR)/bin)" ./hack/test.sh
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path --bin-dir $(PROJECT_DIR)/bin --index https://raw.githubusercontent.com/openshift/api/master/envtest-releases.yaml)" ./hack/test.sh
 
 .PHONY: help
 help:

@@ -132,7 +132,7 @@ func TestOperatorSetStatusProgressing(t *testing.T) {
 		err = optr.setStatusProgressing(context.TODO(), nil)
 		assert.NoErrorf(t, err, "Failed to set Progressing status on ClusterOperator")
 
-		err = optr.Client.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)
+		err = optr.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)
 		assert.NoErrorf(t, err, "Failed to fetch ClusterOperator")
 		var conditionAfterAnotherSync configv1.ClusterOperatorStatusCondition
 		for _, coCondition := range gotCO.Status.Conditions {
@@ -261,7 +261,7 @@ func TestOperatorSetStatusDegraded(t *testing.T) {
 		err = optr.setStatusDegraded(context.TODO(), tc.passErr, nil)
 		assert.NoErrorf(t, err, "Failed to set Degraded status on ClusterOperator")
 
-		err = optr.Client.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)
+		err = optr.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)
 		assert.NoErrorf(t, err, "Failed to fetch ClusterOperator")
 
 		var conditionAfterAnotherSync configv1.ClusterOperatorStatusCondition
@@ -408,7 +408,7 @@ func TestOperatorSetStatusAvailable(t *testing.T) {
 		err = optr.setStatusAvailable(context.TODO(), tc.overrides)
 		assert.NoErrorf(t, err, "Failed to set Available status on ClusterOperator")
 
-		err = optr.Client.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)
+		err = optr.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, gotCO)
 		assert.NoErrorf(t, err, "Failed to fetch ClusterOperator")
 
 		var conditionAfterAnotherSync configv1.ClusterOperatorStatusCondition

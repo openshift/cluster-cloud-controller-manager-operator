@@ -156,7 +156,7 @@ func emitArith(f *Function, op token.Token, x, y Value, t types.Type, source ast
 }
 
 // emitCompare emits to f code compute the boolean result of
-// comparison comparison 'x op y'.
+// comparison 'x op y'.
 func emitCompare(f *Function, op token.Token, x, y Value, source ast.Node) Value {
 	xt := x.Type().Underlying()
 	yt := y.Type().Underlying()
@@ -481,7 +481,7 @@ func emitTailCall(f *Function, call *Call, source ast.Node) {
 	case 1:
 		ret.Results = []Value{tuple}
 	default:
-		for i := 0; i < nr; i++ {
+		for i := range nr {
 			v := emitExtract(f, tuple, i, source)
 			// TODO(adonovan): in principle, this is required:
 			//   v = emitConv(f, o.Type, f.Signature.Results[i].Type)
@@ -496,6 +496,25 @@ func emitTailCall(f *Function, call *Call, source ast.Node) {
 	f.currentBlock = f.Exit
 	f.emit(&ret, source)
 	f.currentBlock = nil
+}
+
+func emitCall(fn *Function, call *Call, source ast.Node) Value {
+	res := fn.emit(call, source)
+
+	callee := call.Call.StaticCallee()
+	if callee != nil &&
+		callee.object != nil &&
+		fn.Prog.noReturn != nil &&
+		fn.Prog.noReturn(callee.object) {
+		// Call doesn't return normally. Either it doesn't return at all
+		// (infinitely blocked or exitting the process), or it unwinds the stack
+		// (panic, runtime.Goexit). In case it unwinds, jump to the exit block.
+		fn.emit(new(Jump), source)
+		addEdge(fn.currentBlock, fn.Exit)
+		fn.currentBlock = fn.newBasicBlock("unreachable")
+	}
+
+	return res
 }
 
 // emitImplicitSelections emits to f code to apply the sequence of

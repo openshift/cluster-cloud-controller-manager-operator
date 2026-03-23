@@ -24,7 +24,7 @@ var SCAnalyzer = lint.InitializeAnalyzer(&lint.Analyzer{
 		Text: `
 It is virtually never correct to delete system directories such as
 /tmp or the user's home directory. However, it can be fairly easy to
-do by mistake, for example by mistakingly using \'os.TempDir\' instead
+do by mistake, for example by mistakenly using \'os.TempDir\' instead
 of \'ioutil.TempDir\', or by forgetting to add a suffix to the result
 of \'os.UserHomeDir\'.
 
@@ -50,7 +50,7 @@ This check flags attempts at deleting the following directories:
 
 var Analyzer = SCAnalyzer.Analyzer
 
-func run(pass *analysis.Pass) (interface{}, error) {
+func run(pass *analysis.Pass) (any, error) {
 	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
 		for _, b := range fn.Blocks {
 			for _, instr := range b.Instrs {
