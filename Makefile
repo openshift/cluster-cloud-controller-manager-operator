@@ -37,7 +37,7 @@ unit:
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path --bin-dir $(PROJECT_DIR)/bin --index https://raw.githubusercontent.com/openshift/api/master/envtest-releases.yaml)" ./hack/ci-test.sh
 
 # Build operator binaries
-build: operator config-sync-controllers azure-config-credentials-injector
+build: operator config-sync-controllers azure-config-credentials-injector cloud-controller-manager-aws-tests-ext
 
 operator:
 	go build -o bin/cluster-controller-manager-operator cmd/cluster-cloud-controller-manager-operator/main.go
@@ -47,6 +47,14 @@ config-sync-controllers:
 
 azure-config-credentials-injector:
 	go build -o bin/azure-config-credentials-injector cmd/azure-config-credentials-injector/main.go
+
+cloud-controller-manager-aws-tests-ext:
+	cd cmd/cloud-controller-manager-aws-tests-ext && \
+	 GO111MODULE=on CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) GOPROXY=$(GOPROXY) go build \
+		-trimpath \
+		-ldflags="$(LDFLAGS)" \
+		-o=../../bin/cloud-controller-manager-aws-tests-ext .
+
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: verify manifests
