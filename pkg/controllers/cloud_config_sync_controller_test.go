@@ -32,6 +32,27 @@ const (
 	defaultAzureConfig = `{"cloud":"AzurePublicCloud","tenantId":"0000000-0000-0000-0000-000000000000","Entries":null,"subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 	defaultAWSConfig   = `[Global]
 `
+	defaultVSphereINIConfig = `[Global]
+server = vcenter.example.com
+port = 443
+insecure-flag = true
+datacenters = dc1
+
+[VirtualCenter "vcenter.example.com"]
+datacenters = dc1
+`
+	defaultVSphereYAMLConfig = `global:
+  server: vcenter.example.com
+  port: 443
+  insecureFlag: true
+  datacenters:
+  - dc1
+vcenter:
+  vcenter.example.com:
+    server: vcenter.example.com
+    datacenters:
+    - dc1
+`
 )
 
 func makeInfrastructureResource(platform configv1.PlatformType) *configv1.Infrastructure {
@@ -111,6 +132,20 @@ func makeManagedCloudConfig(platform configv1.PlatformType) *corev1.ConfigMap {
 		Name:      managedCloudConfigMapName,
 		Namespace: OpenshiftManagedConfigNamespace,
 	}, Data: map[string]string{"cloud.conf": defaultConfig}}
+}
+
+func makeManagedCloudConfigINI() *corev1.ConfigMap {
+	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+		Name:      managedCloudConfigMapName,
+		Namespace: OpenshiftManagedConfigNamespace,
+	}, Data: map[string]string{"cloud.conf": defaultVSphereINIConfig}}
+}
+
+func makeManagedCloudConfigYAML() *corev1.ConfigMap {
+	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+		Name:      managedCloudConfigMapName,
+		Namespace: OpenshiftManagedConfigNamespace,
+	}, Data: map[string]string{"cloud.conf": defaultVSphereYAMLConfig}}
 }
 
 var _ = Describe("isCloudConfigEqual reconciler method", func() {
@@ -594,5 +629,120 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		Expect(cl.Create(ctx, infraResource)).To(Succeed())
 		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 		Expect(err.Error()).Should(BeEquivalentTo("platformStatus is required"))
+	})
+})
+
+var _ = Describe("vSphere INI to YAML conversion", func() {
+	var reconciler *CloudConfigReconciler
+	ctx := context.Background()
+	targetNamespaceName := testManagedNamespace
+
+	BeforeEach(func() {
+		reconciler = &CloudConfigReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
+				ManagedNamespace: targetNamespaceName,
+			},
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+		}
+	})
+
+	AfterEach(func() {
+		deleteOptions := &client.DeleteOptions{
+			GracePeriodSeconds: ptr.To[int64](0),
+		}
+
+		allCMs := &corev1.ConfigMapList{}
+		Expect(cl.List(ctx, allCMs)).To(Succeed())
+		for _, cm := range allCMs.Items {
+			Expect(cl.Delete(ctx, cm.DeepCopy(), deleteOptions)).To(Succeed())
+			Eventually(func() error {
+				return cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})
+			}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+		}
+	})
+
+	Context("convertINIToYAMLIfNeeded method", func() {
+		It("should convert INI config to YAML for vSphere platform", func() {
+			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
+			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
+
+			cm := makeManagedCloudConfigINI()
+			Expect(cl.Create(ctx, cm)).To(Succeed())
+
+			// Re-fetch to get the latest version
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), cm)).To(Succeed())
+
+			converted, err := reconciler.convertINIToYAMLIfNeeded(ctx, cm, infraResource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(converted).To(BeTrue())
+
+			// Re-fetch to verify the update
+			updatedCM := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), updatedCM)).To(Succeed())
+
+			// Verify it's now in YAML format (should start with "global:")
+			Expect(updatedCM.Data["cloud.conf"]).To(HavePrefix("global:"))
+			Expect(updatedCM.Data["cloud.conf"]).To(ContainSubstring("vcenter:"))
+		})
+
+		It("should not convert YAML config for vSphere platform", func() {
+			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
+			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
+
+			cm := makeManagedCloudConfigYAML()
+			Expect(cl.Create(ctx, cm)).To(Succeed())
+
+			// Re-fetch to get the latest version
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), cm)).To(Succeed())
+
+			originalData := cm.Data["cloud.conf"]
+
+			converted, err := reconciler.convertINIToYAMLIfNeeded(ctx, cm, infraResource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(converted).To(BeFalse())
+
+			// Verify data is unchanged
+			Expect(cm.Data["cloud.conf"]).To(Equal(originalData))
+		})
+
+		It("should not convert config for non-vSphere platforms", func() {
+			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+			infraResource.Status = makeInfraStatus(configv1.AWSPlatformType)
+
+			cm := makeManagedCloudConfig(configv1.AWSPlatformType)
+			Expect(cl.Create(ctx, cm)).To(Succeed())
+
+			// Re-fetch to get the latest version
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), cm)).To(Succeed())
+
+			originalData := cm.Data["cloud.conf"]
+
+			converted, err := reconciler.convertINIToYAMLIfNeeded(ctx, cm, infraResource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(converted).To(BeFalse())
+
+			// Verify data is unchanged
+			Expect(cm.Data["cloud.conf"]).To(Equal(originalData))
+		})
+
+		It("should handle empty configmap gracefully", func() {
+			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
+			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
+
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      managedCloudConfigMapName,
+					Namespace: OpenshiftManagedConfigNamespace,
+				},
+			}
+			Expect(cl.Create(ctx, cm)).To(Succeed())
+
+			converted, err := reconciler.convertINIToYAMLIfNeeded(ctx, cm, infraResource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(converted).To(BeFalse())
+		})
 	})
 })

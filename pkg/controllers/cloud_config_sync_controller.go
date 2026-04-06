@@ -19,6 +19,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
+	vsphere_cloud_config "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere/vsphere_cloud_config"
 )
 
 const (
@@ -99,6 +100,27 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err == nil {
 			managedConfigFound = true
+
+			// For vSphere, check if the config is in INI format and convert to YAML if needed
+			converted, err := r.convertINIToYAMLIfNeeded(ctx, sourceCM, infra)
+			if err != nil {
+				klog.Errorf("failed to convert INI config to YAML: %v", err)
+				if err := r.setDegradedCondition(ctx); err != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+				}
+				return ctrl.Result{}, err
+			}
+
+			// If we converted the config, re-fetch it to get the updated version
+			if converted {
+				if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err != nil {
+					klog.Errorf("unable to re-fetch updated managed cloud-config")
+					if err := r.setDegradedCondition(ctx); err != nil {
+						return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+					}
+					return ctrl.Result{}, err
+				}
+			}
 		} else if errors.IsNotFound(err) {
 			klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
 		} else if err != nil {
@@ -348,4 +370,58 @@ func (r *CloudConfigReconciler) setDegradedCondition(ctx context.Context) error 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.Info("Cloud Config Controller is degraded")
 	return r.syncStatus(ctx, co, conds, nil)
+}
+
+// convertINIToYAMLIfNeeded checks if the vSphere cloud config in the managed configmap is in INI format
+// and converts it to YAML format if needed. It updates the configmap in-place.
+// Returns true if the configmap was updated, false otherwise.
+func (r *CloudConfigReconciler) convertINIToYAMLIfNeeded(ctx context.Context, cm *corev1.ConfigMap, infra *configv1.Infrastructure) (bool, error) {
+	// Only process vSphere platform
+	if infra.Status.PlatformStatus == nil || infra.Status.PlatformStatus.Type != configv1.VSpherePlatformType {
+		return false, nil
+	}
+
+	// Check if configmap has data
+	if cm.Data == nil || len(cm.Data) == 0 {
+		klog.V(3).Info("ConfigMap has no data, skipping INI conversion")
+		return false, nil
+	}
+
+	// Check the cloud.conf key
+	cloudConf, ok := cm.Data[defaultConfigKey]
+	if !ok || cloudConf == "" {
+		klog.V(3).Infof("ConfigMap does not have %s key or it's empty, skipping INI conversion", defaultConfigKey)
+		return false, nil
+	}
+
+	// Check if it's in INI format
+	if !vsphere_cloud_config.IsINIFormat([]byte(cloudConf)) {
+		klog.V(3).Info("Cloud config is already in YAML format, no conversion needed")
+		return false, nil
+	}
+
+	klog.Info("Detected INI format vSphere cloud config, converting to YAML")
+
+	// Parse the INI config and convert to YAML
+	cfg, err := vsphere_cloud_config.ReadConfig([]byte(cloudConf))
+	if err != nil {
+		return false, fmt.Errorf("failed to parse INI cloud config: %w", err)
+	}
+
+	// Marshal to YAML
+	yamlConfig, err := vsphere_cloud_config.MarshalConfig(cfg)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal cloud config to YAML: %w", err)
+	}
+
+	// Update the configmap data
+	cm.Data[defaultConfigKey] = yamlConfig
+
+	// Update the configmap in the cluster
+	if err := r.Update(ctx, cm); err != nil {
+		return false, fmt.Errorf("failed to update configmap with YAML config: %w", err)
+	}
+
+	klog.Info("Successfully converted vSphere cloud config from INI to YAML format")
+	return true, nil
 }
