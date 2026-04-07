@@ -632,7 +632,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 	})
 })
 
-var _ = Describe("vSphere managed config transformation", func() {
+var _ = Describe("vSphere managed config sync", func() {
 	var reconciler *CloudConfigReconciler
 	ctx := context.Background()
 	targetNamespaceName := testManagedNamespace
@@ -664,103 +664,133 @@ var _ = Describe("vSphere managed config transformation", func() {
 		}
 	})
 
-	Context("convertAndUpdateManagedConfig method", func() {
-		It("should transform INI config to YAML with transformations for vSphere platform", func() {
-			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
-			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
-			networkResource := makeNetworkResource()
+	Context("syncManagedCloudConfig method", func() {
+		It("should create managed cloud config if it doesn't exist", func() {
+			sourceCM := &corev1.ConfigMap{
+				Data: map[string]string{
+					"cloud.conf": "global:\n  server: test\n",
+				},
+			}
 
-			cm := makeManagedCloudConfigINI()
-			Expect(cl.Create(ctx, cm)).To(Succeed())
-
-			// Re-fetch to get the latest version
-			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), cm)).To(Succeed())
-
-			features, err := reconciler.FeatureGateAccess.CurrentFeatureGates()
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
 			Expect(err).NotTo(HaveOccurred())
 
-			converted, err := reconciler.convertAndUpdateManagedConfig(ctx, cm, infraResource, networkResource, features)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(converted).To(BeTrue())
-
-			// Re-fetch to verify the update
-			updatedCM := &corev1.ConfigMap{}
-			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), updatedCM)).To(Succeed())
-
-			// Verify it's now in YAML format (should start with "global:")
-			Expect(updatedCM.Data["cloud.conf"]).To(HavePrefix("global:"))
-			// Transformer adds vcenter section
-			Expect(updatedCM.Data["cloud.conf"]).To(ContainSubstring("vcenter:"))
+			// Verify the managed CM was created
+			managedCM := &corev1.ConfigMap{}
+			managedKey := client.ObjectKey{
+				Name:      managedCloudConfigMapName,
+				Namespace: OpenshiftManagedConfigNamespace,
+			}
+			Expect(cl.Get(ctx, managedKey, managedCM)).To(Succeed())
+			Expect(managedCM.Data["cloud.conf"]).To(Equal("global:\n  server: test\n"))
 		})
 
-		It("should not update YAML config for vSphere platform (future enhancement)", func() {
-			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
-			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
-			networkResource := makeNetworkResource()
-
-			cm := makeManagedCloudConfigYAML()
-			Expect(cl.Create(ctx, cm)).To(Succeed())
-
-			// Re-fetch to get the latest version
-			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), cm)).To(Succeed())
-
-			originalData := cm.Data["cloud.conf"]
-
-			features, err := reconciler.FeatureGateAccess.CurrentFeatureGates()
-			Expect(err).NotTo(HaveOccurred())
-
-			// Currently only updates INI configs; future enhancement will update YAML too
-			converted, err := reconciler.convertAndUpdateManagedConfig(ctx, cm, infraResource, networkResource, features)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(converted).To(BeFalse())
-
-			// Verify data is unchanged
-			Expect(cm.Data["cloud.conf"]).To(Equal(originalData))
-		})
-
-		It("should not transform config for non-vSphere platforms", func() {
-			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
-			infraResource.Status = makeInfraStatus(configv1.AWSPlatformType)
-			networkResource := makeNetworkResource()
-
-			cm := makeManagedCloudConfig(configv1.AWSPlatformType)
-			Expect(cl.Create(ctx, cm)).To(Succeed())
-
-			// Re-fetch to get the latest version
-			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), cm)).To(Succeed())
-
-			originalData := cm.Data["cloud.conf"]
-
-			features, err := reconciler.FeatureGateAccess.CurrentFeatureGates()
-			Expect(err).NotTo(HaveOccurred())
-
-			converted, err := reconciler.convertAndUpdateManagedConfig(ctx, cm, infraResource, networkResource, features)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(converted).To(BeFalse())
-
-			// Verify data is unchanged
-			Expect(cm.Data["cloud.conf"]).To(Equal(originalData))
-		})
-
-		It("should handle empty configmap gracefully", func() {
-			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
-			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
-			networkResource := makeNetworkResource()
-
-			cm := &corev1.ConfigMap{
+		It("should update managed cloud config if it exists with different data", func() {
+			// Create initial managed CM
+			initialCM := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      managedCloudConfigMapName,
 					Namespace: OpenshiftManagedConfigNamespace,
 				},
+				Data: map[string]string{
+					"cloud.conf": "old config",
+				},
 			}
-			Expect(cl.Create(ctx, cm)).To(Succeed())
+			Expect(cl.Create(ctx, initialCM)).To(Succeed())
 
-			features, err := reconciler.FeatureGateAccess.CurrentFeatureGates()
+			// Update with new source
+			sourceCM := &corev1.ConfigMap{
+				Data: map[string]string{
+					"cloud.conf": "new config",
+				},
+			}
+
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
 			Expect(err).NotTo(HaveOccurred())
 
-			converted, err := reconciler.convertAndUpdateManagedConfig(ctx, cm, infraResource, networkResource, features)
+			// Verify the managed CM was updated
+			managedCM := &corev1.ConfigMap{}
+			managedKey := client.ObjectKey{
+				Name:      managedCloudConfigMapName,
+				Namespace: OpenshiftManagedConfigNamespace,
+			}
+			Expect(cl.Get(ctx, managedKey, managedCM)).To(Succeed())
+			Expect(managedCM.Data["cloud.conf"]).To(Equal("new config"))
+		})
+
+		It("should not update managed cloud config if data is identical", func() {
+			// Create managed CM
+			initialCM := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      managedCloudConfigMapName,
+					Namespace: OpenshiftManagedConfigNamespace,
+				},
+				Data: map[string]string{
+					"cloud.conf": "same config",
+				},
+			}
+			Expect(cl.Create(ctx, initialCM)).To(Succeed())
+
+			// Get the resource version
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(initialCM), initialCM)).To(Succeed())
+			originalResourceVersion := initialCM.ResourceVersion
+
+			// Try to sync with identical data
+			sourceCM := &corev1.ConfigMap{
+				Data: map[string]string{
+					"cloud.conf": "same config",
+				},
+			}
+
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(converted).To(BeFalse())
+
+			// Verify the resource version didn't change (no update)
+			updatedCM := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(initialCM), updatedCM)).To(Succeed())
+			Expect(updatedCM.ResourceVersion).To(Equal(originalResourceVersion))
+		})
+
+		It("should return error if source configmap is nil", func() {
+			err := reconciler.syncManagedCloudConfig(ctx, nil)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("source configmap is nil"))
+		})
+
+		It("should return error if source configmap has no data", func() {
+			sourceCM := &corev1.ConfigMap{}
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("has no data"))
+		})
+
+		It("should return error if source configmap missing cloud.conf key", func() {
+			sourceCM := &corev1.ConfigMap{
+				Data: map[string]string{
+					"wrong-key": "some data",
+				},
+			}
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("missing required key"))
+		})
+	})
+
+	Context("shouldManageManagedConfigMap function", func() {
+		It("should return true for vSphere", func() {
+			Expect(shouldManageManagedConfigMap(configv1.VSpherePlatformType)).To(BeTrue())
+		})
+
+		It("should return false for AWS (not yet migrated)", func() {
+			Expect(shouldManageManagedConfigMap(configv1.AWSPlatformType)).To(BeFalse())
+		})
+
+		It("should return false for Azure (not yet migrated)", func() {
+			Expect(shouldManageManagedConfigMap(configv1.AzurePlatformType)).To(BeFalse())
+		})
+
+		It("should return false for GCP", func() {
+			Expect(shouldManageManagedConfigMap(configv1.GCPPlatformType)).To(BeFalse())
 		})
 	})
 })

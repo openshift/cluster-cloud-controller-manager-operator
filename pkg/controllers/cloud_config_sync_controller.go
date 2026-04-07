@@ -19,7 +19,6 @@ import (
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
-	vsphere_cloud_config "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere/vsphere_cloud_config"
 )
 
 const (
@@ -31,6 +30,23 @@ const (
 	cloudConfigControllerAvailableCondition = "CloudConfigControllerAvailable"
 	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
 )
+
+// shouldManageManagedConfigMap returns true if CCCMO should manage the
+// openshift-config-managed/kube-cloud-config ConfigMap for the given platform.
+// This indicates ownership has been migrated from CCO to CCCMO.
+func shouldManageManagedConfigMap(platformType configv1.PlatformType) bool {
+	switch platformType {
+	case configv1.VSpherePlatformType:
+		return true
+	// Future: Add other platforms as they migrate from CCO
+	// case configv1.AWSPlatformType:
+	//     return true
+	// case configv1.AzurePlatformType:
+	//     return true
+	default:
+		return false
+	}
+}
 
 type CloudConfigReconciler struct {
 	ClusterOperatorStatusClient
@@ -100,9 +116,9 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	platformType := infra.Status.PlatformStatus.Type
 	sourceCM := &corev1.ConfigMap{}
 	managedConfigFound := false
-	managedConfigTransformed := false
 
 	// NOTE: We know that there is some transformation logic in place in the
 	// Cluster Config Operator (CCO) for AWS and Azure. We have not implemented
@@ -119,30 +135,6 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err == nil {
 			managedConfigFound = true
-
-			// For vSphere, apply transformer to update managed config with YAML format
-			// and Infrastructure-derived values (vcenters, labels, networking)
-			converted, err := r.convertAndUpdateManagedConfig(ctx, sourceCM, infra, network, features)
-			if err != nil {
-				klog.Errorf("failed to update managed cloud config: %v", err)
-				if err := r.setDegradedCondition(ctx); err != nil {
-					return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-				}
-				return ctrl.Result{}, err
-			}
-
-			managedConfigTransformed = converted
-
-			// If we updated the config, re-fetch it to get the updated version
-			if converted {
-				if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err != nil {
-					klog.Errorf("unable to re-fetch updated managed cloud-config")
-					if err := r.setDegradedCondition(ctx); err != nil {
-						return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-					}
-					return ctrl.Result{}, err
-				}
-			}
 		} else if errors.IsNotFound(err) {
 			klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
 		} else if err != nil {
@@ -154,20 +146,28 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	// Only look for an unmanaged config if the managed one isn't found and a name was specified.
+	// Fallback: Look for config in openshift-config namespace if not found in managed namespace
+	// For platforms we manage (e.g., vSphere), we'll use this as the source to populate openshift-config-managed
 	if !managedConfigFound && infra.Spec.CloudConfig.Name != "" {
 		openshiftUnmanagedCMKey := client.ObjectKey{
 			Name:      infra.Spec.CloudConfig.Name,
 			Namespace: OpenshiftConfigNamespace,
 		}
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); errors.IsNotFound(err) {
-			klog.Warningf("managed cloud-config is not found, falling back to default cloud config.")
+			klog.Warningf("cloud-config not found in either openshift-config-managed or openshift-config namespace")
+			// For platforms we manage, create an empty source that will be populated by the transformer
+			if shouldManageManagedConfigMap(platformType) {
+				klog.Infof("Initializing empty config for platform %s", platformType)
+				sourceCM.Data = map[string]string{defaultConfigKey: ""}
+			}
 		} else if err != nil {
 			klog.Errorf("unable to get cloud-config for sync: %v", err)
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 			}
 			return ctrl.Result{}, err
+		} else {
+			klog.V(3).Infof("Found config in openshift-config namespace for platform %s", platformType)
 		}
 	}
 
@@ -180,8 +180,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Apply transformer if needed
-	// For vSphere, skip if we already transformed the managed config
-	if cloudConfigTransformerFn != nil && !managedConfigTransformed {
+	if cloudConfigTransformerFn != nil {
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
 		// we're not expecting users to put their data in the former.
@@ -193,6 +192,18 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 		sourceCM.Data[defaultConfigKey] = output
+	}
+
+	// For platforms managed by CCCMO, update openshift-config-managed/kube-cloud-config
+	// with the transformed config so other operators can read from a consistent location
+	if shouldManageManagedConfigMap(platformType) {
+		if err := r.syncManagedCloudConfig(ctx, sourceCM); err != nil {
+			klog.Errorf("failed to sync managed cloud config: %v", err)
+			if err := r.setDegradedCondition(ctx); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+			}
+			return ctrl.Result{}, err
+		}
 	}
 
 	targetCM := &corev1.ConfigMap{}
@@ -316,6 +327,73 @@ func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source 
 	return r.Update(ctx, target)
 }
 
+// syncManagedCloudConfig updates openshift-config-managed/kube-cloud-config with the
+// transformed cloud config. This makes the transformed config available to other operators
+// while maintaining CCCMO as the owner of this ConfigMap (migrated from CCO).
+//
+// This function handles the migration of ownership from CCO to CCCMO by:
+//   - Creating the ConfigMap if it doesn't exist (initial migration)
+//   - Updating it with transformed config from user source (openshift-config)
+//   - Making it the single source of truth for other operators
+func (r *CloudConfigReconciler) syncManagedCloudConfig(ctx context.Context, source *corev1.ConfigMap) error {
+	// Validate source has data
+	if source == nil || source.Data == nil {
+		return fmt.Errorf("source configmap is nil or has no data")
+	}
+
+	if _, ok := source.Data[defaultConfigKey]; !ok {
+		return fmt.Errorf("source configmap missing required key: %s", defaultConfigKey)
+	}
+
+	managedCM := &corev1.ConfigMap{}
+	managedCMKey := client.ObjectKey{
+		Name:      managedCloudConfigMapName,
+		Namespace: OpenshiftManagedConfigNamespace,
+	}
+
+	// Check if managed configmap exists
+	err := r.Get(ctx, managedCMKey, managedCM)
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to get managed cloud config: %w", err)
+	}
+
+	managedConfigExists := err == nil
+
+	// Check if update is needed (avoid unnecessary writes)
+	if managedConfigExists {
+		if reflect.DeepEqual(managedCM.Data, source.Data) &&
+			reflect.DeepEqual(managedCM.BinaryData, source.BinaryData) &&
+			managedCM.Immutable == source.Immutable {
+			klog.V(3).Info("Managed cloud config is already up to date")
+			return nil
+		}
+	}
+
+	// Prepare the managed configmap
+	managedCM.SetName(managedCloudConfigMapName)
+	managedCM.SetNamespace(OpenshiftManagedConfigNamespace)
+	managedCM.Data = source.Data
+	managedCM.BinaryData = source.BinaryData
+	managedCM.Immutable = source.Immutable
+
+	// Create or update
+	if !managedConfigExists {
+		klog.Infof("Creating %s/%s - taking ownership from CCO", OpenshiftManagedConfigNamespace, managedCloudConfigMapName)
+		if err := r.Create(ctx, managedCM); err != nil {
+			return fmt.Errorf("failed to create managed cloud config: %w", err)
+		}
+		klog.Infof("Successfully created %s/%s", OpenshiftManagedConfigNamespace, managedCloudConfigMapName)
+		return nil
+	}
+
+	klog.Infof("Updating %s/%s with transformed config", OpenshiftManagedConfigNamespace, managedCloudConfigMapName)
+	if err := r.Update(ctx, managedCM); err != nil {
+		return fmt.Errorf("failed to update managed cloud config: %w", err)
+	}
+	klog.V(3).Info("Successfully updated managed cloud config")
+	return nil
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *CloudConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	build := ctrl.NewControllerManagedBy(mgr).
@@ -376,94 +454,4 @@ func (r *CloudConfigReconciler) setDegradedCondition(ctx context.Context) error 
 	co.Status.Versions = []configv1.OperandVersion{{Name: operatorVersionKey, Version: r.ReleaseVersion}}
 	klog.Info("Cloud Config Controller is degraded")
 	return r.syncStatus(ctx, co, conds, nil)
-}
-
-// convertAndUpdateManagedConfig checks if the vSphere cloud config in the managed configmap needs to be
-// updated and applies the CloudConfigTransformer to convert INI to YAML and add Infrastructure-derived values.
-// It updates the configmap in-place.
-//
-// This function applies the CloudConfigTransformer to the managed config to:
-//   - Convert legacy INI format to YAML
-//   - Add vCenter configurations from Infrastructure.Spec.PlatformSpec.VSphere
-//   - Add node networking parameters (IP families, subnet exclusions)
-//   - Add zone/region labels for multi-zone deployments
-//
-// Architecture (ownership migrated from CCO to CCCMO):
-//   - Source CM (openshift-config-managed/kube-cloud-config): System-managed config in YAML format
-//   - Readable by other operators
-//   - Updated by this function with transformer output
-//   - Contains Infrastructure-derived values (vcenters, labels, networking)
-//   - Target CM (openshift-cloud-controller-manager/cloud-conf): CCM-consumable config
-//   - Used by CCM pods
-//   - Created by syncing source CM (transformer already applied)
-//
-// Note: openshift-config-managed/kube-cloud-config is NOT user-editable after cluster installation.
-// While users provide initial config during install, post-install it's managed entirely by CCCMO.
-//
-// Future enhancements will add additional transformations beyond what's currently in CloudConfigTransformer.
-//
-// Returns true if the configmap was updated, false otherwise.
-func (r *CloudConfigReconciler) convertAndUpdateManagedConfig(ctx context.Context, cm *corev1.ConfigMap, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (bool, error) {
-	// Only process vSphere platform
-	if infra.Status.PlatformStatus == nil || infra.Status.PlatformStatus.Type != configv1.VSpherePlatformType {
-		return false, nil
-	}
-
-	// Check if configmap has data
-	if cm.Data == nil || len(cm.Data) == 0 {
-		klog.V(3).Info("ConfigMap has no data, skipping transformation")
-		return false, nil
-	}
-
-	// Check the cloud.conf key
-	cloudConf, ok := cm.Data[defaultConfigKey]
-	if !ok || cloudConf == "" {
-		klog.V(3).Infof("ConfigMap does not have %s key or it's empty, skipping transformation", defaultConfigKey)
-		return false, nil
-	}
-
-	// Determine if update is needed
-	isINI := vsphere_cloud_config.IsINIFormat([]byte(cloudConf))
-
-	// For now, we only update if it's in INI format
-	// Future: May also update YAML configs to sync with Infrastructure CR changes
-	if !isINI {
-		klog.V(3).Info("Cloud config is already in YAML format, no update needed")
-		return false, nil
-	}
-
-	klog.Info("Detected INI format vSphere cloud config, converting to YAML and applying transformations")
-
-	// Get the cloud config transformer for vSphere
-	transformer, _, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
-	if err != nil {
-		return false, fmt.Errorf("failed to get cloud config transformer: %w", err)
-	}
-
-	if transformer == nil {
-		return false, fmt.Errorf("no transformer available for vSphere platform")
-	}
-
-	// Apply transformer (converts INI→YAML + adds Infrastructure-derived values)
-	transformedConfig, err := transformer(cloudConf, infra, network, features)
-	if err != nil {
-		return false, fmt.Errorf("failed to transform cloud config: %w", err)
-	}
-
-	// Check if the config actually changed
-	if transformedConfig == cloudConf {
-		klog.V(3).Info("Transformed config is identical to original, no update needed")
-		return false, nil
-	}
-
-	// Update the configmap data
-	cm.Data[defaultConfigKey] = transformedConfig
-
-	// Update the configmap in the cluster
-	if err := r.Update(ctx, cm); err != nil {
-		return false, fmt.Errorf("failed to update configmap with transformed config: %w", err)
-	}
-
-	klog.Info("Successfully updated vSphere cloud config in managed configmap")
-	return true, nil
 }
