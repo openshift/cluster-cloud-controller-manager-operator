@@ -632,7 +632,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 	})
 })
 
-var _ = Describe("vSphere INI to YAML conversion", func() {
+var _ = Describe("vSphere managed config transformation", func() {
 	var reconciler *CloudConfigReconciler
 	ctx := context.Background()
 	targetNamespaceName := testManagedNamespace
@@ -664,10 +664,11 @@ var _ = Describe("vSphere INI to YAML conversion", func() {
 		}
 	})
 
-	Context("convertINIToYAMLIfNeeded method", func() {
-		It("should convert INI config to YAML for vSphere platform", func() {
+	Context("convertAndUpdateManagedConfig method", func() {
+		It("should transform INI config to YAML with transformations for vSphere platform", func() {
 			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
 			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
+			networkResource := makeNetworkResource()
 
 			cm := makeManagedCloudConfigINI()
 			Expect(cl.Create(ctx, cm)).To(Succeed())
@@ -675,7 +676,10 @@ var _ = Describe("vSphere INI to YAML conversion", func() {
 			// Re-fetch to get the latest version
 			Expect(cl.Get(ctx, client.ObjectKeyFromObject(cm), cm)).To(Succeed())
 
-			converted, err := reconciler.convertINIToYAMLIfNeeded(ctx, cm, infraResource)
+			features, err := reconciler.FeatureGateAccess.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			converted, err := reconciler.convertAndUpdateManagedConfig(ctx, cm, infraResource, networkResource, features)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(converted).To(BeTrue())
 
@@ -685,12 +689,14 @@ var _ = Describe("vSphere INI to YAML conversion", func() {
 
 			// Verify it's now in YAML format (should start with "global:")
 			Expect(updatedCM.Data["cloud.conf"]).To(HavePrefix("global:"))
+			// Transformer adds vcenter section
 			Expect(updatedCM.Data["cloud.conf"]).To(ContainSubstring("vcenter:"))
 		})
 
-		It("should not convert YAML config for vSphere platform", func() {
+		It("should not update YAML config for vSphere platform (future enhancement)", func() {
 			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
 			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
+			networkResource := makeNetworkResource()
 
 			cm := makeManagedCloudConfigYAML()
 			Expect(cl.Create(ctx, cm)).To(Succeed())
@@ -700,7 +706,11 @@ var _ = Describe("vSphere INI to YAML conversion", func() {
 
 			originalData := cm.Data["cloud.conf"]
 
-			converted, err := reconciler.convertINIToYAMLIfNeeded(ctx, cm, infraResource)
+			features, err := reconciler.FeatureGateAccess.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			// Currently only updates INI configs; future enhancement will update YAML too
+			converted, err := reconciler.convertAndUpdateManagedConfig(ctx, cm, infraResource, networkResource, features)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(converted).To(BeFalse())
 
@@ -708,9 +718,10 @@ var _ = Describe("vSphere INI to YAML conversion", func() {
 			Expect(cm.Data["cloud.conf"]).To(Equal(originalData))
 		})
 
-		It("should not convert config for non-vSphere platforms", func() {
+		It("should not transform config for non-vSphere platforms", func() {
 			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
 			infraResource.Status = makeInfraStatus(configv1.AWSPlatformType)
+			networkResource := makeNetworkResource()
 
 			cm := makeManagedCloudConfig(configv1.AWSPlatformType)
 			Expect(cl.Create(ctx, cm)).To(Succeed())
@@ -720,7 +731,10 @@ var _ = Describe("vSphere INI to YAML conversion", func() {
 
 			originalData := cm.Data["cloud.conf"]
 
-			converted, err := reconciler.convertINIToYAMLIfNeeded(ctx, cm, infraResource)
+			features, err := reconciler.FeatureGateAccess.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			converted, err := reconciler.convertAndUpdateManagedConfig(ctx, cm, infraResource, networkResource, features)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(converted).To(BeFalse())
 
@@ -731,6 +745,7 @@ var _ = Describe("vSphere INI to YAML conversion", func() {
 		It("should handle empty configmap gracefully", func() {
 			infraResource := makeInfrastructureResource(configv1.VSpherePlatformType)
 			infraResource.Status = makeInfraStatus(configv1.VSpherePlatformType)
+			networkResource := makeNetworkResource()
 
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
@@ -740,7 +755,10 @@ var _ = Describe("vSphere INI to YAML conversion", func() {
 			}
 			Expect(cl.Create(ctx, cm)).To(Succeed())
 
-			converted, err := reconciler.convertINIToYAMLIfNeeded(ctx, cm, infraResource)
+			features, err := reconciler.FeatureGateAccess.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			converted, err := reconciler.convertAndUpdateManagedConfig(ctx, cm, infraResource, networkResource, features)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(converted).To(BeFalse())
 		})

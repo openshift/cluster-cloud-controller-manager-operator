@@ -73,6 +73,24 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	// Check if FeatureGateAccess is configured (needed early for transformer)
+	if r.FeatureGateAccess == nil {
+		klog.Errorf("FeatureGateAccess is not configured")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, fmt.Errorf("FeatureGateAccess is not configured")
+	}
+
+	features, err := r.FeatureGateAccess.CurrentFeatureGates()
+	if err != nil {
+		klog.Errorf("unable to get feature gates: %v", err)
+		if errD := r.setDegradedCondition(ctx); errD != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", errD)
+		}
+		return ctrl.Result{}, err
+	}
+
 	cloudConfigTransformerFn, needsManagedConfigLookup, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
 	if err != nil {
 		klog.Errorf("unable to get cloud config transformer function; unsupported platform")
@@ -84,6 +102,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	sourceCM := &corev1.ConfigMap{}
 	managedConfigFound := false
+	managedConfigTransformed := false
 
 	// NOTE: We know that there is some transformation logic in place in the
 	// Cluster Config Operator (CCO) for AWS and Azure. We have not implemented
@@ -101,17 +120,20 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err == nil {
 			managedConfigFound = true
 
-			// For vSphere, check if the config is in INI format and convert to YAML if needed
-			converted, err := r.convertINIToYAMLIfNeeded(ctx, sourceCM, infra)
+			// For vSphere, apply transformer to update managed config with YAML format
+			// and Infrastructure-derived values (vcenters, labels, networking)
+			converted, err := r.convertAndUpdateManagedConfig(ctx, sourceCM, infra, network, features)
 			if err != nil {
-				klog.Errorf("failed to convert INI config to YAML: %v", err)
+				klog.Errorf("failed to update managed cloud config: %v", err)
 				if err := r.setDegradedCondition(ctx); err != nil {
 					return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 				}
 				return ctrl.Result{}, err
 			}
 
-			// If we converted the config, re-fetch it to get the updated version
+			managedConfigTransformed = converted
+
+			// If we updated the config, re-fetch it to get the updated version
 			if converted {
 				if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err != nil {
 					klog.Errorf("unable to re-fetch updated managed cloud-config")
@@ -157,25 +179,9 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Check if FeatureGateAccess is configured
-	if r.FeatureGateAccess == nil {
-		klog.Errorf("FeatureGateAccess is not configured")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, fmt.Errorf("FeatureGateAccess is not configured")
-	}
-
-	features, err := r.FeatureGateAccess.CurrentFeatureGates()
-	if err != nil {
-		klog.Errorf("unable to get feature gates: %v", err)
-		if errD := r.setDegradedCondition(ctx); errD != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", errD)
-		}
-		return ctrl.Result{}, err
-	}
-
-	if cloudConfigTransformerFn != nil {
+	// Apply transformer if needed
+	// For vSphere, skip if we already transformed the managed config
+	if cloudConfigTransformerFn != nil && !managedConfigTransformed {
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
 		// we're not expecting users to put their data in the former.
@@ -372,10 +378,32 @@ func (r *CloudConfigReconciler) setDegradedCondition(ctx context.Context) error 
 	return r.syncStatus(ctx, co, conds, nil)
 }
 
-// convertINIToYAMLIfNeeded checks if the vSphere cloud config in the managed configmap is in INI format
-// and converts it to YAML format if needed. It updates the configmap in-place.
+// convertAndUpdateManagedConfig checks if the vSphere cloud config in the managed configmap needs to be
+// updated and applies the CloudConfigTransformer to convert INI to YAML and add Infrastructure-derived values.
+// It updates the configmap in-place.
+//
+// This function applies the CloudConfigTransformer to the managed config to:
+//   - Convert legacy INI format to YAML
+//   - Add vCenter configurations from Infrastructure.Spec.PlatformSpec.VSphere
+//   - Add node networking parameters (IP families, subnet exclusions)
+//   - Add zone/region labels for multi-zone deployments
+//
+// Architecture (ownership migrated from CCO to CCCMO):
+//   - Source CM (openshift-config-managed/kube-cloud-config): System-managed config in YAML format
+//   - Readable by other operators
+//   - Updated by this function with transformer output
+//   - Contains Infrastructure-derived values (vcenters, labels, networking)
+//   - Target CM (openshift-cloud-controller-manager/cloud-conf): CCM-consumable config
+//   - Used by CCM pods
+//   - Created by syncing source CM (transformer already applied)
+//
+// Note: openshift-config-managed/kube-cloud-config is NOT user-editable after cluster installation.
+// While users provide initial config during install, post-install it's managed entirely by CCCMO.
+//
+// Future enhancements will add additional transformations beyond what's currently in CloudConfigTransformer.
+//
 // Returns true if the configmap was updated, false otherwise.
-func (r *CloudConfigReconciler) convertINIToYAMLIfNeeded(ctx context.Context, cm *corev1.ConfigMap, infra *configv1.Infrastructure) (bool, error) {
+func (r *CloudConfigReconciler) convertAndUpdateManagedConfig(ctx context.Context, cm *corev1.ConfigMap, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (bool, error) {
 	// Only process vSphere platform
 	if infra.Status.PlatformStatus == nil || infra.Status.PlatformStatus.Type != configv1.VSpherePlatformType {
 		return false, nil
@@ -383,45 +411,59 @@ func (r *CloudConfigReconciler) convertINIToYAMLIfNeeded(ctx context.Context, cm
 
 	// Check if configmap has data
 	if cm.Data == nil || len(cm.Data) == 0 {
-		klog.V(3).Info("ConfigMap has no data, skipping INI conversion")
+		klog.V(3).Info("ConfigMap has no data, skipping transformation")
 		return false, nil
 	}
 
 	// Check the cloud.conf key
 	cloudConf, ok := cm.Data[defaultConfigKey]
 	if !ok || cloudConf == "" {
-		klog.V(3).Infof("ConfigMap does not have %s key or it's empty, skipping INI conversion", defaultConfigKey)
+		klog.V(3).Infof("ConfigMap does not have %s key or it's empty, skipping transformation", defaultConfigKey)
 		return false, nil
 	}
 
-	// Check if it's in INI format
-	if !vsphere_cloud_config.IsINIFormat([]byte(cloudConf)) {
-		klog.V(3).Info("Cloud config is already in YAML format, no conversion needed")
+	// Determine if update is needed
+	isINI := vsphere_cloud_config.IsINIFormat([]byte(cloudConf))
+
+	// For now, we only update if it's in INI format
+	// Future: May also update YAML configs to sync with Infrastructure CR changes
+	if !isINI {
+		klog.V(3).Info("Cloud config is already in YAML format, no update needed")
 		return false, nil
 	}
 
-	klog.Info("Detected INI format vSphere cloud config, converting to YAML")
+	klog.Info("Detected INI format vSphere cloud config, converting to YAML and applying transformations")
 
-	// Parse the INI config and convert to YAML
-	cfg, err := vsphere_cloud_config.ReadConfig([]byte(cloudConf))
+	// Get the cloud config transformer for vSphere
+	transformer, _, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
 	if err != nil {
-		return false, fmt.Errorf("failed to parse INI cloud config: %w", err)
+		return false, fmt.Errorf("failed to get cloud config transformer: %w", err)
 	}
 
-	// Marshal to YAML
-	yamlConfig, err := vsphere_cloud_config.MarshalConfig(cfg)
+	if transformer == nil {
+		return false, fmt.Errorf("no transformer available for vSphere platform")
+	}
+
+	// Apply transformer (converts INI→YAML + adds Infrastructure-derived values)
+	transformedConfig, err := transformer(cloudConf, infra, network, features)
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal cloud config to YAML: %w", err)
+		return false, fmt.Errorf("failed to transform cloud config: %w", err)
+	}
+
+	// Check if the config actually changed
+	if transformedConfig == cloudConf {
+		klog.V(3).Info("Transformed config is identical to original, no update needed")
+		return false, nil
 	}
 
 	// Update the configmap data
-	cm.Data[defaultConfigKey] = yamlConfig
+	cm.Data[defaultConfigKey] = transformedConfig
 
 	// Update the configmap in the cluster
 	if err := r.Update(ctx, cm); err != nil {
-		return false, fmt.Errorf("failed to update configmap with YAML config: %w", err)
+		return false, fmt.Errorf("failed to update configmap with transformed config: %w", err)
 	}
 
-	klog.Info("Successfully converted vSphere cloud config from INI to YAML format")
+	klog.Info("Successfully updated vSphere cloud config in managed configmap")
 	return true, nil
 }
