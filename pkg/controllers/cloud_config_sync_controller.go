@@ -206,31 +206,8 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	targetCM := &corev1.ConfigMap{}
-	targetConfigMapKey := client.ObjectKey{
-		Namespace: r.ManagedNamespace,
-		Name:      syncedCloudConfigMapName,
-	}
-
-	// If the config does not exist, it will be created later, so we can ignore a Not Found error
-	if err := r.Get(ctx, targetConfigMapKey, targetCM); err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("unable to get target cloud-config for sync")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
-	}
-
-	// Note that the source config map is actually a *transformed* source config map
-	if r.isCloudConfigEqual(sourceCM, targetCM) {
-		klog.V(1).Infof("source and target cloud-config content are equal, no sync needed")
-		if err := r.setAvailableCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, nil
-	}
-
-	if err := r.syncCloudConfigData(ctx, sourceCM, targetCM); err != nil {
+	// Sync the transformed config to the target configmap for CCM consumption
+	if err := r.syncCloudConfigData(ctx, sourceCM); err != nil {
 		klog.Errorf("unable to sync cloud config")
 		if err := r.setDegradedCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
@@ -303,28 +280,74 @@ func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap,
 	return cloudConfCm, nil
 }
 
+// isCloudConfigEqual compares two ConfigMaps to determine if their content is equal.
+// It performs a deep comparison of the Data, BinaryData, and Immutable fields.
+//
+// This function is used to avoid unnecessary updates when the cloud configuration
+// content hasn't changed. Metadata fields (labels, annotations, resourceVersion, etc.)
+// are intentionally ignored as they don't affect the actual configuration data.
+//
+// Returns true if both ConfigMaps have identical Data, BinaryData, and Immutable values.
 func (r *CloudConfigReconciler) isCloudConfigEqual(source *corev1.ConfigMap, target *corev1.ConfigMap) bool {
 	return source.Immutable == target.Immutable &&
 		reflect.DeepEqual(source.Data, target.Data) && reflect.DeepEqual(source.BinaryData, target.BinaryData)
 }
 
-func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source *corev1.ConfigMap, target *corev1.ConfigMap) error {
-	target.SetName(syncedCloudConfigMapName)
-	target.SetNamespace(r.ManagedNamespace)
-	target.Data = source.Data
-	target.BinaryData = source.BinaryData
-	target.Immutable = source.Immutable
-
-	// check if target config exists, create if not
-	err := r.Get(ctx, client.ObjectKeyFromObject(target), &corev1.ConfigMap{})
-
-	if err != nil && errors.IsNotFound(err) {
-		return r.Create(ctx, target)
-	} else if err != nil {
-		return err
+// syncConfigMapToTarget is a generic helper that syncs a source ConfigMap to a target namespace/name.
+// It handles create-or-update logic with optional equality checking to avoid unnecessary updates.
+func (r *CloudConfigReconciler) syncConfigMapToTarget(ctx context.Context, source *corev1.ConfigMap, targetName, targetNamespace string, checkEquality bool) error {
+	if source == nil || source.Data == nil {
+		return fmt.Errorf("source configmap is nil or has no data")
 	}
 
-	return r.Update(ctx, target)
+	targetCM := &corev1.ConfigMap{}
+	targetKey := client.ObjectKey{
+		Name:      targetName,
+		Namespace: targetNamespace,
+	}
+
+	// Check if target exists
+	err := r.Get(ctx, targetKey, targetCM)
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to get target configmap %s/%s: %w", targetNamespace, targetName, err)
+	}
+
+	targetExists := err == nil
+
+	// Check if update is needed (if requested)
+	if targetExists && checkEquality {
+		if r.isCloudConfigEqual(source, targetCM) {
+			klog.V(3).Infof("Target configmap %s/%s is already up to date", targetNamespace, targetName)
+			return nil
+		}
+	}
+
+	// Prepare the target configmap
+	targetCM.SetName(targetName)
+	targetCM.SetNamespace(targetNamespace)
+	targetCM.Data = source.Data
+	targetCM.BinaryData = source.BinaryData
+	targetCM.Immutable = source.Immutable
+
+	// Create or update
+	if !targetExists {
+		klog.Infof("Creating configmap %s/%s", targetNamespace, targetName)
+		if err := r.Create(ctx, targetCM); err != nil {
+			return fmt.Errorf("failed to create configmap %s/%s: %w", targetNamespace, targetName, err)
+		}
+		return nil
+	}
+
+	klog.V(3).Infof("Updating configmap %s/%s", targetNamespace, targetName)
+	if err := r.Update(ctx, targetCM); err != nil {
+		return fmt.Errorf("failed to update configmap %s/%s: %w", targetNamespace, targetName, err)
+	}
+	return nil
+}
+
+func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source *corev1.ConfigMap) error {
+	// Use the generic helper, no equality check (always update for target CM)
+	return r.syncConfigMapToTarget(ctx, source, syncedCloudConfigMapName, r.ManagedNamespace, false)
 }
 
 // syncManagedCloudConfig updates openshift-config-managed/kube-cloud-config with the
@@ -336,62 +359,16 @@ func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source 
 //   - Updating it with transformed config from user source (openshift-config)
 //   - Making it the single source of truth for other operators
 func (r *CloudConfigReconciler) syncManagedCloudConfig(ctx context.Context, source *corev1.ConfigMap) error {
-	// Validate source has data
-	if source == nil || source.Data == nil {
-		return fmt.Errorf("source configmap is nil or has no data")
-	}
-
-	if _, ok := source.Data[defaultConfigKey]; !ok {
-		return fmt.Errorf("source configmap missing required key: %s", defaultConfigKey)
-	}
-
-	managedCM := &corev1.ConfigMap{}
-	managedCMKey := client.ObjectKey{
-		Name:      managedCloudConfigMapName,
-		Namespace: OpenshiftManagedConfigNamespace,
-	}
-
-	// Check if managed configmap exists
-	err := r.Get(ctx, managedCMKey, managedCM)
-	if err != nil && !errors.IsNotFound(err) {
-		return fmt.Errorf("failed to get managed cloud config: %w", err)
-	}
-
-	managedConfigExists := err == nil
-
-	// Check if update is needed (avoid unnecessary writes)
-	if managedConfigExists {
-		if reflect.DeepEqual(managedCM.Data, source.Data) &&
-			reflect.DeepEqual(managedCM.BinaryData, source.BinaryData) &&
-			managedCM.Immutable == source.Immutable {
-			klog.V(3).Info("Managed cloud config is already up to date")
-			return nil
+	// Validate source has required key
+	if source != nil && source.Data != nil {
+		if _, ok := source.Data[defaultConfigKey]; !ok {
+			return fmt.Errorf("source configmap missing required key: %s", defaultConfigKey)
 		}
 	}
 
-	// Prepare the managed configmap
-	managedCM.SetName(managedCloudConfigMapName)
-	managedCM.SetNamespace(OpenshiftManagedConfigNamespace)
-	managedCM.Data = source.Data
-	managedCM.BinaryData = source.BinaryData
-	managedCM.Immutable = source.Immutable
-
-	// Create or update
-	if !managedConfigExists {
-		klog.Infof("Creating %s/%s - taking ownership from CCO", OpenshiftManagedConfigNamespace, managedCloudConfigMapName)
-		if err := r.Create(ctx, managedCM); err != nil {
-			return fmt.Errorf("failed to create managed cloud config: %w", err)
-		}
-		klog.Infof("Successfully created %s/%s", OpenshiftManagedConfigNamespace, managedCloudConfigMapName)
-		return nil
-	}
-
-	klog.Infof("Updating %s/%s with transformed config", OpenshiftManagedConfigNamespace, managedCloudConfigMapName)
-	if err := r.Update(ctx, managedCM); err != nil {
-		return fmt.Errorf("failed to update managed cloud config: %w", err)
-	}
-	klog.V(3).Info("Successfully updated managed cloud config")
-	return nil
+	// Use the generic helper with equality check (avoid unnecessary updates)
+	// For managed config, we want to check equality to reduce churn
+	return r.syncConfigMapToTarget(ctx, source, managedCloudConfigMapName, OpenshiftManagedConfigNamespace, true)
 }
 
 // SetupWithManager sets up the controller with the Manager.

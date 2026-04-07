@@ -3,7 +3,6 @@ package vsphere_cloud_config
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"k8s.io/klog/v2"
 
@@ -45,33 +44,4 @@ func MarshalConfig(config *CPIConfig) (string, error) {
 		return "", fmt.Errorf("can not marshal config into yaml: %w", err)
 	}
 	return string(yamlBytes), nil
-}
-
-// IsINIFormat checks if the provided configuration is in INI format.
-// It returns true if the config appears to be INI format, false otherwise.
-// INI format is detected by looking for section headers like [Global], [VirtualCenter ...], etc.
-func IsINIFormat(config []byte) bool {
-	if len(config) == 0 {
-		return false
-	}
-
-	configStr := strings.TrimSpace(string(config))
-	lines := strings.Split(configStr, "\n")
-
-	for _, line := range lines {
-		trimmedLine := strings.TrimSpace(line)
-		// Skip empty lines and comments
-		if trimmedLine == "" || strings.HasPrefix(trimmedLine, "#") || strings.HasPrefix(trimmedLine, ";") {
-			continue
-		}
-		// Check for INI section headers like [Global], [VirtualCenter "..."], [Labels], [Nodes]
-		if strings.HasPrefix(trimmedLine, "[") && strings.Contains(trimmedLine, "]") {
-			return true
-		}
-		// If we encounter a line that doesn't look like a section header and isn't a comment,
-		// it's likely YAML (like "global:" or "vcenter:")
-		break
-	}
-
-	return false
 }
