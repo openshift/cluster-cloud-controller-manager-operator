@@ -137,10 +137,10 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/openshift-eng/openshift-tests-extension v0.0.0-20250916161632-d81c09058835 h1:rkqIIfdYYkasXbF2XKVgh/3f1mhjSQK9By8WtVMgYo8=
 github.com/openshift-eng/openshift-tests-extension v0.0.0-20250916161632-d81c09058835/go.mod h1:6gkP5f2HL0meusT0Aim8icAspcD1cG055xxBZ9yC68M=
-github.com/openshift/api v0.0.0-20260317165824-54a3998d81eb h1:iwBR3mzmyE3EMFx7R3CQ9lOccTS0dNht8TW82aGITg0=
-github.com/openshift/api v0.0.0-20260317165824-54a3998d81eb/go.mod h1:pyVjK0nZ4sRs4fuQVQ4rubsJdahI1PB94LnQ8sGdvxo=
-github.com/openshift/client-go v0.0.0-20260317180604-743f664b82d1 h1:Hr/R38eg5ZJXfbiaHumjJIN1buDZwhsm4ys4npVCXH0=
-github.com/openshift/client-go v0.0.0-20260317180604-743f664b82d1/go.mod h1:Za51LlH76ALiQ/aKGBYJXmyJNkA//IDJ+I///30CA2M=
+github.com/openshift/api v0.0.0-20260429122012-1180c0f5c3e9 h1:lZw6pYY7El1giNk1lYvkp6hLungiqwIOqLlH+Hm7w9g=
+github.com/openshift/api v0.0.0-20260429122012-1180c0f5c3e9/go.mod h1:pyVjK0nZ4sRs4fuQVQ4rubsJdahI1PB94LnQ8sGdvxo=
+github.com/openshift/client-go v0.0.0-20260429123927-c81f86abfa6a h1:4GR6seHvlfv0rADe+LCQx63FqSExx6gaSo8uNiyWq+c=
+github.com/openshift/client-go v0.0.0-20260429123927-c81f86abfa6a/go.mod h1:Lm7X7aYbAaKhGsNhgYaowP7hiLKwfN/w0r+Q6VlQoI8=
 github.com/openshift/onsi-ginkgo/v2 v2.6.1-0.20260303184444-1cc650aa0565 h1:3/q8qM4HbFa+Een8wgzpwO8W6mO7Po+MwY6uxiXi/ac=
 github.com/openshift/onsi-ginkgo/v2 v2.6.1-0.20260303184444-1cc650aa0565/go.mod h1:ArE1D/XhNXBXCBkKOLkbsb2c81dQHCRcF5zwn/ykDRo=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
