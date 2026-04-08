@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/api/features"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -777,20 +778,60 @@ var _ = Describe("vSphere managed config sync", func() {
 	})
 
 	Context("shouldManageManagedConfigMap function", func() {
-		It("should return true for vSphere", func() {
-			Expect(shouldManageManagedConfigMap(configv1.VSpherePlatformType)).To(BeTrue())
+		It("should return true for vSphere when feature gate is enabled", func() {
+			// Create feature gate with VSphereMultiVCenterDay2 enabled
+			featuresEnabled := featuregates.NewHardcodedFeatureGateAccessForTesting(
+				[]configv1.FeatureGateName{features.FeatureGateVSphereMultiVCenterDay2},
+				nil,
+				nil,
+				nil,
+			)
+			features, err := featuresEnabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.VSpherePlatformType, features)).To(BeTrue())
+		})
+
+		It("should return false for vSphere when feature gate is disabled", func() {
+			// Create feature gate without VSphereMultiVCenterDay2
+			featuresDisabled := featuregates.NewHardcodedFeatureGateAccessForTesting(
+				nil,
+				[]configv1.FeatureGateName{features.FeatureGateVSphereMultiVCenterDay2},
+				nil,
+				nil,
+			)
+			features, err := featuresDisabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.VSpherePlatformType, features)).To(BeFalse())
+		})
+
+		It("should return false for vSphere when features is nil", func() {
+			Expect(shouldManageManagedConfigMap(configv1.VSpherePlatformType, nil)).To(BeFalse())
 		})
 
 		It("should return false for AWS (not yet migrated)", func() {
-			Expect(shouldManageManagedConfigMap(configv1.AWSPlatformType)).To(BeFalse())
+			featuresEnabled := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil)
+			features, err := featuresEnabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.AWSPlatformType, features)).To(BeFalse())
 		})
 
 		It("should return false for Azure (not yet migrated)", func() {
-			Expect(shouldManageManagedConfigMap(configv1.AzurePlatformType)).To(BeFalse())
+			featuresEnabled := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil)
+			features, err := featuresEnabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.AzurePlatformType, features)).To(BeFalse())
 		})
 
 		It("should return false for GCP", func() {
-			Expect(shouldManageManagedConfigMap(configv1.GCPPlatformType)).To(BeFalse())
+			featuresEnabled := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil)
+			features, err := featuresEnabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.GCPPlatformType, features)).To(BeFalse())
 		})
 	})
 })

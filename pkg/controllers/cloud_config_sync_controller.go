@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/api/features"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
@@ -31,13 +32,26 @@ const (
 	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
 )
 
+// isFeatureGateEnabled checks if a feature gate is enabled.
+// Returns false if the feature gate is nil.
+// This provides a nil-safe way to check feature gates.
+func isFeatureGateEnabled(featureGates featuregates.FeatureGate, featureName configv1.FeatureGateName) bool {
+	if featureGates == nil {
+		return false
+	}
+	return featureGates.Enabled(featureName)
+}
+
 // shouldManageManagedConfigMap returns true if CCCMO should manage the
 // openshift-config-managed/kube-cloud-config ConfigMap for the given platform.
 // This indicates ownership has been migrated from CCO to CCCMO.
-func shouldManageManagedConfigMap(platformType configv1.PlatformType) bool {
+//
+// For vSphere, this requires the VSphereMultiVCenterDay2 feature gate to be enabled.
+func shouldManageManagedConfigMap(platformType configv1.PlatformType, featureGates featuregates.FeatureGate) bool {
 	switch platformType {
 	case configv1.VSpherePlatformType:
-		return true
+		// Only manage the configmap if the feature gate is enabled
+		return isFeatureGateEnabled(featureGates, features.FeatureGateVSphereMultiVCenterDay2)
 	// Future: Add other platforms as they migrate from CCO
 	// case configv1.AWSPlatformType:
 	//     return true
@@ -156,7 +170,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); errors.IsNotFound(err) {
 			klog.Warningf("cloud-config not found in either openshift-config-managed or openshift-config namespace")
 			// For platforms we manage, create an empty source that will be populated by the transformer
-			if shouldManageManagedConfigMap(platformType) {
+			if shouldManageManagedConfigMap(platformType, features) {
 				klog.Infof("Initializing empty config for platform %s", platformType)
 				sourceCM.Data = map[string]string{defaultConfigKey: ""}
 			}
@@ -196,7 +210,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// For platforms managed by CCCMO, update openshift-config-managed/kube-cloud-config
 	// with the transformed config so other operators can read from a consistent location
-	if shouldManageManagedConfigMap(platformType) {
+	if shouldManageManagedConfigMap(platformType, features) {
 		if err := r.syncManagedCloudConfig(ctx, sourceCM); err != nil {
 			klog.Errorf("failed to sync managed cloud config: %v", err)
 			if err := r.setDegradedCondition(ctx); err != nil {
