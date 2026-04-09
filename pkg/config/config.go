@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -85,7 +86,7 @@ func getImagesFromJSONFile(filePath string) (ImagesReference, error) {
 }
 
 // ComposeConfig creates a Config for operator
-func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess, tlsProfile configv1.TLSProfileSpec) (OperatorConfig, error) {
+func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess, tlsConfig func(*tls.Config)) (OperatorConfig, error) {
 	err := checkInfrastructureResource(infrastructure)
 	if err != nil {
 		klog.Errorf("Unable to get platform from infrastructure: %s", err)
@@ -112,8 +113,19 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		featureGatesString = util.BuildFeatureGateString(enabled, nil)
 	}
 
-	// Convert OpenSSL cipher names from the TLS profile to IANA names expected by CCM CLI flags.
-	ianaCiphers := libgocrypto.OpenSSLToIANACipherSuites(tlsProfile.Ciphers)
+	var tlsCipherSuites string
+	var tlsMinVersion string
+
+	if tlsConfig != nil {
+		resolved := &tls.Config{}
+		tlsConfig(resolved)
+
+		tlsMinVersion = libgocrypto.TLSVersionToNameOrDie(resolved.MinVersion)
+
+		if resolved.MinVersion != tls.VersionTLS13 {
+			tlsCipherSuites = strings.Join(libgocrypto.CipherSuitesToNamesOrDie(resolved.CipherSuites), ",")
+		}
+	}
 
 	config := OperatorConfig{
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
@@ -124,8 +136,8 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 		IsSingleReplica:    infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
 		FeatureGates:       featureGatesString,
 		OCPFeatureGates:    features,
-		TLSCipherSuites:    strings.Join(ianaCiphers, ","),
-		TLSMinVersion:      string(tlsProfile.MinTLSVersion),
+		TLSCipherSuites:    tlsCipherSuites,
+		TLSMinVersion:      tlsMinVersion,
 	}
 
 	return config, nil

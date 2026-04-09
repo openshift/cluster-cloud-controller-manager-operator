@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"os"
 	"testing"
 
@@ -168,12 +169,12 @@ func TestComposeConfig(t *testing.T) {
 		CloudControllerManagerOpenStack: "registry.ci.openshift.org/openshift:openstack-cloud-controller-manager",
 	}
 
-	testTLSProfile := configv1.TLSProfileSpec{
-		Ciphers: []string{
-			"ECDHE-RSA-AES128-GCM-SHA256",
-			"ECDHE-RSA-AES256-GCM-SHA384",
-		},
-		MinTLSVersion: "VersionTLS12",
+	testTLSConfig := func(cfg *tls.Config) {
+		cfg.MinVersion = tls.VersionTLS12
+		cfg.CipherSuites = []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		}
 	}
 
 	tc := []struct {
@@ -185,11 +186,11 @@ func TestComposeConfig(t *testing.T) {
 		expectConfig  OperatorConfig
 		expectError   string
 		featureGates  featuregates.FeatureGateAccess
-		tlsProfile    configv1.TLSProfileSpec
+		tlsConfig     func(*tls.Config)
 	}{{
-		name:       "Unmarshal images from file",
-		namespace:  defaultManagementNamespace,
-		tlsProfile: testTLSProfile,
+		name:      "Unmarshal images from file",
+		namespace: defaultManagementNamespace,
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				PlatformStatus: &configv1.PlatformStatus{
@@ -206,8 +207,8 @@ func TestComposeConfig(t *testing.T) {
 			TLSMinVersion:    "VersionTLS12",
 		},
 	}, {
-		name:       "Broken JSON is rejected",
-		tlsProfile: testTLSProfile,
+		name:      "Broken JSON is rejected",
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				ControlPlaneTopology: configv1.SingleReplicaTopologyMode,
@@ -221,9 +222,9 @@ func TestComposeConfig(t *testing.T) {
 		}`,
 		expectError: "invalid character 'B' looking for beginning of value",
 	}, {
-		name:       "Single Replica",
-		namespace:  defaultManagementNamespace,
-		tlsProfile: testTLSProfile,
+		name:      "Single Replica",
+		namespace: defaultManagementNamespace,
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				ControlPlaneTopology: configv1.SingleReplicaTopologyMode,
@@ -260,16 +261,16 @@ func TestComposeConfig(t *testing.T) {
 		},
 	}, {
 		name:        "Empty infrastructure should return error",
-		tlsProfile:  testTLSProfile,
+		tlsConfig:   testTLSConfig,
 		expectError: "platform status is not populated on infrastructure",
 	}, {
 		name:        "Unpopulated infrastructure should return error",
-		tlsProfile:  testTLSProfile,
+		tlsConfig:   testTLSConfig,
 		infra:       &configv1.Infrastructure{},
 		expectError: "platform status is not populated on infrastructure",
 	}, {
-		name:       "Unpopulated infrastructure status should return error",
-		tlsProfile: testTLSProfile,
+		name:      "Unpopulated infrastructure status should return error",
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				PlatformStatus: nil,
@@ -279,13 +280,13 @@ func TestComposeConfig(t *testing.T) {
 	}, {
 		name:        "Empty infra",
 		namespace:   defaultManagementNamespace,
-		tlsProfile:  testTLSProfile,
+		tlsConfig:   testTLSConfig,
 		infra:       nil,
 		expectError: "platform status is not populated on infrastructure",
 	}, {
-		name:       "Empty Infra Status",
-		namespace:  defaultManagementNamespace,
-		tlsProfile: testTLSProfile,
+		name:      "Empty Infra Status",
+		namespace: defaultManagementNamespace,
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				PlatformStatus: nil,
@@ -293,9 +294,9 @@ func TestComposeConfig(t *testing.T) {
 		},
 		expectError: "platform status is not populated on infrastructure",
 	}, {
-		name:       "Empty Platform Type",
-		namespace:  defaultManagementNamespace,
-		tlsProfile: testTLSProfile,
+		name:      "Empty Platform Type",
+		namespace: defaultManagementNamespace,
+		tlsConfig: testTLSConfig,
 		infra: &configv1.Infrastructure{
 			Status: configv1.InfrastructureStatus{
 				PlatformStatus: &configv1.PlatformStatus{
@@ -321,7 +322,7 @@ func TestComposeConfig(t *testing.T) {
 			_, err = file.WriteString(tc.imagesContent)
 			assert.NoError(t, err)
 
-			config, err := ComposeConfig(tc.infra, tc.clusterProxy, path, tc.namespace, tc.featureGates, tc.tlsProfile)
+			config, err := ComposeConfig(tc.infra, tc.clusterProxy, path, tc.namespace, tc.featureGates, tc.tlsConfig)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {

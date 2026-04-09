@@ -12,21 +12,21 @@ require (
 	github.com/golangci/golangci-lint/v2 v2.11.1
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
-	github.com/openshift/api v0.0.0-20260306002634-d3bbdada155c
-	github.com/openshift/client-go v0.0.0-20260306160707-3935d929fc7d
+	github.com/openshift/api v0.0.0-20260317165824-54a3998d81eb
+	github.com/openshift/client-go v0.0.0-20260317180604-743f664b82d1
 	github.com/openshift/cluster-api-actuator-pkg/testutils v0.0.0-20260310144400-bec013a007a8
-	github.com/openshift/controller-runtime-common v0.0.0-20260307102856-5db94f69ad3a
-	github.com/openshift/library-go v0.0.0-20260311094140-ac826d10cb40
+	github.com/openshift/controller-runtime-common v0.0.0-20260318085703-1812aed6dbd2
+	github.com/openshift/library-go v0.0.0-20260318142011-72bf34f474bc
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/ini.v1 v1.67.1
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.35.1
+	k8s.io/api v0.35.2
 	k8s.io/apiextensions-apiserver v0.35.1
-	k8s.io/apimachinery v0.35.1
-	k8s.io/client-go v0.35.1
+	k8s.io/apimachinery v0.35.2
+	k8s.io/client-go v0.35.2
 	k8s.io/cloud-provider-aws v1.35.1
 	k8s.io/cloud-provider-vsphere v1.34.0
 	k8s.io/component-base v0.35.1
@@ -35,7 +35,7 @@ require (
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/cloud-provider-azure v1.35.1
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.13.0
-	sigs.k8s.io/controller-runtime v0.23.2
+	sigs.k8s.io/controller-runtime v0.23.3
 	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20251103140007-7a1b16d039d2
 	sigs.k8s.io/controller-tools v0.20.1
 	sigs.k8s.io/yaml v1.6.0

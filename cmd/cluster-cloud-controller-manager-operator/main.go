@@ -22,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -34,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"
@@ -56,6 +58,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/controllers"
+	pkgtls "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/tls"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/util"
 	// +kubebuilder:scaffold:imports
 )
@@ -119,7 +122,15 @@ func main() {
 	// to allow leader lection flags to be bound
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	options.BindLeaderElectionFlags(&leaderElectionConfig, pflag.CommandLine)
+
+	tlsMinVersionFlag := pflag.String("tls-min-version", "",
+		"Minimum TLS version supported. When set, overrides the cluster-wide TLS profile. Possible values: "+strings.Join(cliflag.TLSPossibleVersions(), ", "))
+	tlsCipherSuitesFlag := pflag.StringSlice("tls-cipher-suites", nil,
+		"Comma-separated list of cipher suites for the server. When set, overrides the cluster-wide TLS profile. Possible values: "+strings.Join(cliflag.TLSCipherPossibleValues(), ", "))
+
 	pflag.Parse()
+
+	tlsOverrideFromFlags := *tlsMinVersionFlag != "" || len(*tlsCipherSuitesFlag) > 0
 
 	ctrl.SetLogger(klog.NewKlogr().WithName("CCMOperator"))
 
@@ -136,25 +147,13 @@ func main() {
 	// Ensure the context is cancelled when the program exits.
 	defer cancel()
 
-	k8sClient, err := client.New(restConfig, client.Options{Scheme: scheme})
+	// Resolve the TLS configuration for the server endpoints.
+	tlsResult, err := pkgtls.ResolveTLSConfig(ctx, restConfig, *tlsMinVersionFlag, *tlsCipherSuitesFlag)
 	if err != nil {
-		setupLog.Error(err, "unable to create Kubernetes client")
+		setupLog.Error(err, "unable to configure TLS")
 		os.Exit(1)
 	}
-
-	// Fetch the TLS profile from the APIServer resource.
-	tlsProfileSpec, err := utiltls.FetchAPIServerTLSProfile(ctx, k8sClient)
-	if err != nil {
-		setupLog.Error(err, "unable to get TLS profile from API server")
-		os.Exit(1)
-	}
-
-	// Create the TLS configuration function for the server endpoints.
-	tlsConfigFunc, unsupportedCiphers := utiltls.NewTLSConfigFromProfile(tlsProfileSpec)
-	if len(unsupportedCiphers) > 0 {
-		setupLog.Info("Some ciphers from TLS profile are not supported", "unsupportedCiphers", unsupportedCiphers)
-	}
-	tlsOpts := []func(*tls.Config){tlsConfigFunc}
+	tlsOpts := []func(*tls.Config){tlsResult.TLSConfig}
 
 	syncPeriod := 10 * time.Minute
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
@@ -265,26 +264,40 @@ func main() {
 		Scheme:            mgr.GetScheme(),
 		ImagesFile:        *imagesFile,
 		FeatureGateAccess: featureGateAccessor,
-		TLSProfileSpec:    tlsProfileSpec,
+		TLSConfig:         tlsResult.TLSConfig,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterOperator")
 		os.Exit(1)
 	}
 
-	// Set up the TLS security profile watcher to watch for TLS config changes
-	if err = (&utiltls.SecurityProfileWatcher{
-		Client:                mgr.GetClient(),
-		InitialTLSProfileSpec: tlsProfileSpec,
-		OnProfileChange: func(ctx context.Context, oldTLSProfileSpec, newTLSProfileSpec configv1.TLSProfileSpec) {
-			klog.Infof("TLS profile has changed, initiating a shutdown to reload it. %q: %+v, %q: %+v",
-				"old profile", oldTLSProfileSpec,
-				"new profile", newTLSProfileSpec,
-			)
-			cancel()
-		},
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "TLSSecurityProfileWatcher")
-		os.Exit(1)
+	// Set up the TLS security profile watcher controller.
+	// When TLS is overridden via CLI flags, the watcher is not needed since
+	// the component is not reading from apiservers.config.openshift.io/cluster.
+	if tlsOverrideFromFlags {
+		setupLog.Info("TLS security profile watcher disabled because TLS is configured via CLI flags")
+	} else {
+		if err = (&utiltls.SecurityProfileWatcher{
+			Client:                    mgr.GetClient(),
+			InitialTLSAdherencePolicy: tlsResult.TLSAdherencePolicy,
+			InitialTLSProfileSpec:     tlsResult.TLSProfileSpec,
+			OnAdherencePolicyChange: func(ctx context.Context, oldTLSAdherencePolicy, newTLSAdherencePolicy configv1.TLSAdherencePolicy) {
+				klog.Infof("TLS adherence policy has changed, initiating a shutdown to reload it. %q: %+v, %q: %+v",
+					"old adherence policy", oldTLSAdherencePolicy,
+					"new adherence policy", newTLSAdherencePolicy,
+				)
+				cancel()
+			},
+			OnProfileChange: func(ctx context.Context, oldTLSProfileSpec, newTLSProfileSpec configv1.TLSProfileSpec) {
+				klog.Infof("TLS profile has changed, initiating a shutdown to reload it. %q: %+v, %q: %+v",
+					"old profile", oldTLSProfileSpec,
+					"new profile", newTLSProfileSpec,
+				)
+				cancel()
+			},
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "TLSSecurityProfileWatcher")
+			os.Exit(1)
+		}
 	}
 
 	// +kubebuilder:scaffold:builder
