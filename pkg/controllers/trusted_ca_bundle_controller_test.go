@@ -368,7 +368,7 @@ var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
 		// Step 1: First transient error; failure window opens at T0.
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{})
 		Expect(err).To(HaveOccurred())
-		Expect(reconciler.consecutiveFailureSince).NotTo(BeNil())
+		Expect(reconciler.failures.consecutiveFailureSince).NotTo(BeNil())
 
 		// Step 2: Advance clock past the threshold — simulates a gap with no reconciles
 		// (e.g., system recovered, no events fired for a long time).
@@ -390,8 +390,8 @@ var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
 			}
 		}
 		// consecutiveFailureSince should now be 'now', not the original T0.
-		Expect(reconciler.consecutiveFailureSince).NotTo(BeNil())
-		Expect(fakeClock.Now().Sub(*reconciler.consecutiveFailureSince)).To(BeNumerically("<", time.Second),
+		Expect(reconciler.failures.consecutiveFailureSince).NotTo(BeNil())
+		Expect(fakeClock.Now().Sub(*reconciler.failures.consecutiveFailureSince)).To(BeNumerically("<", time.Second),
 			"window should have been restarted to ~now, not retained from original T0")
 	})
 

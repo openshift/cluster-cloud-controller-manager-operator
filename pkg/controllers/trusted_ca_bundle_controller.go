@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/openshift/api/annotations"
 	configv1 "github.com/openshift/api/config/v1"
@@ -42,10 +42,9 @@ const (
 
 type TrustedCABundleReconciler struct {
 	ClusterOperatorStatusClient
-	Scheme                  *runtime.Scheme
-	trustBundlePath         string
-	consecutiveFailureSince *time.Time // nil when the last reconcile succeeded
-	lastTransientFailureAt  *time.Time // when the most recent transient error was observed
+	Scheme          *runtime.Scheme
+	trustBundlePath string
+	failures        failureWindow
 }
 
 // isSpecTrustedCASet returns true if spec.trustedCA of proxyConfig is set.
@@ -62,7 +61,7 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	partialRun := false
 
 	// Deferred dispatcher: classifies the returned error and calls the right handler.
-	// Permanent errors (wrapped with permanent()) degrade immediately without requeue.
+	// Permanent errors (wrapped with terminal()) degrade immediately without requeue.
 	// Transient errors enter the failure window and only degrade after the threshold.
 	// Nil-error paths clear the failure window unless partialRun is set.
 	defer func() {
@@ -72,7 +71,7 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			}
 			return
 		}
-		if isPermanent(retErr) {
+		if errors.Is(retErr, reconcile.TerminalError(nil)) {
 			result, retErr = r.handleDegradeError(ctx, retErr)
 		} else {
 			result, retErr = r.handleTransientError(ctx, retErr)
@@ -113,14 +112,14 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	proxyCABundle, mergedTrustBundle, err := r.addProxyCABundle(ctx, proxyConfig, systemTrustBundle)
 	if err != nil {
-		// Combined cert bundle is corrupt: permanent.
-		return ctrl.Result{}, permanent(fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err))
+		// Combined cert bundle is corrupt: terminal.
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err))
 	}
 
 	_, mergedTrustBundle, err = r.addCloudConfigCABundle(ctx, proxyCABundle, mergedTrustBundle)
 	if err != nil {
-		// Combined cert bundle is corrupt: permanent.
-		return ctrl.Result{}, permanent(fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err))
+		// Combined cert bundle is corrupt: terminal.
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err))
 	}
 
 	ccmTrustedConfigMap := r.makeCABundleConfigMap(mergedTrustBundle)
@@ -136,8 +135,7 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 func (r *TrustedCABundleReconciler) clearFailureWindow() {
-	r.consecutiveFailureSince = nil
-	r.lastTransientFailureAt = nil
+	r.failures.clear()
 }
 
 // handleTransientError records the start of a failure window and degrades the
@@ -145,23 +143,13 @@ func (r *TrustedCABundleReconciler) clearFailureWindow() {
 // returns a non-nil error so controller-runtime requeues with exponential backoff.
 // Called only from the deferred dispatcher in Reconcile.
 func (r *TrustedCABundleReconciler) handleTransientError(ctx context.Context, err error) (ctrl.Result, error) {
-	now := r.Clock.Now()
-
-	// Start or restart the failure window.
-	// Restart if: (a) no window is open, OR (b) the last observed failure was more than
-	// transientDegradedThreshold ago (stale window). Case (b) handles the scenario where
-	// a partialRun reconcile returned nil (no requeue) after the system recovered, leaving
-	// consecutiveFailureSince set but no subsequent successful full reconcile to clear it.
-	staleWindow := r.lastTransientFailureAt != nil && now.Sub(*r.lastTransientFailureAt) > transientDegradedThreshold
-	if r.consecutiveFailureSince == nil || staleWindow {
-		r.consecutiveFailureSince = &now
-		r.lastTransientFailureAt = &now
+	// Pass transientDegradedThreshold as the stale-window threshold to detect gaps
+	// where no reconcile ran (e.g. a partialRun returned nil, resetting the rate limiter).
+	elapsed, started := r.failures.observe(r.Clock.Now(), transientDegradedThreshold)
+	if started {
 		klog.V(4).Infof("TrustedCABundleReconciler: transient failure started (%v), will degrade after %s", err, transientDegradedThreshold)
 		return ctrl.Result{}, err
 	}
-
-	r.lastTransientFailureAt = &now
-	elapsed := now.Sub(*r.consecutiveFailureSince)
 	if elapsed < transientDegradedThreshold {
 		klog.V(4).Infof("TrustedCABundleReconciler: transient failure ongoing for %s (threshold %s): %v", elapsed, transientDegradedThreshold, err)
 		return ctrl.Result{}, err
