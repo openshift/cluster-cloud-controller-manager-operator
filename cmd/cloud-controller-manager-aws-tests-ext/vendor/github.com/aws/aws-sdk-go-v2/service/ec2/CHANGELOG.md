@@ -1,3 +1,45 @@
+# v1.297.0 (2026-04-07)
+
+* **Feature**: EC2 Capacity Manager adds new dimensions for grouping and filtering capacity metrics, including tag-based dimensions and Account Name.
+
+# v1.296.2 (2026-03-31)
+
+* **Documentation**: This release updates the examples in the documentation for DescribeRegions and DescribeAvailabilityZones.
+
+# v1.296.1 (2026-03-26)
+
+* **Bug Fix**: Fix a bug where a recorded clock skew could persist on the client even if the client and server clock ended up realigning.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.296.0 (2026-03-19)
+
+* **Feature**: Amazon EC2 Fleet instant mode now supports launching instances into Interruptible Capacity Reservations, enabling customers to use spare capacity shared by Capacity Reservation owners within their AWS Organization.
+
+# v1.295.0 (2026-03-18)
+
+* **Feature**: The DescribeInstanceTypes API now returns default connection tracking timeout values for TCP, UDP, and UDP stream via the new connectionTrackingConfiguration field on NetworkInfo.
+
+# v1.294.1 (2026-03-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.294.0 (2026-03-05)
+
+* **Feature**: Added metadata field to CapacityAllocation.
+
+# v1.293.1 (2026-03-03)
+
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.293.0 (2026-02-26)
+
+* **Feature**: Add c8id, m8id and hpc8a instance types.
+
+# v1.292.0 (2026-02-25)
+
+* **Feature**: Add support for EC2 Capacity Blocks in Local Zones.
+
 # v1.291.0 (2026-02-24)
 
 * **Feature**: Adds httpTokensEnforced property to ModifyInstanceMetadataDefaults API. Set per account or manage organization-wide using declarative policies to prevent IMDSv1-enabled instance launch and block attempts to enable IMDSv1 on existing IMDSv2-only instances.
