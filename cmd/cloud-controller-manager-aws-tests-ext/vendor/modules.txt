@@ -7,8 +7,8 @@ github.com/Masterminds/semver/v3
 # github.com/antlr4-go/antlr/v4 v4.13.0
 ## explicit; go 1.20
 github.com/antlr4-go/antlr/v4
-# github.com/aws/aws-sdk-go-v2 v1.41.2
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2 v1.41.5
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/aws
 github.com/aws/aws-sdk-go-v2/aws/defaults
 github.com/aws/aws-sdk-go-v2/aws/middleware
@@ -50,30 +50,35 @@ github.com/aws/aws-sdk-go-v2/credentials/stscreds
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds/internal/config
-# github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.18
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/internal/configsources
-# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.18
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/internal/endpoints/v2
 # github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/internal/ini
-# github.com/aws/aws-sdk-go-v2/service/ec2 v1.291.0
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/ec2 v1.297.0
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/ec2
 github.com/aws/aws-sdk-go-v2/service/ec2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/ec2/types
+# github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing v1.33.23
+## explicit; go 1.24
+github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing
+github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing/types
 # github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.45.2
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types
-# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.5
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
-# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.18
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 # github.com/aws/aws-sdk-go-v2/service/sso v1.25.3
 ## explicit; go 1.22
@@ -90,8 +95,8 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc/types
 github.com/aws/aws-sdk-go-v2/service/sts
 github.com/aws/aws-sdk-go-v2/service/sts/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sts/types
-# github.com/aws/smithy-go v1.24.1
-## explicit; go 1.23
+# github.com/aws/smithy-go v1.24.2
+## explicit; go 1.24
 github.com/aws/smithy-go
 github.com/aws/smithy-go/auth
 github.com/aws/smithy-go/auth/bearer
@@ -1133,7 +1138,7 @@ k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.34.0
 ## explicit; go 1.24.0
 k8s.io/cloud-provider/service/helpers
-# k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260227223131-ea961d6fafc4
+# k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260227223131-ea961d6fafc4 => github.com/tthvo/cloud-provider-aws/tests/e2e v0.0.0-20260410024005-3b8df32102a3
 ## explicit; go 1.25.0
 k8s.io/cloud-provider-aws/tests/e2e
 # k8s.io/component-base v0.35.0
@@ -1288,6 +1293,7 @@ sigs.k8s.io/structured-merge-diff/v6/value
 sigs.k8s.io/yaml
 # github.com/onsi/ginkgo/v2 => github.com/openshift/onsi-ginkgo/v2 v2.6.1-0.20260303184444-1cc650aa0565
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.0
+# k8s.io/cloud-provider-aws/tests/e2e => github.com/tthvo/cloud-provider-aws/tests/e2e v0.0.0-20260410024005-3b8df32102a3
 # k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.35.0
 # k8s.io/cri-client => k8s.io/cri-client v0.35.0
 # k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.35.0

@@ -1161,6 +1161,30 @@ func (CapacityManagerDataExportStatus) Values() []CapacityManagerDataExportStatu
 	}
 }
 
+type CapacityManagerMonitoredTagKeyStatus string
+
+// Enum values for CapacityManagerMonitoredTagKeyStatus
+const (
+	CapacityManagerMonitoredTagKeyStatusActivating   CapacityManagerMonitoredTagKeyStatus = "activating"
+	CapacityManagerMonitoredTagKeyStatusActivated    CapacityManagerMonitoredTagKeyStatus = "activated"
+	CapacityManagerMonitoredTagKeyStatusDeactivating CapacityManagerMonitoredTagKeyStatus = "deactivating"
+	CapacityManagerMonitoredTagKeyStatusSuspended    CapacityManagerMonitoredTagKeyStatus = "suspended"
+)
+
+// Values returns all known values for CapacityManagerMonitoredTagKeyStatus. Note
+// that this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (CapacityManagerMonitoredTagKeyStatus) Values() []CapacityManagerMonitoredTagKeyStatus {
+	return []CapacityManagerMonitoredTagKeyStatus{
+		"activating",
+		"activated",
+		"deactivating",
+		"suspended",
+	}
+}
+
 type CapacityManagerStatus string
 
 // Enum values for CapacityManagerStatus
@@ -1910,9 +1934,10 @@ type DefaultTargetCapacityType string
 
 // Enum values for DefaultTargetCapacityType
 const (
-	DefaultTargetCapacityTypeSpot          DefaultTargetCapacityType = "spot"
-	DefaultTargetCapacityTypeOnDemand      DefaultTargetCapacityType = "on-demand"
-	DefaultTargetCapacityTypeCapacityBlock DefaultTargetCapacityType = "capacity-block"
+	DefaultTargetCapacityTypeSpot             DefaultTargetCapacityType = "spot"
+	DefaultTargetCapacityTypeOnDemand         DefaultTargetCapacityType = "on-demand"
+	DefaultTargetCapacityTypeCapacityBlock    DefaultTargetCapacityType = "capacity-block"
+	DefaultTargetCapacityTypeReservedCapacity DefaultTargetCapacityType = "reserved-capacity"
 )
 
 // Values returns all known values for DefaultTargetCapacityType. Note that this
@@ -1924,6 +1949,7 @@ func (DefaultTargetCapacityType) Values() []DefaultTargetCapacityType {
 		"spot",
 		"on-demand",
 		"capacity-block",
+		"reserved-capacity",
 	}
 }
 
@@ -2655,6 +2681,7 @@ const (
 	FilterByDimensionResourceRegion                   FilterByDimension = "resource-region"
 	FilterByDimensionAvailabilityZoneId               FilterByDimension = "availability-zone-id"
 	FilterByDimensionAccountId                        FilterByDimension = "account-id"
+	FilterByDimensionAccountName                      FilterByDimension = "account-name"
 	FilterByDimensionInstanceFamily                   FilterByDimension = "instance-family"
 	FilterByDimensionInstanceType                     FilterByDimension = "instance-type"
 	FilterByDimensionInstancePlatform                 FilterByDimension = "instance-platform"
@@ -2680,6 +2707,7 @@ func (FilterByDimension) Values() []FilterByDimension {
 		"resource-region",
 		"availability-zone-id",
 		"account-id",
+		"account-name",
 		"instance-family",
 		"instance-type",
 		"instance-platform",
@@ -2874,6 +2902,23 @@ func (FleetReplacementStrategy) Values() []FleetReplacementStrategy {
 	}
 }
 
+type FleetReservationType string
+
+// Enum values for FleetReservationType
+const (
+	FleetReservationTypeInterruptibleCapacityReservation FleetReservationType = "interruptible-capacity-reservation"
+)
+
+// Values returns all known values for FleetReservationType. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (FleetReservationType) Values() []FleetReservationType {
+	return []FleetReservationType{
+		"interruptible-capacity-reservation",
+	}
+}
+
 type FleetStateCode string
 
 // Enum values for FleetStateCode
@@ -3063,6 +3108,7 @@ const (
 	GroupByResourceRegion                   GroupBy = "resource-region"
 	GroupByAvailabilityZoneId               GroupBy = "availability-zone-id"
 	GroupByAccountId                        GroupBy = "account-id"
+	GroupByAccountName                      GroupBy = "account-name"
 	GroupByInstanceFamily                   GroupBy = "instance-family"
 	GroupByInstanceType                     GroupBy = "instance-type"
 	GroupByInstancePlatform                 GroupBy = "instance-platform"
@@ -3088,6 +3134,7 @@ func (GroupBy) Values() []GroupBy {
 		"resource-region",
 		"availability-zone-id",
 		"account-id",
+		"account-name",
 		"instance-family",
 		"instance-type",
 		"instance-platform",
@@ -3731,8 +3778,9 @@ type InstanceLifecycle string
 
 // Enum values for InstanceLifecycle
 const (
-	InstanceLifecycleSpot     InstanceLifecycle = "spot"
-	InstanceLifecycleOnDemand InstanceLifecycle = "on-demand"
+	InstanceLifecycleSpot                             InstanceLifecycle = "spot"
+	InstanceLifecycleOnDemand                         InstanceLifecycle = "on-demand"
+	InstanceLifecycleInterruptibleCapacityReservation InstanceLifecycle = "interruptible-capacity-reservation"
 )
 
 // Values returns all known values for InstanceLifecycle. Note that this can be
@@ -3743,6 +3791,7 @@ func (InstanceLifecycle) Values() []InstanceLifecycle {
 	return []InstanceLifecycle{
 		"spot",
 		"on-demand",
+		"interruptible-capacity-reservation",
 	}
 }
 
@@ -5123,6 +5172,33 @@ const (
 	InstanceTypeR8id96xlarge       InstanceType = "r8id.96xlarge"
 	InstanceTypeR8idMetal48xl      InstanceType = "r8id.metal-48xl"
 	InstanceTypeR8idMetal96xl      InstanceType = "r8id.metal-96xl"
+	InstanceTypeC8idLarge          InstanceType = "c8id.large"
+	InstanceTypeC8idXlarge         InstanceType = "c8id.xlarge"
+	InstanceTypeC8id2xlarge        InstanceType = "c8id.2xlarge"
+	InstanceTypeC8id4xlarge        InstanceType = "c8id.4xlarge"
+	InstanceTypeC8id8xlarge        InstanceType = "c8id.8xlarge"
+	InstanceTypeC8id12xlarge       InstanceType = "c8id.12xlarge"
+	InstanceTypeC8id16xlarge       InstanceType = "c8id.16xlarge"
+	InstanceTypeC8id24xlarge       InstanceType = "c8id.24xlarge"
+	InstanceTypeC8id32xlarge       InstanceType = "c8id.32xlarge"
+	InstanceTypeC8id48xlarge       InstanceType = "c8id.48xlarge"
+	InstanceTypeC8id96xlarge       InstanceType = "c8id.96xlarge"
+	InstanceTypeC8idMetal48xl      InstanceType = "c8id.metal-48xl"
+	InstanceTypeC8idMetal96xl      InstanceType = "c8id.metal-96xl"
+	InstanceTypeM8idLarge          InstanceType = "m8id.large"
+	InstanceTypeM8idXlarge         InstanceType = "m8id.xlarge"
+	InstanceTypeM8id2xlarge        InstanceType = "m8id.2xlarge"
+	InstanceTypeM8id4xlarge        InstanceType = "m8id.4xlarge"
+	InstanceTypeM8id8xlarge        InstanceType = "m8id.8xlarge"
+	InstanceTypeM8id12xlarge       InstanceType = "m8id.12xlarge"
+	InstanceTypeM8id16xlarge       InstanceType = "m8id.16xlarge"
+	InstanceTypeM8id24xlarge       InstanceType = "m8id.24xlarge"
+	InstanceTypeM8id32xlarge       InstanceType = "m8id.32xlarge"
+	InstanceTypeM8id48xlarge       InstanceType = "m8id.48xlarge"
+	InstanceTypeM8id96xlarge       InstanceType = "m8id.96xlarge"
+	InstanceTypeM8idMetal48xl      InstanceType = "m8id.metal-48xl"
+	InstanceTypeM8idMetal96xl      InstanceType = "m8id.metal-96xl"
+	InstanceTypeHpc8a96xlarge      InstanceType = "hpc8a.96xlarge"
 )
 
 // Values returns all known values for InstanceType. Note that this can be
@@ -6316,6 +6392,33 @@ func (InstanceType) Values() []InstanceType {
 		"r8id.96xlarge",
 		"r8id.metal-48xl",
 		"r8id.metal-96xl",
+		"c8id.large",
+		"c8id.xlarge",
+		"c8id.2xlarge",
+		"c8id.4xlarge",
+		"c8id.8xlarge",
+		"c8id.12xlarge",
+		"c8id.16xlarge",
+		"c8id.24xlarge",
+		"c8id.32xlarge",
+		"c8id.48xlarge",
+		"c8id.96xlarge",
+		"c8id.metal-48xl",
+		"c8id.metal-96xl",
+		"m8id.large",
+		"m8id.xlarge",
+		"m8id.2xlarge",
+		"m8id.4xlarge",
+		"m8id.8xlarge",
+		"m8id.12xlarge",
+		"m8id.16xlarge",
+		"m8id.24xlarge",
+		"m8id.32xlarge",
+		"m8id.48xlarge",
+		"m8id.96xlarge",
+		"m8id.metal-48xl",
+		"m8id.metal-96xl",
+		"hpc8a.96xlarge",
 	}
 }
 
