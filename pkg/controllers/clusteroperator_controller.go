@@ -20,6 +20,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"sort"
+	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
@@ -299,11 +301,12 @@ func (r *CloudOperatorReconciler) checkControllerConditions(ctx context.Context)
 
 	cloudConfigControllerAvailable := false
 	trustedCABundleControllerAvailable := false
+	var degradedMessages []string
 
 	for _, cond := range co.Status.Conditions {
 		if cond.Type == cloudConfigControllerDegradedCondition || cond.Type == trustedCABundleControllerDegradedCondition {
 			if cond.Status == configv1.ConditionTrue {
-				return false, fmt.Errorf("failed to apply resources because %s condition is set to True: %s", cond.Type, cond.Message)
+				degradedMessages = append(degradedMessages, fmt.Sprintf("%s condition is set to True: %s", cond.Type, cond.Message))
 			}
 		}
 
@@ -314,6 +317,11 @@ func (r *CloudOperatorReconciler) checkControllerConditions(ctx context.Context)
 		if cond.Type == trustedCABundleControllerAvailableCondition && cond.Status == configv1.ConditionTrue {
 			trustedCABundleControllerAvailable = true
 		}
+	}
+
+	if len(degradedMessages) > 0 {
+		sort.Strings(degradedMessages)
+		return false, fmt.Errorf("failed to apply resources because %s", strings.Join(degradedMessages, "; "))
 	}
 
 	return cloudConfigControllerAvailable && trustedCABundleControllerAvailable, nil
