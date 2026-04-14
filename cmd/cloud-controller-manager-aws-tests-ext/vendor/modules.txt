@@ -64,6 +64,11 @@ github.com/aws/aws-sdk-go-v2/internal/ini
 github.com/aws/aws-sdk-go-v2/service/ec2
 github.com/aws/aws-sdk-go-v2/service/ec2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/ec2/types
+# github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing v1.30.1
+## explicit; go 1.22
+github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing
+github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing/types
 # github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.45.2
 ## explicit; go 1.22
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2
@@ -1133,7 +1138,7 @@ k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.34.0
 ## explicit; go 1.24.0
 k8s.io/cloud-provider/service/helpers
-# k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260227223131-ea961d6fafc4
+# k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260227223131-ea961d6fafc4 => github.com/mtulio/openshift-cloud-provider-aws/tests/e2e v0.0.0-20260415131057-8fd9d13a9d84
 ## explicit; go 1.25.0
 k8s.io/cloud-provider-aws/tests/e2e
 # k8s.io/component-base v0.35.0
@@ -1286,6 +1291,7 @@ sigs.k8s.io/structured-merge-diff/v6/value
 # sigs.k8s.io/yaml v1.6.0
 ## explicit; go 1.22
 sigs.k8s.io/yaml
+# k8s.io/cloud-provider-aws/tests/e2e => github.com/mtulio/openshift-cloud-provider-aws/tests/e2e v0.0.0-20260415131057-8fd9d13a9d84
 # github.com/onsi/ginkgo/v2 => github.com/openshift/onsi-ginkgo/v2 v2.6.1-0.20260303184444-1cc650aa0565
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.0
 # k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.35.0
