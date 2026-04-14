@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,6 +17,8 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2eservice "k8s.io/kubernetes/test/e2e/framework/service"
 	admissionapi "k8s.io/pod-security-admission/api"
+
+	ccme2e "k8s.io/cloud-provider-aws/tests/e2e"
 )
 
 const (
@@ -118,21 +119,21 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 	It("should create NLB service with security group attached", func(ctx context.Context) {
 		isNLBFeatureEnabled(ctx)
 
-		By("creatomg required AWS clients")
-		elbClient, err := createAWSClientLoadBalancer(ctx)
-		framework.ExpectNoError(err, "failed to create AWS ELB client")
+		By("creating E2E test helper")
+		e2e, err := ccme2e.NewE2ETestHelper(ctx, cs)
+		framework.ExpectNoError(err, "failed to create E2E test helper")
 
 		By("creating test service and deployment configuration")
 		serviceName := "nlb-sg-crt"
 		_, jig, err := createServiceNLB(ctx, cs, ns, serviceName, map[int32]int32{80: 8080})
 		framework.ExpectNoError(err, "failed to create NLB service load balancer")
 
-		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, elbClient)
+		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, e2e)
 		framework.ExpectNoError(err, "failed to get NLB metadata")
 		Expect(foundLB).NotTo(BeNil(), "found load balancer is nil")
 
-		DeferCleanup(func(cleanupCtx context.Context) {
-			err := deleteServiceAndWaitForLoadBalancerDeletion(cleanupCtx, jig, lbDNS)
+		DeferCleanup(func() {
+			err := deleteServiceAndWaitForLoadBalancerDeletion(e2e, jig, lbDNS)
 			framework.ExpectNoError(err, "failed to delete service and wait for load balancer deletion")
 		})
 
@@ -165,9 +166,9 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 	It("should have security groups attached to default ingress controller NLB", func(ctx context.Context) {
 		isNLBFeatureEnabled(ctx)
 
-		By("creatomg required AWS clients")
-		elbClient, err := createAWSClientLoadBalancer(ctx)
-		framework.ExpectNoError(err, "failed to create AWS ELB client")
+		By("creating E2E test helper")
+		e2e, err := ccme2e.NewE2ETestHelper(ctx, cs)
+		framework.ExpectNoError(err, "failed to create E2E test helper")
 
 		By("getting default ingress controller service")
 		ingressNamespace := "openshift-ingress"
@@ -206,7 +207,7 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 
 		var foundLB *elbv2types.LoadBalancer
 		err = wait.PollUntilContextTimeout(ctx, 10*time.Second, 3*time.Minute, true, func(pollCtx context.Context) (bool, error) {
-			lb, err := getAWSLoadBalancerFromDNSName(pollCtx, elbClient, lbDNS)
+			lb, err := e2e.GetAWSHelper().GetLoadBalancerFromDNSNameWithRetry(lbDNS, 10*time.Minute)
 			if err != nil {
 				framework.Logf("Failed to find load balancer with DNS %s: %v", lbDNS, err)
 				return false, nil
@@ -253,24 +254,21 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 	It("should update security group rules when service is updated", func(ctx context.Context) {
 		isNLBFeatureEnabled(ctx)
 
-		By("creatomg required AWS clients")
-		ec2Client, err := createAWSClientEC2(ctx)
-		framework.ExpectNoError(err, "failed to create AWS EC2 client")
-
-		elbClient, err := createAWSClientLoadBalancer(ctx)
-		framework.ExpectNoError(err, "failed to create AWS ELB client")
+		By("creating E2E test helper")
+		e2e, err := ccme2e.NewE2ETestHelper(ctx, cs)
+		framework.ExpectNoError(err, "failed to create E2E test helper")
 
 		By("creating test service and deployment configuration")
 		serviceName := "nlb-sg-upd"
 		_, jig, err := createServiceNLB(ctx, cs, ns, serviceName, map[int32]int32{80: 8080})
 		framework.ExpectNoError(err, "failed to create NLB service load balancer")
 
-		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, elbClient)
+		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, e2e)
 		framework.ExpectNoError(err, "failed to get NLB metadata")
 		Expect(foundLB).NotTo(BeNil(), "found load balancer is nil")
 
-		DeferCleanup(func(cleanupCtx context.Context) {
-			err := deleteServiceAndWaitForLoadBalancerDeletion(cleanupCtx, jig, lbDNS)
+		DeferCleanup(func() {
+			err := deleteServiceAndWaitForLoadBalancerDeletion(e2e, jig, lbDNS)
 			framework.ExpectNoError(err, "failed to delete service and wait for load balancer deletion")
 		})
 
@@ -280,7 +278,7 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 		framework.Logf("Load balancer has %d security group(s) attached before update", len(foundLB.SecurityGroups))
 
 		By("getting security group rules")
-		originalSGRules, err := getAWSSecurityGroupRules(ctx, ec2Client, foundLB.SecurityGroups)
+		originalSGRules, err := getAWSSecurityGroupRules(ctx, e2e.GetAWSHelper().GetEC2Client(), foundLB.SecurityGroups)
 		framework.ExpectNoError(err, "failed to get security group rules")
 
 		By("updating service: adding a new port")
@@ -297,7 +295,7 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 
 		By("waiting for security group rules to include the new port 443")
 		Eventually(ctx, func(ctx context.Context) ([]int32, error) {
-			foundLB, err = getAWSLoadBalancerFromDNSName(ctx, elbClient, lbDNS)
+			foundLB, err = e2e.GetAWSHelper().GetLoadBalancerFromDNSNameWithRetry(lbDNS, 10*time.Minute)
 			if err != nil {
 				framework.Logf("Error finding load balancer: %v", err)
 				return nil, err
@@ -311,7 +309,7 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 				return nil, fmt.Errorf("load balancer has no security groups attached")
 			}
 
-			currentSGRules, err := getAWSSecurityGroupRules(ctx, ec2Client, foundLB.SecurityGroups)
+			currentSGRules, err := getAWSSecurityGroupRules(ctx, e2e.GetAWSHelper().GetEC2Client(), foundLB.SecurityGroups)
 			if err != nil {
 				framework.Logf("failed to get security group rules to calculate the diff: %v", err)
 				return nil, err
@@ -364,12 +362,9 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 	It("should cleanup security groups when service is deleted", func(ctx context.Context) {
 		isNLBFeatureEnabled(ctx)
 
-		By("creatomg required AWS clients")
-		ec2Client, err := createAWSClientEC2(ctx)
-		framework.ExpectNoError(err, "failed to create AWS EC2 client")
-
-		elbClient, err := createAWSClientLoadBalancer(ctx)
-		framework.ExpectNoError(err, "failed to create AWS ELB client")
+		By("creating E2E test helper")
+		e2e, err := ccme2e.NewE2ETestHelper(ctx, cs)
+		framework.ExpectNoError(err, "failed to create E2E test helper")
 
 		By("creating test service and deployment configuration")
 		serviceName := "nlb-sg-cleanup-test"
@@ -377,7 +372,7 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 		_, jig, err := createServiceNLB(ctx, cs, ns, serviceName, map[int32]int32{80: 8080})
 		framework.ExpectNoError(err, "failed to create NLB service load balancer")
 
-		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, elbClient)
+		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, e2e)
 		framework.ExpectNoError(err, "failed to get NLB metadata")
 		Expect(foundLB).NotTo(BeNil(), "found load balancer is nil")
 
@@ -393,12 +388,12 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 
 		By("verifying security groups exist before deletion")
 		for _, sgID := range securityGroupIDs {
-			exists, err := securityGroupExists(ctx, ec2Client, sgID)
+			exists, err := securityGroupExists(ctx, e2e.GetAWSHelper().GetEC2Client(), sgID)
 			framework.ExpectNoError(err, "failed to check security group %s", sgID)
 			Expect(exists).To(BeTrue(), "security group %s should exist before deletion", sgID)
 		}
 
-		err = deleteServiceAndWaitForLoadBalancerDeletion(ctx, jig, lbDNS)
+		err = deleteServiceAndWaitForLoadBalancerDeletion(e2e, jig, lbDNS)
 		framework.ExpectNoError(err, "failed to delete service and wait for load balancer deletion")
 
 		By("verifying managed security groups are cleaned up")
@@ -406,7 +401,7 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 		err = wait.PollUntilContextTimeout(ctx, 10*time.Second, 3*time.Minute, true, func(ctx context.Context) (bool, error) {
 			allDeleted := true
 			for _, sgID := range securityGroupIDs {
-				exists, err := securityGroupExists(ctx, ec2Client, sgID)
+				exists, err := securityGroupExists(ctx, e2e.GetAWSHelper().GetEC2Client(), sgID)
 				if err != nil {
 					framework.Logf("Error checking security group %s: %v", sgID, err)
 					return false, err
@@ -447,12 +442,9 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 	It("should have correct security group rules for service ports", func(ctx context.Context) {
 		isNLBFeatureEnabled(ctx)
 
-		By("creatomg required AWS clients")
-		ec2Client, err := createAWSClientEC2(ctx)
-		framework.ExpectNoError(err, "failed to create AWS EC2 client")
-
-		elbClient, err := createAWSClientLoadBalancer(ctx)
-		framework.ExpectNoError(err, "failed to create AWS ELB client")
+		By("creating E2E test helper")
+		e2e, err := ccme2e.NewE2ETestHelper(ctx, cs)
+		framework.ExpectNoError(err, "failed to create E2E test helper")
 
 		By("creating test service and deployment configuration")
 		serviceName := "nlb-sg-rules-test"
@@ -465,12 +457,12 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 		lbDNS := svc.Status.LoadBalancer.Ingress[0].Hostname
 		framework.Logf("Load balancer DNS: %s", lbDNS)
 
-		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, elbClient)
+		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, e2e)
 		framework.ExpectNoError(err, "failed to get NLB metadata")
 		Expect(foundLB).NotTo(BeNil(), "found load balancer is nil")
 
-		DeferCleanup(func(cleanupCtx context.Context) {
-			err := deleteServiceAndWaitForLoadBalancerDeletion(cleanupCtx, jig, lbDNS)
+		DeferCleanup(func() {
+			err := deleteServiceAndWaitForLoadBalancerDeletion(e2e, jig, lbDNS)
 			framework.ExpectNoError(err, "failed to delete service and wait for load balancer deletion")
 		})
 
@@ -480,7 +472,7 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 		framework.Logf("Load balancer has %d security group(s) attached", len(foundLB.SecurityGroups))
 
 		By("inspecting security group rules")
-		currentSGRules, err := getAWSSecurityGroupRules(ctx, ec2Client, foundLB.SecurityGroups)
+		currentSGRules, err := getAWSSecurityGroupRules(ctx, e2e.GetAWSHelper().GetEC2Client(), foundLB.SecurityGroups)
 		framework.ExpectNoError(err, "failed to get security group rules to calculate the diff")
 		Expect(len(currentSGRules)).To(BeNumerically(">", 0), "security group rules should not be empty")
 
@@ -543,7 +535,7 @@ func createServiceNLB(ctx context.Context, cs clientset.Interface, ns *v1.Namesp
 }
 
 // getNLBMetaFromName gets the NLB metadata (AWS API object) from the service/loadbalancer name.
-func getNLBMetaFromName(ctx context.Context, cs clientset.Interface, ns *v1.Namespace, serviceName string, elbc *elbv2.Client) (*elbv2types.LoadBalancer, string, error) {
+func getNLBMetaFromName(ctx context.Context, cs clientset.Interface, ns *v1.Namespace, serviceName string, e2e *ccme2e.E2ETestHelper) (*elbv2types.LoadBalancer, string, error) {
 	By("getting service to extract load balancer DNS name")
 	svc, err := cs.CoreV1().Services(ns.Name).Get(ctx, serviceName, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to get service %s", serviceName)
@@ -556,16 +548,29 @@ func getNLBMetaFromName(ctx context.Context, cs clientset.Interface, ns *v1.Name
 	Expect(lbDNS).NotTo(BeEmpty(), "Ingress Hostname must not be empty")
 	framework.Logf("Load balancer DNS: %s", lbDNS)
 
-	foundLB, err := getAWSLoadBalancerFromDNSName(ctx, elbc, lbDNS)
-	framework.ExpectNoError(err, "failed to find load balancer with DNS name %s", lbDNS)
+	// Use Eventually to handle AWS API eventual consistency - the Kubernetes service
+	// may show the LB DNS before AWS API has fully propagated the resource.
+	// Based on observed CI failures, this can take 30s-2min in high-load environments.
+	var foundLB *elbv2types.LoadBalancer
+	Eventually(ctx, func(ctx context.Context) error {
+		lb, err := e2e.GetAWSHelper().GetLoadBalancerFromDNSNameWithRetry(lbDNS, 10*time.Minute)
+		if err != nil {
+			e2e.GatherServiceInfo()
+			return fmt.Errorf("failed to find load balancer with DNS name %s: %v", lbDNS, err)
+		}
+		foundLB = lb
+		return nil
+	}, 5*time.Minute, 5*time.Second).Should(Succeed(), "failed to find load balancer with DNS name %s", lbDNS)
 	Expect(foundLB).NotTo(BeNil(), "found load balancer is nil")
 
 	return foundLB, lbDNS, nil
 }
 
 // deleteServiceAndWaitForLoadBalancerDeletion deletes the service and waits for the load balancer to be deleted.
-func deleteServiceAndWaitForLoadBalancerDeletion(ctx context.Context, jig *e2eservice.TestJig, lbDNS string) error {
+func deleteServiceAndWaitForLoadBalancerDeletion(e2e *ccme2e.E2ETestHelper, jig *e2eservice.TestJig, lbDNS string) error {
 	By("deleting the service")
+	// using deletion context to avoid leaking resources
+	ctx := context.TODO()
 	err := jig.Client.CoreV1().Services(jig.Namespace).Delete(ctx, jig.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err, "failed to delete service")
 
@@ -573,12 +578,9 @@ func deleteServiceAndWaitForLoadBalancerDeletion(ctx context.Context, jig *e2ese
 	loadBalancerCreateTimeout := e2eservice.GetServiceLoadBalancerCreationTimeout(ctx, jig.Client)
 
 	// Get ELB client once before polling
-	elbClient, err := createAWSClientLoadBalancer(ctx)
-	framework.ExpectNoError(err, "failed to create AWS ELB client")
-
 	// Poll for load balancer deletion
 	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, loadBalancerCreateTimeout, true, func(ctx context.Context) (bool, error) {
-		foundLB, err := getAWSLoadBalancerFromDNSName(ctx, elbClient, lbDNS)
+		foundLB, err := e2e.GetAWSHelper().GetLoadBalancerFromDNSName(lbDNS)
 		if err != nil {
 			// Check if the error indicates the load balancer was not found (i.e., successfully deleted)
 			if strings.Contains(err.Error(), "no load balancer found with DNS name") {

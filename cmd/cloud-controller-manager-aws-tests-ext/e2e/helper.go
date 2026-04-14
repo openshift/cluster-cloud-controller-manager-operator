@@ -5,60 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	ec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
-	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
-
-// AWS helpers
-
-// createAWSClientLoadBalancer creates an AWS ELBv2 client using default credentials configured in the environment.
-func createAWSClientLoadBalancer(ctx context.Context) (*elbv2.Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to load AWS config: %v", err)
-	}
-	return elbv2.NewFromConfig(cfg), nil
-}
-
-// getAWSLoadBalancerFromDNSName finds a load balancer by DNS name using the AWS ELBv2 client.
-func getAWSLoadBalancerFromDNSName(ctx context.Context, elbClient *elbv2.Client, lbDNSName string) (*elbv2types.LoadBalancer, error) {
-	var foundLB *elbv2types.LoadBalancer
-	framework.Logf("describing load balancers with DNS %s", lbDNSName)
-
-	paginator := elbv2.NewDescribeLoadBalancersPaginator(elbClient, &elbv2.DescribeLoadBalancersInput{})
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to describe load balancers: %v", err)
-		}
-
-		framework.Logf("found %d load balancers in page", len(page.LoadBalancers))
-		// Search for the load balancer with matching DNS name in this page
-		for i := range page.LoadBalancers {
-			if aws.ToString(page.LoadBalancers[i].DNSName) == lbDNSName {
-				foundLB = &page.LoadBalancers[i]
-				framework.Logf("found load balancer with DNS %s", aws.ToString(foundLB.DNSName))
-				break
-			}
-		}
-		if foundLB != nil {
-			break
-		}
-	}
-
-	if foundLB == nil {
-		return nil, fmt.Errorf("no load balancer found with DNS name: %s", lbDNSName)
-	}
-
-	return foundLB, nil
-}
 
 // isFeatureEnabled checks if an OpenShift feature gate is enabled by querying the
 // FeatureGate resource named "cluster" using the typed OpenShift config API.
@@ -118,15 +70,6 @@ func isFeatureEnabled(ctx context.Context, featureName string) (bool, error) {
 	// Feature not found in either list
 	framework.Logf("Feature %s not found in FeatureGate status", featureName)
 	return false, nil
-}
-
-// getAWSClientEC2 creates an AWS EC2 client using default credentials configured in the environment.
-func createAWSClientEC2(ctx context.Context) (*ec2.Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to load AWS config: %v", err)
-	}
-	return ec2.NewFromConfig(cfg), nil
 }
 
 // getAWSSecurityGroup retrieves a security group by ID using the AWS EC2 client.
