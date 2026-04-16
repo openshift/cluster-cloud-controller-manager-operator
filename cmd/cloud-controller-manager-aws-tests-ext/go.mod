@@ -3,8 +3,6 @@ module github.com/openshift/cluster-cloud-controller-manager-operator/cmd/cloud-
 go 1.25.0
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.41.2
-	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.291.0
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.45.2
 	github.com/onsi/ginkgo/v2 v2.27.2
@@ -20,6 +18,11 @@ require (
 	k8s.io/kubernetes v1.35.0
 	k8s.io/pod-security-admission v0.35.0
 )
+
+// Use development branch @mtulio e2e-lb-export
+replace k8s.io/cloud-provider-aws/tests/e2e => github.com/mtulio/openshift-cloud-provider-aws/tests/e2e v0.0.0-20260416182248-5763be2f1ea0
+
+//replace k8s.io/cloud-provider-aws/tests/e2e => /home/mtulio/openshift/OCPSTRAT-1553/cloud-provider-aws/tests/e2e
 
 // Mandatory:
 replace (
@@ -44,11 +47,14 @@ require (
 	cel.dev/expr v0.24.0 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.41.2 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.29.14 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.67 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.31 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.18 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.18 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing v1.30.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.18 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.25.3 // indirect

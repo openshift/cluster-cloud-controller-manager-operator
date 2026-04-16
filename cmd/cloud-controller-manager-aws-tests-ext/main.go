@@ -61,6 +61,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("failed to select specs: %w", err))
 	}
+	// TODO: Exclude specs when the environment variable is set.
 
 	// Skip set of tests when topology is SingleReplica.
 	singleReplicaSkips := []string{
