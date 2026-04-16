@@ -3,9 +3,11 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,7 +33,8 @@ const (
 	// when available: features.FeatureGateAWSServiceLBNetworkSecurityGroup
 	featureGateAWSServiceLBNetworkSecurityGroup = "AWSServiceLBNetworkSecurityGroup"
 
-	annotationLBType = "service.beta.kubernetes.io/aws-load-balancer-type"
+	annotationLBType           = "service.beta.kubernetes.io/aws-load-balancer-type"
+	annotationLBSecurityGroups = "service.beta.kubernetes.io/aws-load-balancer-security-groups"
 
 	cloudConfigNamespace = "openshift-cloud-controller-manager"
 	cloudConfigName      = "cloud-conf"
@@ -487,6 +490,434 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 		}
 		Expect(expectedPorts).To(ContainElements(int32(80), int32(443)),
 			"security groups should include rules for ports 80 and 443")
+	})
+
+	// Test: [cloud-provider-aws-e2e-openshift] loadbalancer NLB [OCPFeatureGate:AWSServiceLBNetworkSecurityGroup] should create NLB service with BYO security group and preserve it after deletion
+	//
+	// Creates a new Service type loadBalancer Network Load Balancer (NLB) with a user-provided (BYO)
+	// security group annotation, validates that the specified security group is attached to the NLB,
+	// then deletes the service and validates that the BYO security group is preserved (not deleted).
+	//
+	// Prerequisites:
+	//   - AWSServiceLBNetworkSecurityGroup feature gate is enabled
+	//
+	// Expected Results:
+	//   - BYO security group is created successfully
+	//   - Service type loadBalancer Network Load Balancer (NLB) is created with BYO SG annotation
+	//   - Backend pods start and become ready
+	//   - Load balancer has the BYO security group attached (not managed SG)
+	//   - BYO security group has no cluster tag (not "owned")
+	//   - Service and load balancer are deleted successfully
+	//   - BYO security group is NOT deleted (user retains ownership)
+	//   - BYO security group still exists in AWS after service deletion
+	//   - The test must fail if BYO security group is not attached or is deleted
+	//   - The test must skip if the feature gate is not enabled
+	It("should create NLB with BYO SG and preserve it after deletion", func(ctx context.Context) {
+		isNLBFeatureEnabled(ctx)
+
+		By("creating E2E test helper")
+		e2e, err := ccme2e.NewE2ETestHelper(ctx, cs)
+		framework.ExpectNoError(err, "failed to create E2E test helper")
+
+		ec2Client := e2e.GetAWSHelper().GetEC2Client()
+
+		By("discovering cluster VPC and name for BYO security group creation")
+		vpcID, err := getClusterVPCID(ctx, cs, ec2Client)
+		framework.ExpectNoError(err, "failed to get cluster VPC ID")
+
+		clusterName, err := getClusterName(ctx, cs, ec2Client)
+		framework.ExpectNoError(err, "failed to get cluster name")
+
+		By("creating BYO security group for testing")
+		sgName := fmt.Sprintf("e2e-nlb-byo-sg-create-%s", ns.Name)
+		sgDescription := fmt.Sprintf("BYO Security Group for e2e test %s", ns.Name)
+		byoSGID, err := createAWSSecurityGroup(ctx, ec2Client, sgName, sgDescription, vpcID)
+		framework.ExpectNoError(err, "failed to create BYO security group")
+		framework.Logf("created BYO security group: %s", byoSGID)
+
+		// Add cleanup for BYO security group
+		DeferCleanup(func(cleanupCtx context.Context) {
+			By("cleaning up BYO security group")
+			// Create fresh e2e helper with cleanupCtx to avoid context cancellation issues
+			cleanupE2E, err := ccme2e.NewE2ETestHelper(cleanupCtx, cs)
+			if err != nil {
+				framework.Logf("warning: failed to create cleanup E2E helper: %v", err)
+				return
+			}
+			cleanupEC2Client := cleanupE2E.GetAWSHelper().GetEC2Client()
+			err = waitForSecurityGroupDeletion(cleanupCtx, cleanupEC2Client, byoSGID, 5*time.Minute)
+			if err != nil {
+				framework.Logf("warning: failed to delete BYO security group %s: %v", byoSGID, err)
+			}
+		})
+
+		By("adding ingress rules to BYO security group")
+		ports := []v1.ServicePort{{Port: 80, Protocol: v1.ProtocolTCP}}
+		err = authorizeSecurityGroupIngress(ctx, ec2Client, byoSGID, ports)
+		framework.ExpectNoError(err, "failed to authorize ingress for BYO security group")
+
+		By("creating test service with BYO security group annotation")
+		serviceName := "nlb-byo-sg-create"
+		jig := e2eservice.NewTestJig(cs, ns.Name, serviceName)
+
+		svc := &v1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: jig.Namespace,
+				Name:      jig.Name,
+				Labels:    jig.Labels,
+				Annotations: map[string]string{
+					annotationLBType:           "nlb",
+					annotationLBSecurityGroups: byoSGID,
+				},
+			},
+			Spec: v1.ServiceSpec{
+				Type:            v1.ServiceTypeLoadBalancer,
+				SessionAffinity: v1.ServiceAffinityNone,
+				Selector:        jig.Labels,
+				Ports: []v1.ServicePort{
+					{
+						Name:       "http",
+						Protocol:   v1.ProtocolTCP,
+						Port:       80,
+						TargetPort: intstr.FromInt(8080),
+					},
+				},
+			},
+		}
+
+		_, err = jig.Client.CoreV1().Services(jig.Namespace).Create(ctx, svc, metav1.CreateOptions{})
+		framework.ExpectNoError(err, "failed to create LoadBalancer Service")
+
+		By("waiting for AWS load balancer provisioning")
+		loadBalancerCreateTimeout := e2eservice.GetServiceLoadBalancerCreationTimeout(ctx, cs)
+		svc, err = jig.WaitForLoadBalancer(ctx, loadBalancerCreateTimeout)
+		framework.ExpectNoError(err, "LoadBalancer provisioning failed")
+
+		By("extracting load balancer DNS name")
+		Expect(svc.Status.LoadBalancer.Ingress).NotTo(BeEmpty(),
+			"no ingress entry found in LoadBalancer status")
+		lbDNS := svc.Status.LoadBalancer.Ingress[0].Hostname
+		framework.Logf("load balancer DNS: %s", lbDNS)
+
+		By("getting NLB from AWS API")
+		foundLB, err := e2e.GetAWSHelper().GetLoadBalancerFromDNSNameWithRetry(lbDNS, 10*time.Minute)
+		framework.ExpectNoError(err, "failed to find load balancer with DNS name %s", lbDNS)
+		Expect(foundLB).NotTo(BeNil(), "found load balancer is nil")
+
+		By("verifying BYO security group is attached to the NLB")
+		Expect(foundLB.SecurityGroups).NotTo(BeEmpty(),
+			"load balancer should have security groups attached")
+
+		foundBYOSG := slices.Contains(foundLB.SecurityGroups, byoSGID)
+		Expect(foundBYOSG).To(BeTrue(),
+			"load balancer should have the BYO security group %s attached, but found: %v", byoSGID, foundLB.SecurityGroups)
+
+		By("verifying BYO security group is not cluster owned")
+		isManaged, err := isSecurityGroupManaged(ctx, ec2Client, byoSGID, clusterName)
+		framework.ExpectNoError(err, "failed to check if BYO security group is managed")
+		Expect(isManaged).To(BeFalse(),
+			"BYO security group should NOT be managed by the controller (should not have 'owned' tag)")
+
+		framework.Logf("successfully validated NLB with BYO security group %s", byoSGID)
+
+		By("verifying BYO security group exists before service deletion")
+		exists, err := securityGroupExists(ctx, ec2Client, byoSGID)
+		framework.ExpectNoError(err, "failed to check if BYO security group exists")
+		Expect(exists).To(BeTrue(), "BYO security group %s should exist before service deletion", byoSGID)
+
+		By("deleting the service")
+		err = deleteServiceAndWaitForLoadBalancerDeletion(e2e, jig, lbDNS)
+		framework.ExpectNoError(err, "failed to delete service and wait for load balancer deletion")
+		framework.Logf("service and load balancer deleted successfully")
+
+		By("verifying BYO security group STILL EXISTS after service deletion")
+		exists, err = securityGroupExists(ctx, ec2Client, byoSGID)
+		framework.ExpectNoError(err, "failed to check if BYO security group exists after deletion")
+		Expect(exists).To(BeTrue(),
+			"BYO security group %s should NOT be deleted by the controller (user retains ownership)", byoSGID)
+
+		By("verifying BYO security group properties are unchanged")
+		sg, err := getAWSSecurityGroup(ctx, ec2Client, byoSGID)
+		framework.ExpectNoError(err, "failed to get BYO security group after service deletion")
+		Expect(sg).NotTo(BeNil(), "BYO security group should be retrievable after service deletion")
+		Expect(aws.ToString(sg.GroupName)).To(Equal(sgName),
+			"BYO security group name should be unchanged")
+
+		// Verify it's still marked as not cluster owned
+		isManaged, err = isSecurityGroupManaged(ctx, ec2Client, byoSGID, clusterName)
+		framework.ExpectNoError(err, "failed to check if BYO security group is managed")
+		Expect(isManaged).To(BeFalse(),
+			"BYO security group should still be user-managed (not controller-owned) after service deletion")
+
+		framework.Logf("successfully validated BYO security group %s was preserved after service deletion", byoSGID)
+	})
+
+	// Test: [cloud-provider-aws-e2e-openshift] loadbalancer NLB [OCPFeatureGate:AWSServiceLBNetworkSecurityGroup] should transition NLB between managed and BYO security groups
+	//
+	// Creates a Service type loadBalancer Network Load Balancer (NLB) with managed security groups,
+	// transitions to a user-provided (BYO) security group, then transitions back to managed security groups,
+	// validating the full round-trip and verifying BYO security group preservation.
+	//
+	// Prerequisites:
+	//   - AWSServiceLBNetworkSecurityGroup feature gate is enabled
+	//
+	// Expected Results:
+	//   - Service type loadBalancer Network Load Balancer (NLB) is created with managed SG initially
+	//   - Managed security group is attached and has cluster ownership tag ("owned")
+	//   - Service is updated with BYO security group annotation
+	//   - Controller transitions from managed SG to BYO SG
+	//   - Load balancer has BYO security group attached after first transition
+	//   - Old managed security groups are deleted by the controller
+	//   - Service is updated to remove BYO security group annotation
+	//   - Controller transitions back from BYO SG to managed SG
+	//   - Load balancer has new managed security group attached after second transition
+	//   - BYO security group is preserved (not deleted) throughout
+	//   - The test must fail if any transition doesn't occur correctly
+	//   - The test must skip if the feature gate is not enabled
+	It("should transition NLB between managed and BYO security groups", func(ctx context.Context) {
+		isNLBFeatureEnabled(ctx)
+
+		By("creating E2E test helper")
+		e2e, err := ccme2e.NewE2ETestHelper(ctx, cs)
+		framework.ExpectNoError(err, "failed to create E2E test helper")
+
+		ec2Client := e2e.GetAWSHelper().GetEC2Client()
+
+		By("discovering cluster name for security group management")
+		clusterName, err := getClusterName(ctx, cs, ec2Client)
+		framework.ExpectNoError(err, "failed to get cluster name")
+
+		By("creating test service with managed security groups (no BYO annotation)")
+		serviceName := "nlb-sg-update"
+		_, jig, err := createServiceNLB(ctx, cs, ns, serviceName, map[int32]int32{80: 8080})
+		framework.ExpectNoError(err, "failed to create NLB service load balancer")
+
+		foundLB, lbDNS, err := getNLBMetaFromName(ctx, cs, ns, serviceName, e2e)
+		framework.ExpectNoError(err, "failed to get NLB metadata")
+		Expect(foundLB).NotTo(BeNil(), "found load balancer is nil")
+
+		DeferCleanup(func(cleanupCtx context.Context) {
+			// Create fresh e2e helper with cleanupCtx to avoid context cancellation issues
+			cleanupE2E, err := ccme2e.NewE2ETestHelper(cleanupCtx, cs)
+			if err != nil {
+				framework.Logf("warning: failed to create cleanup E2E helper: %v", err)
+				return
+			}
+			err = deleteServiceAndWaitForLoadBalancerDeletion(cleanupE2E, jig, lbDNS)
+			framework.ExpectNoError(err, "failed to delete service and wait for load balancer deletion")
+		})
+
+		By("verifying managed security groups are attached initially")
+		Expect(foundLB.SecurityGroups).NotTo(BeEmpty(),
+			"load balancer should have managed security groups attached initially")
+		initialManagedSGs := foundLB.SecurityGroups
+		framework.Logf("initial managed security groups: %v", initialManagedSGs)
+
+		By("verifying initial security groups are managed by the controller")
+		for _, sgID := range initialManagedSGs {
+			isManaged, err := isSecurityGroupManaged(ctx, ec2Client, sgID, clusterName)
+			framework.ExpectNoError(err, "failed to check if security group %s is managed", sgID)
+			Expect(isManaged).To(BeTrue(),
+				"initial security group %s should be managed by the controller", sgID)
+		}
+
+		By("discovering cluster VPC for BYO security group creation")
+		vpcID, err := getClusterVPCID(ctx, cs, ec2Client)
+		framework.ExpectNoError(err, "failed to get cluster VPC ID")
+
+		By("creating BYO security group for transition")
+		sgName := fmt.Sprintf("e2e-nlb-byo-sg-update-%s", ns.Name)
+		sgDescription := fmt.Sprintf("BYO Security Group for e2e test %s", ns.Name)
+		byoSGID, err := createAWSSecurityGroup(ctx, ec2Client, sgName, sgDescription, vpcID)
+		framework.ExpectNoError(err, "failed to create BYO security group")
+		framework.Logf("created BYO security group: %s", byoSGID)
+
+		// Add cleanup for BYO security group
+		DeferCleanup(func(cleanupCtx context.Context) {
+			By("cleaning up BYO security group")
+			// Create fresh e2e helper with cleanupCtx to avoid context cancellation issues
+			cleanupE2E, err := ccme2e.NewE2ETestHelper(cleanupCtx, cs)
+			if err != nil {
+				framework.Logf("warning: failed to create cleanup E2E helper: %v", err)
+				return
+			}
+			cleanupEC2Client := cleanupE2E.GetAWSHelper().GetEC2Client()
+			err = waitForSecurityGroupDeletion(cleanupCtx, cleanupEC2Client, byoSGID, 5*time.Minute)
+			if err != nil {
+				framework.Logf("warning: failed to delete BYO security group %s: %v", byoSGID, err)
+			}
+		})
+
+		By("adding ingress rules to BYO security group")
+		ports := []v1.ServicePort{{Port: 80, Protocol: v1.ProtocolTCP}}
+		err = authorizeSecurityGroupIngress(ctx, ec2Client, byoSGID, ports)
+		framework.ExpectNoError(err, "failed to authorize ingress for BYO security group")
+
+		// Phase 1: Transition from managed SG to BYO SG
+		By("updating service with BYO security group annotation")
+		_, err = jig.UpdateService(ctx, func(s *v1.Service) {
+			if s.Annotations == nil {
+				s.Annotations = make(map[string]string)
+			}
+			s.Annotations[annotationLBSecurityGroups] = byoSGID
+		})
+		framework.ExpectNoError(err, "failed to update service with BYO security group annotation")
+		framework.Logf("service updated with BYO security group annotation: %s", byoSGID)
+
+		By("waiting for controller to reconcile and attach BYO security group")
+		var updatedLB *elbv2types.LoadBalancer
+		err = wait.PollUntilContextTimeout(ctx, 10*time.Second, 3*time.Minute, true, func(pollCtx context.Context) (bool, error) {
+			select {
+			case <-pollCtx.Done():
+				return false, pollCtx.Err()
+			default:
+			}
+
+			lb, err := e2e.GetAWSHelper().GetLoadBalancerFromDNSName(lbDNS)
+			if err != nil {
+				framework.Logf("error getting load balancer: %v", err)
+				return false, nil
+			}
+			if lb == nil {
+				framework.Logf("load balancer not found yet")
+				return false, nil
+			}
+
+			// Check if BYO SG is attached
+			if slices.Contains(lb.SecurityGroups, byoSGID) {
+				updatedLB = lb
+				framework.Logf("BYO security group %s is now attached to load balancer", byoSGID)
+				return true, nil
+			}
+
+			framework.Logf("BYO security group not yet attached, current SGs: %v", lb.SecurityGroups)
+			return false, nil
+		})
+		framework.ExpectNoError(err, "BYO security group should be attached to load balancer after service update")
+		Expect(updatedLB).NotTo(BeNil(), "updated load balancer should not be nil")
+
+		By("verifying BYO security group is attached to the NLB")
+		foundBYOSG := slices.Contains(updatedLB.SecurityGroups, byoSGID)
+		Expect(foundBYOSG).To(BeTrue(),
+			"load balancer should have BYO security group %s attached after update", byoSGID)
+
+		By("verifying old managed security groups are deleted")
+		err = wait.PollUntilContextTimeout(ctx, 10*time.Second, 3*time.Minute, true, func(pollCtx context.Context) (bool, error) {
+			select {
+			case <-pollCtx.Done():
+				return false, pollCtx.Err()
+			default:
+			}
+
+			allDeleted := true
+			for _, sgID := range initialManagedSGs {
+				exists, err := securityGroupExists(pollCtx, ec2Client, sgID)
+				if err != nil {
+					framework.Logf("error checking if managed SG %s exists: %v", sgID, err)
+					return false, nil
+				}
+				if exists {
+					framework.Logf("managed security group %s still exists, waiting for cleanup...", sgID)
+					allDeleted = false
+				} else {
+					framework.Logf("managed security group %s was successfully cleaned up", sgID)
+				}
+			}
+			return allDeleted, nil
+		})
+		framework.ExpectNoError(err, "old managed security groups should be deleted after BYO SG is attached")
+
+		framework.Logf("successfully validated transition from managed SG to BYO SG %s", byoSGID)
+
+		// Round-trip: Transition back from BYO to managed
+		By("updating service to remove BYO security group annotation (transition back to managed)")
+		_, err = jig.UpdateService(ctx, func(s *v1.Service) {
+			delete(s.Annotations, annotationLBSecurityGroups)
+		})
+		framework.ExpectNoError(err, "failed to update service to remove BYO security group annotation")
+		framework.Logf("service updated to remove BYO security group annotation")
+
+		By("waiting for controller to reconcile and attach new managed security group")
+		var finalLB *elbv2types.LoadBalancer
+		var newManagedSGIDs []string
+		err = wait.PollUntilContextTimeout(ctx, 10*time.Second, 3*time.Minute, true, func(pollCtx context.Context) (bool, error) {
+			select {
+			case <-pollCtx.Done():
+				return false, pollCtx.Err()
+			default:
+			}
+
+			lb, err := e2e.GetAWSHelper().GetLoadBalancerFromDNSName(lbDNS)
+			if err != nil {
+				framework.Logf("error getting load balancer: %v", err)
+				return false, nil
+			}
+			if lb == nil {
+				framework.Logf("load balancer not found yet")
+				return false, nil
+			}
+
+			// Check if BYO SG is removed
+			hasBYO := slices.Contains(lb.SecurityGroups, byoSGID)
+			if hasBYO {
+				framework.Logf("BYO security group still attached, waiting for transition back to managed...")
+				return false, nil
+			}
+
+			// Must have at least one security group
+			if len(lb.SecurityGroups) == 0 {
+				framework.Logf("no security groups attached yet")
+				return false, nil
+			}
+
+			// Check if the new SG is managed
+			for _, sgID := range lb.SecurityGroups {
+				managed, err := isSecurityGroupManaged(pollCtx, ec2Client, sgID, clusterName)
+				if err != nil {
+					framework.Logf("error checking if SG %s is managed: %v", sgID, err)
+					return false, nil
+				}
+				if managed {
+					finalLB = lb
+					newManagedSGIDs = lb.SecurityGroups
+					framework.Logf("new managed security groups attached: %v", newManagedSGIDs)
+					return true, nil
+				}
+			}
+
+			framework.Logf("waiting for managed security groups to be created and attached")
+			return false, nil
+		})
+		framework.ExpectNoError(err, "new managed security group should be created and attached after removing BYO annotation")
+		Expect(finalLB).NotTo(BeNil(), "final load balancer should not be nil")
+		Expect(newManagedSGIDs).NotTo(BeEmpty(), "should have new managed security groups attached")
+
+		By("verifying BYO security group is no longer attached after transition to managed")
+		hasBYO := slices.Contains(finalLB.SecurityGroups, byoSGID)
+		Expect(hasBYO).To(BeFalse(),
+			"BYO security group %s should no longer be attached to load balancer after transition", byoSGID)
+
+		By("verifying new security groups are managed by the controller")
+		for _, sgID := range newManagedSGIDs {
+			isManaged, err := isSecurityGroupManaged(ctx, ec2Client, sgID, clusterName)
+			framework.ExpectNoError(err, "failed to check if security group %s is managed", sgID)
+			Expect(isManaged).To(BeTrue(),
+				"new security group %s should be managed by the controller after transition back from BYO", sgID)
+		}
+
+		By("verifying BYO security group STILL EXISTS after round-trip")
+		exists, err := securityGroupExists(ctx, ec2Client, byoSGID)
+		framework.ExpectNoError(err, "failed to check if BYO security group exists")
+		Expect(exists).To(BeTrue(),
+			"BYO security group %s should be preserved throughout round-trip transitions", byoSGID)
+
+		By("verifying BYO security group is still not managed")
+		isManaged, err := isSecurityGroupManaged(ctx, ec2Client, byoSGID, clusterName)
+		framework.ExpectNoError(err, "failed to check if BYO security group is managed")
+		Expect(isManaged).To(BeFalse(),
+			"BYO security group should remain user-managed after round-trip")
+
+		framework.Logf("successfully validated round-trip transition: managed -> BYO -> managed with BYO preserved")
 	})
 })
 
