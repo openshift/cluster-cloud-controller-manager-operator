@@ -21,6 +21,7 @@ spec:
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
         kubectl.kubernetes.io/default-container: cluster-cloud-controller-manager
+        openshift.io/required-scc: hostaccess
       labels:
         k8s-app: cloud-manager-operator
     spec:
