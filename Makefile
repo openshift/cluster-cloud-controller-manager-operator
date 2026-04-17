@@ -73,7 +73,7 @@ manifests:
 # Run go fmt against code
 .PHONY: fmt
 fmt:
-	go fmt ./...
+	go fmt -mod=mod ./...
 
 # Run go vet against code
 .PHONY: vet
