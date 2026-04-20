@@ -59,7 +59,7 @@ cloud-controller-manager-aws-tests-ext:
 cluster-cloud-controller-manager-operator-tests-ext:
 	cd openshift-tests/operator-tests && \
 	mkdir -p ../bin && \
-	go build $(GOGCFLAGS) -o "../bin/cluster-cloud-controller-manager-operator-tests-ext" \
+	go build $(GOGCFLAGS) -o "../bin/cloud-controller-manager-operator-tests-ext" \
 	      -trimpath -ldflags "$(LD_FLAGS)" .
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
