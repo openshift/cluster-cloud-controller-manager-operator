@@ -1,4 +1,4 @@
-module github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/aws-tests
+module github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests
 
 go 1.25.0
 

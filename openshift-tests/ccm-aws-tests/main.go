@@ -20,8 +20,8 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	// Importing ginkgo tests from the CCM e2e packages
-	_ "github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/aws-tests/e2e/aws"
-	_ "github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/aws-tests/e2e/common"
+	_ "github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/aws"
+	_ "github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
 	_ "k8s.io/cloud-provider-aws/tests/e2e"
 )
 

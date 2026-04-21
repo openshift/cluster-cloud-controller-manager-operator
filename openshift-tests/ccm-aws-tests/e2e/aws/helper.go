@@ -11,7 +11,7 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
-	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/aws-tests/e2e/common"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
