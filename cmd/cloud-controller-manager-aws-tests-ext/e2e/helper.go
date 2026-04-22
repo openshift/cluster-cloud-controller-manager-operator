@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	ec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -199,16 +200,13 @@ func ec2IsNotFoundError(err error) bool {
 		strings.Contains(errMsg, "InvalidGroup.Malformed")
 }
 
-// isAWSThrottlingError checks if an error is an AWS throttling/rate limit error.
-func isAWSThrottlingError(err error) bool {
+// isAWSRetryableError checks if an error is retryable using AWS SDK's standard retry logic.
+func isAWSRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	errMsg := err.Error()
-	return strings.Contains(errMsg, "Throttling") ||
-		strings.Contains(errMsg, "RequestLimitExceeded") ||
-		strings.Contains(errMsg, "TooManyRequests") ||
-		strings.Contains(errMsg, "RequestThrottled")
+	result := retry.IsErrorRetryables(retry.DefaultRetryables).IsErrorRetryable(err)
+	return result == aws.TrueTernary
 }
 
 // createAWSSecurityGroup creates a test security group.
@@ -330,8 +328,8 @@ func waitForSecurityGroupDeletion(ctx context.Context, ec2Client *ec2.Client, sg
 		// First check if SG still exists
 		exists, err := securityGroupExists(pollCtx, ec2Client, sgID)
 		if err != nil {
-			// Handle throttling errors by continuing to poll
-			if isAWSThrottlingError(err) {
+			// Handle retryable errors by continuing to poll
+			if isAWSRetryableError(err) {
 				framework.Logf("AWS throttling encountered while checking security group %s, retrying...", sgID)
 				return false, nil
 			}
@@ -346,8 +344,8 @@ func waitForSecurityGroupDeletion(ctx context.Context, ec2Client *ec2.Client, sg
 		// Try to delete it
 		err = deleteAWSSecurityGroup(pollCtx, ec2Client, sgID)
 		if err != nil {
-			// Handle throttling errors by continuing to poll
-			if isAWSThrottlingError(err) {
+			// Handle retryable errors by continuing to poll
+			if isAWSRetryableError(err) {
 				framework.Logf("AWS throttling encountered while deleting security group %s, retrying...", sgID)
 				return false, nil
 			}
