@@ -556,9 +556,21 @@ func getNLBMetaFromName(ctx context.Context, cs clientset.Interface, ns *v1.Name
 	Expect(lbDNS).NotTo(BeEmpty(), "Ingress Hostname must not be empty")
 	framework.Logf("Load balancer DNS: %s", lbDNS)
 
-	foundLB, err := getAWSLoadBalancerFromDNSName(ctx, elbc, lbDNS)
-	framework.ExpectNoError(err, "failed to find load balancer with DNS name %s", lbDNS)
-	Expect(foundLB).NotTo(BeNil(), "found load balancer is nil")
+	var foundLB *elbv2types.LoadBalancer
+	Eventually(ctx, func(ctx context.Context) error {
+		lb, err := getAWSLoadBalancerFromDNSName(ctx, elbc, lbDNS)
+		if err != nil {
+			framework.Logf("Failed to find load balancer with DNS %s: %v", lbDNS, err)
+			return err
+		}
+		if lb == nil {
+			framework.Logf("Load balancer %s not found yet", lbDNS)
+			return fmt.Errorf("load balancer not found yet")
+		}
+		foundLB = lb
+		return nil
+	}).WithTimeout(3*time.Minute).WithPolling(10*time.Second).Should(Succeed(),
+		"failed to find load balancer with DNS name %s", lbDNS)
 
 	return foundLB, lbDNS, nil
 }
