@@ -2632,7 +2632,7 @@ k8s.io/cloud-provider/service/helpers
 # k8s.io/cloud-provider-aws v1.35.1
 ## explicit; go 1.25.0
 k8s.io/cloud-provider-aws/pkg/providers/v1/config
-# k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260227223131-ea961d6fafc4
+# k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260420202152-40f1dcbd8488
 ## explicit; go 1.25.0
 k8s.io/cloud-provider-aws/tests/e2e
 # k8s.io/cloud-provider-vsphere v1.34.0 => github.com/openshift-cloud-team/cloud-provider-vsphere v1.19.1-0.20260317135518-758abc9d59a5
