@@ -9,6 +9,7 @@ PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 CONTROLLER_GEN = go run ${PROJECT_DIR}/vendor/sigs.k8s.io/controller-tools/cmd/controller-gen
 ENVTEST = go run ${PROJECT_DIR}/vendor/sigs.k8s.io/controller-runtime/tools/setup-envtest
 GOLANGCI_LINT = go run ${PROJECT_DIR}/vendor/github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+REPO_PATH   ?= github.com/openshift/cluster-cloud-controller-manager-operator
 
 HOME ?= /tmp/kubebuilder-testing
 ifeq ($(HOME), /)
@@ -37,7 +38,8 @@ unit:
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path --bin-dir $(PROJECT_DIR)/bin --index https://raw.githubusercontent.com/openshift/api/master/envtest-releases.yaml)" ./hack/ci-test.sh
 
 # Build operator binaries
-build: operator config-sync-controllers azure-config-credentials-injector cloud-controller-manager-aws-tests-ext
+.PHONY: build
+build: operator config-sync-controllers azure-config-credentials-injector cloud-controller-manager-aws-tests-ext cluster-cloud-controller-manager-operator-tests-ext
 
 operator:
 	go build -o bin/cluster-controller-manager-operator cmd/cluster-cloud-controller-manager-operator/main.go
@@ -49,12 +51,16 @@ azure-config-credentials-injector:
 	go build -o bin/azure-config-credentials-injector cmd/azure-config-credentials-injector/main.go
 
 cloud-controller-manager-aws-tests-ext:
-	cd cmd/cloud-controller-manager-aws-tests-ext && \
-	 GO111MODULE=on CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) GOPROXY=$(GOPROXY) go build \
-		-trimpath \
-		-ldflags="$(LDFLAGS)" \
-		-o=../../bin/cloud-controller-manager-aws-tests-ext .
+	cd openshift-tests/ccm-aws-tests && \
+	mkdir -p ../bin && \
+	go build $(GOGCFLAGS) -o "../bin/cloud-controller-manager-aws-tests-ext" \
+	      -trimpath -ldflags "$(LD_FLAGS)" .
 
+cluster-cloud-controller-manager-operator-tests-ext:
+	cd openshift-tests/operator-tests && \
+	mkdir -p ../bin && \
+	go build $(GOGCFLAGS) -o "../bin/cloud-controller-manager-operator-tests-ext" \
+	      -trimpath -ldflags "$(LD_FLAGS)" .
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: verify manifests
@@ -67,7 +73,7 @@ manifests:
 # Run go fmt against code
 .PHONY: fmt
 fmt:
-	go fmt ./...
+	go fmt -mod=mod ./...
 
 # Run go vet against code
 .PHONY: vet
@@ -82,9 +88,7 @@ lint:
 # Run go mod
 .PHONY: vendor
 vendor:
-	go mod tidy
-	go mod vendor
-	go mod verify
+	hack/go-mod.sh
 
 # Generate code
 generate:
