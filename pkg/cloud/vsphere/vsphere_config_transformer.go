@@ -7,7 +7,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"k8s.io/utils/net"
 
-	ccmConfig "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere/vsphere_cloud_config"
+	ccmConfig "github.com/openshift/library-go/pkg/cloudprovider/vsphere"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
@@ -52,6 +52,10 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		// labels should only be applied if length of failuredomains is
 		// greater than one so existing single (or non-zonal) installs function.
 		if len(infra.Spec.PlatformSpec.VSphere.FailureDomains) > 1 {
+			// Initialize Labels if it's nil (happens when the input config doesn't have a labels: section)
+			if cpiCfg.Labels == nil {
+				cpiCfg.Labels = &ccmConfig.Labels{}
+			}
 			cpiCfg.Labels.Zone = zoneLabelValue
 			cpiCfg.Labels.Region = regionLabelValue
 		}
@@ -62,13 +66,34 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 
 // setNodes sets Nodes section in vsphere-cloud-provider config according passed VSpherePlatformNodeNetworking spec
 func setNodes(cfg *ccmConfig.CPIConfig, nodeNetworking *configv1.VSpherePlatformNodeNetworking) {
+	externalNetworkSubnetCIDR := strings.Join(nodeNetworking.External.NetworkSubnetCIDR, ",")
+	excludeExternalNetworkSubnetCIDR := strings.Join(nodeNetworking.External.ExcludeNetworkSubnetCIDR, ",")
+	internalNetworkSubnetCIDR := strings.Join(nodeNetworking.Internal.NetworkSubnetCIDR, ",")
+	excludeInternalNetworkSubnetCIDR := strings.Join(nodeNetworking.Internal.ExcludeNetworkSubnetCIDR, ",")
+
+	// Only initialize Nodes if there's at least one non-empty field to set
+	// This prevents empty "nodes: {}" from appearing in the marshaled YAML
+	if nodeNetworking.External.Network == "" &&
+		externalNetworkSubnetCIDR == "" &&
+		excludeExternalNetworkSubnetCIDR == "" &&
+		nodeNetworking.Internal.Network == "" &&
+		internalNetworkSubnetCIDR == "" &&
+		excludeInternalNetworkSubnetCIDR == "" {
+		return
+	}
+
+	// Initialize Nodes if it's nil (happens when the input config doesn't have a nodes: section)
+	if cfg.Nodes == nil {
+		cfg.Nodes = &ccmConfig.Nodes{}
+	}
+
 	cfg.Nodes.ExternalVMNetworkName = nodeNetworking.External.Network
-	cfg.Nodes.ExternalNetworkSubnetCIDR = strings.Join(nodeNetworking.External.NetworkSubnetCIDR, ",")
-	cfg.Nodes.ExcludeExternalNetworkSubnetCIDR = strings.Join(nodeNetworking.External.ExcludeNetworkSubnetCIDR, ",")
+	cfg.Nodes.ExternalNetworkSubnetCIDR = externalNetworkSubnetCIDR
+	cfg.Nodes.ExcludeExternalNetworkSubnetCIDR = excludeExternalNetworkSubnetCIDR
 
 	cfg.Nodes.InternalVMNetworkName = nodeNetworking.Internal.Network
-	cfg.Nodes.InternalNetworkSubnetCIDR = strings.Join(nodeNetworking.Internal.NetworkSubnetCIDR, ",")
-	cfg.Nodes.ExcludeInternalNetworkSubnetCIDR = strings.Join(nodeNetworking.Internal.ExcludeNetworkSubnetCIDR, ",")
+	cfg.Nodes.InternalNetworkSubnetCIDR = internalNetworkSubnetCIDR
+	cfg.Nodes.ExcludeInternalNetworkSubnetCIDR = excludeInternalNetworkSubnetCIDR
 }
 
 // setVirtualCenters sets vcenter server sections according passed VSpherePlatformSpec
