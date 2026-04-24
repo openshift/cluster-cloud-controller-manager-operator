@@ -7,7 +7,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"k8s.io/utils/net"
 
-	ccmConfig "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere/vsphere_cloud_config"
+	ccmConfig "github.com/openshift/library-go/pkg/cloudprovider/vsphere"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
@@ -52,6 +52,10 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		// labels should only be applied if length of failuredomains is
 		// greater than one so existing single (or non-zonal) installs function.
 		if len(infra.Spec.PlatformSpec.VSphere.FailureDomains) > 1 {
+			// Initialize Labels if it's nil (happens when the input config doesn't have a labels: section)
+			if cpiCfg.Labels == nil {
+				cpiCfg.Labels = &ccmConfig.Labels{}
+			}
 			cpiCfg.Labels.Zone = zoneLabelValue
 			cpiCfg.Labels.Region = regionLabelValue
 		}
