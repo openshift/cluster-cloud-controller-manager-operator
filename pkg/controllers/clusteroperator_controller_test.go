@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -53,12 +54,15 @@ var _ = Describe("Cluster Operator status controller", func() {
 		co := &configv1.ClusterOperator{}
 		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
 		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() bool {
+			Eventually(func() error {
 				err := cl.Delete(context.Background(), operator)
-				return err == nil || apierrors.IsNotFound(err)
-			}).Should(BeTrue())
+				if err == nil || apierrors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}).Should(Succeed())
 		}
-		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+		Expect(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)).To(MatchError(apierrors.IsNotFound, "ClusterOperator should have been deleted"))
 	})
 
 	type testCase struct {
@@ -89,14 +93,17 @@ var _ = Describe("Cluster Operator status controller", func() {
 			Expect(err).To(Succeed())
 
 			getOp := &configv1.ClusterOperator{}
-			Eventually(func() (bool, error) {
+			Eventually(func() error {
 				err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, getOp)
 				if err != nil {
-					return false, err
+					return err
 				}
 				// Successful sync means CO exists and the status is not empty
-				return getOp != nil && len(getOp.Status.Versions) > 0, nil
-			}, timeout).Should(BeTrue())
+				if getOp == nil || len(getOp.Status.Versions) == 0 {
+					return fmt.Errorf("ClusterOperator status versions not yet populated")
+				}
+				return nil
+			}, timeout).Should(Succeed())
 
 			// check version.
 			Expect(getOp.Status.Versions).To(HaveLen(1))
@@ -104,13 +111,13 @@ var _ = Describe("Cluster Operator status controller", func() {
 			Expect(getOp.Status.Versions[0].Version).To(Equal(expectedVersion))
 
 			// check conditions.
-			Expect(v1helpers.IsStatusConditionTrue(getOp.Status.Conditions, configv1.OperatorAvailable)).To(BeTrue())
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorAvailable).Status).To(Equal(configv1.ConditionTrue))
 			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorAvailable).Reason).To(Equal(ReasonAsExpected))
-			Expect(v1helpers.IsStatusConditionTrue(getOp.Status.Conditions, configv1.OperatorUpgradeable)).To(BeTrue())
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorUpgradeable).Status).To(Equal(configv1.ConditionTrue))
 			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorUpgradeable).Reason).To(Equal(ReasonAsExpected))
-			Expect(v1helpers.IsStatusConditionFalse(getOp.Status.Conditions, configv1.OperatorDegraded)).To(BeTrue())
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorDegraded).Status).To(Equal(configv1.ConditionFalse))
 			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorDegraded).Reason).To(Equal(ReasonAsExpected))
-			Expect(v1helpers.IsStatusConditionFalse(getOp.Status.Conditions, configv1.OperatorProgressing)).To(BeTrue())
+			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorProgressing).Status).To(Equal(configv1.ConditionFalse))
 			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, configv1.OperatorProgressing).Reason).To(Equal(ReasonAsExpected))
 			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, cloudControllerOwnershipCondition)).To(BeNil())
 
@@ -292,7 +299,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		// two resources should report successful update, deployment and pdb
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
@@ -315,14 +322,14 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		dep.Spec.Replicas = ptr.To[int32](20)
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 
 		// No update as resource didn't change
@@ -353,7 +360,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		// three resources should report successful update, deployment, pdb and service
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
@@ -382,7 +389,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		// Manually changing the port number
@@ -415,7 +422,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 
 		// Checking that the port has been reverted back and there is only one item in the list
@@ -442,7 +449,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		// Manually adding another port
@@ -474,7 +481,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 
 		// Checking that the port list has been reverted back and there is only one item in the list
@@ -505,7 +512,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		// Manually inserting a new label
@@ -531,7 +538,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 
 		// Checking that the new label is still there
@@ -558,7 +565,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err := reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully created")))
 
 		// Now the deployment has just one label "k8s-app: aws-cloud-controller-manager"
@@ -587,7 +594,7 @@ var _ = Describe("Apply resources should", func() {
 
 		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(updated).To(BeTrue())
+		Expect(updated).To(BeTrue(), "expected applyResources to report that at least one resource was created or updated")
 		Eventually(recorder.Events).Should(Receive(ContainSubstring("Resource was successfully updated")))
 
 		// Checking that the label value has been reverted and there is only one item in the map
@@ -601,20 +608,103 @@ var _ = Describe("Apply resources should", func() {
 		co := &configv1.ClusterOperator{}
 		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
 		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() bool {
+			Eventually(func() error {
 				err := cl.Delete(context.Background(), co)
-				return err == nil || apierrors.IsNotFound(err)
-			}, timeout).Should(BeTrue())
+				if err == nil || apierrors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}, timeout).Should(Succeed())
 		}
-		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+		Expect(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)).To(MatchError(apierrors.IsNotFound, "ClusterOperator should have been deleted"))
 
 		for _, operand := range resources {
 			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
 
-			Eventually(func() bool {
-				return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand))
-			}, timeout).Should(BeTrue())
+			Eventually(func() error {
+				err := cl.Get(context.Background(), client.ObjectKeyFromObject(operand), operand)
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("expected operand %s to be deleted", operand.GetName())
+			}, timeout).Should(Succeed())
 		}
 	})
 
+})
+
+var _ = Describe("CloudOperatorReconciler error handling", func() {
+	ctx := context.Background()
+
+	AfterEach(func() {
+		co := &configv1.ClusterOperator{}
+		if err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); err == nil {
+			Eventually(func() error {
+				err := cl.Delete(ctx, co)
+				if err == nil || apierrors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}).Should(Succeed())
+		}
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(MatchError(apierrors.IsNotFound, "ClusterOperator should have been deleted"))
+	})
+
+	It("handleDegradeError should set OperatorDegraded=True immediately and return nil error", func() {
+		reconciler := &CloudOperatorReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
+				ManagedNamespace: defaultManagementNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme: scheme.Scheme,
+		}
+
+		_, err := reconciler.handleDegradeError(ctx, []configv1.ClusterOperatorStatusCondition{}, fmt.Errorf("test persistent error"))
+		Expect(err).NotTo(HaveOccurred())
+
+		co := &configv1.ClusterOperator{}
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorDegraded).Status).To(Equal(configv1.ConditionTrue))
+	})
+
+	It("handleTransientError should not degrade before threshold, but degrade after threshold", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		reconciler := &CloudOperatorReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            fakeClock,
+				ManagedNamespace: defaultManagementNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme: scheme.Scheme,
+		}
+
+		// Pre-create the ClusterOperator so that setStatusDegraded can update its status
+		// subresource when the threshold is exceeded (status subresource updates require the
+		// object to already exist in the cluster).
+		co := &configv1.ClusterOperator{}
+		co.SetName(clusterOperatorName)
+		Expect(cl.Create(ctx, co)).To(Succeed())
+
+		// First reconcile: transient failure starts; error returned but no degraded condition set.
+		_, err := reconciler.handleTransientError(ctx, []configv1.ClusterOperatorStatusCondition{}, fmt.Errorf("test transient error"))
+		Expect(err).To(HaveOccurred())
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, configv1.OperatorDegraded)).To(BeFalse(),
+			"should not be degraded before threshold")
+
+		// Advance clock past the degraded threshold.
+		fakeClock.Step(aggregatedTransientDegradedThreshold + time.Second)
+
+		// Second reconcile: threshold exceeded, controller sets degraded.
+		_, err = reconciler.handleTransientError(ctx, []configv1.ClusterOperatorStatusCondition{}, fmt.Errorf("test transient error"))
+		Expect(err).To(HaveOccurred())
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorDegraded).Status).To(Equal(configv1.ConditionTrue))
+	})
 })
