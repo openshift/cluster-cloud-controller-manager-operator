@@ -43,6 +43,7 @@ type TrustedCABundleReconciler struct {
 	ClusterOperatorStatusClient
 	Scheme          *runtime.Scheme
 	trustBundlePath string
+	failures        failureWindow
 }
 
 // isSpecTrustedCASet returns true if spec.trustedCA of proxyConfig is set.
@@ -50,8 +51,20 @@ func isSpecTrustedCASet(proxyConfig *configv1.ProxySpec) bool {
 	return len(proxyConfig.TrustedCA.Name) > 0
 }
 
-func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	klog.V(1).Infof("%s emitted event, syncing %s ConfigMap", req, trustedCAConfigMapName)
+
+	// partialRun is set to true on the early-exit path where the event is for
+	// an unrelated ConfigMap. That path returns available=true but should NOT
+	// reset an ongoing transient failure window from a previous full reconcile.
+	partialRun := false
+
+	// transientDegradedThreshold is used as both the degraded threshold and staleness value.
+	defer finalizeReconcile(&r.failures, r.Clock, stalenessWindow, transientDegradedThreshold, "TrustedCABundleReconciler", func() {
+		if !partialRun {
+			r.failures.clear()
+		}
+	}, degradedSetter(ctx, r.setDegradedCondition), &result, &retErr)
 
 	proxyConfig := &configv1.Proxy{}
 	if err := r.Get(ctx, types.NamespacedName{Name: proxyResourceName}, proxyConfig); err != nil {
@@ -62,63 +75,51 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			if err := r.setAvailableCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 			}
-			return reconcile.Result{}, nil
+			return reconcile.Result{}, nil // defer clears failure window
 		}
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		// Error reading the object - requeue the request.
-		return reconcile.Result{}, fmt.Errorf("failed to get proxy '%s': %v", req.Name, err)
+		// Non-NotFound: transient API error.
+		return ctrl.Result{}, fmt.Errorf("failed to get proxy '%s': %w", req.Name, err) // transient
 	}
 
 	// Check if changed config map in 'openshift-config' namespace is proxy trusted ca.
-	// If not, return early
+	// If not, return early without resetting the failure window (partialRun=true).
 	if req.Namespace == OpenshiftConfigNamespace && proxyConfig.Spec.TrustedCA.Name != req.Name {
+		partialRun = true
+		klog.V(1).Infof("changed config map %s is not a proxy trusted ca, skipping", req)
 		if err := r.setAvailableCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 		}
-
-		klog.V(1).Infof("changed config map %s is not a proxy trusted ca, skipping", req)
 		return reconcile.Result{}, nil
 	}
 
 	systemTrustBundle, err := r.getSystemTrustBundle()
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		return reconcile.Result{}, fmt.Errorf("failed to get system trust bundle: %v", err)
+		// Node cert store may be updating during upgrade: transient.
+		return ctrl.Result{}, fmt.Errorf("failed to get system trust bundle: %w", err) // transient
 	}
 
 	proxyCABundle, mergedTrustBundle, err := r.addProxyCABundle(ctx, proxyConfig, systemTrustBundle)
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		return reconcile.Result{}, fmt.Errorf("can not check and add proxy CA to merged bundle: %v", err)
+		// Combined cert bundle is corrupt: terminal.
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("can not check and add proxy CA to merged bundle: %w", err))
 	}
 
 	_, mergedTrustBundle, err = r.addCloudConfigCABundle(ctx, proxyCABundle, mergedTrustBundle)
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		return reconcile.Result{}, fmt.Errorf("can not check and add cloud-config CA to merged bundle: %v", err)
+		// Combined cert bundle is corrupt: terminal.
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("can not check and add cloud-config CA to merged bundle: %w", err))
 	}
 
 	ccmTrustedConfigMap := r.makeCABundleConfigMap(mergedTrustBundle)
 	if err := r.createOrUpdateConfigMap(ctx, ccmTrustedConfigMap); err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
-		}
-		return reconcile.Result{}, fmt.Errorf("can not update target trust bundle configmap: %v", err)
+		return ctrl.Result{}, fmt.Errorf("can not update target trust bundle configmap: %w", err) // transient
 	}
 
 	if err := r.setAvailableCondition(ctx); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set conditions for trusted CA bundle controller: %v", err)
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, nil // defer clears failure window
 }
 
 // addProxyCABundle checks ca bundle referred by Proxy resource and adds it to passed bundle
