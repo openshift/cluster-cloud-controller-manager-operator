@@ -2,11 +2,14 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
+	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -14,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
@@ -29,40 +33,93 @@ const (
 	// Controller conditions for the Cluster Operator resource
 	cloudConfigControllerAvailableCondition = "CloudConfigControllerAvailable"
 	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
+
+	// transientDegradedThreshold is how long transient errors must persist before
+	// the controller sets Degraded=True. This prevents brief
+	// API server blips during upgrades from immediately degrading the operator.
+	// Applies to both CloudConfigController and TrustedCAController.
+	transientDegradedThreshold = 2 * time.Minute
 )
 
 type CloudConfigReconciler struct {
 	ClusterOperatorStatusClient
 	Scheme            *runtime.Scheme
 	FeatureGateAccess featuregates.FeatureGateAccess
+	failures          failureWindow
 }
 
-func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// failureWindow tracks consecutive transient failures. All methods are safe for concurrent use.
+type failureWindow struct {
+	mu                      sync.Mutex
+	consecutiveFailureSince *time.Time
+	lastTransientFailureAt  *time.Time
+}
+
+// clear resets the failure window. Call this on every successful reconcile.
+func (fw *failureWindow) clear() {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+	fw.consecutiveFailureSince = nil
+	fw.lastTransientFailureAt = nil
+}
+
+// observe records a transient failure at now and returns the elapsed time since
+// the window started plus a boolean indicating whether the window was just opened
+// or restarted. staleAfter controls stale-window detection: if the gap since the
+// last observed failure exceeds staleAfter, the window restarts. Pass 0 to disable.
+func (fw *failureWindow) observe(now time.Time, staleAfter time.Duration) (elapsed time.Duration, started bool) {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+	stale := staleAfter > 0 && fw.lastTransientFailureAt != nil && now.Sub(*fw.lastTransientFailureAt) > staleAfter
+	if fw.consecutiveFailureSince == nil || stale {
+		fw.consecutiveFailureSince = &now
+		fw.lastTransientFailureAt = &now
+		return 0, true
+	}
+	fw.lastTransientFailureAt = &now
+	return now.Sub(*fw.consecutiveFailureSince), false
+}
+
+func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	klog.V(1).Infof("Syncing cloud-conf ConfigMap")
 
+	// Deferred dispatcher: classifies the returned error and calls the right handler.
+	// Permanent errors (wrapped with reconcile.TerminalError()) degrade immediately without requeue.
+	// Transient errors enter the failure window and only degrade after the threshold.
+	// All nil-error paths clear the failure window.
+	defer func() {
+		if retErr == nil {
+			r.clearFailureWindow()
+			return
+		}
+		if errors.Is(retErr, reconcile.TerminalError(nil)) {
+			result, retErr = r.handleTerminalError(ctx, retErr)
+		} else {
+			result, retErr = r.handleTransientError(ctx, retErr)
+		}
+	}()
+
 	infra := &configv1.Infrastructure{}
-	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
-		klog.Errorf("infrastructure resource not found")
-		if err := r.setDegradedCondition(ctx); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); apierrors.IsNotFound(err) {
+		// No cloud platform: mirror the main controller's behaviour of returning Available.
+		klog.Infof("Infrastructure cluster does not exist. Skipping...")
+		if err := r.setAvailableCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
+	} else if err != nil {
+		return ctrl.Result{}, err // transient
 	}
 
 	network := &configv1.Network{}
 	if err := r.Get(ctx, client.ObjectKey{Name: "cluster"}, network); err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller when getting cluster Network object: %v", err)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, err // transient
 	}
 
 	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus, infra.Spec.CloudConfig)
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		// nil platformStatus is a terminal misconfiguration.
+		return ctrl.Result{}, reconcile.TerminalError(err)
 	}
 	if !syncNeeded {
 		if err := r.setAvailableCondition(ctx); err != nil {
@@ -74,11 +131,9 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	cloudConfigTransformerFn, needsManagedConfigLookup, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
 	if err != nil {
+		// Unsupported platform won't change without a cluster reconfigure.
 		klog.Errorf("unable to get cloud config transformer function; unsupported platform")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, reconcile.TerminalError(err)
 	}
 
 	sourceCM := &corev1.ConfigMap{}
@@ -99,14 +154,10 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err == nil {
 			managedConfigFound = true
-		} else if errors.IsNotFound(err) {
+		} else if apierrors.IsNotFound(err) {
 			klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
-		} else if err != nil {
-			klog.Errorf("unable to get managed cloud-config for sync")
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err
+		} else {
+			return ctrl.Result{}, err // transient
 		}
 	}
 
@@ -116,41 +167,29 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Name:      infra.Spec.CloudConfig.Name,
 			Namespace: OpenshiftConfigNamespace,
 		}
-		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); errors.IsNotFound(err) {
+		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); apierrors.IsNotFound(err) {
 			klog.Warningf("managed cloud-config is not found, falling back to default cloud config.")
 		} else if err != nil {
-			klog.Errorf("unable to get cloud-config for sync: %v", err)
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err
+			return ctrl.Result{}, err // transient
 		}
 	}
 
 	sourceCM, err = r.prepareSourceConfigMap(sourceCM, infra)
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		// User-supplied key mismatch: terminal until the ConfigMap or Infrastructure changes.
+		return ctrl.Result{}, reconcile.TerminalError(err)
 	}
 
-	// Check if FeatureGateAccess is configured
 	if r.FeatureGateAccess == nil {
-		klog.Errorf("FeatureGateAccess is not configured")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, fmt.Errorf("FeatureGateAccess is not configured")
+		// Operator misconfiguration at startup: ermanent.
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("FeatureGateAccess is not configured"))
 	}
 
 	features, err := r.FeatureGateAccess.CurrentFeatureGates()
 	if err != nil {
+		// The feature-gate informer may not have synced yet: transient.
 		klog.Errorf("unable to get feature gates: %v", err)
-		if errD := r.setDegradedCondition(ctx); errD != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", errD)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, err // transient
 	}
 
 	if cloudConfigTransformerFn != nil {
@@ -159,10 +198,8 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// we're not expecting users to put their data in the former.
 		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network, features)
 		if err != nil {
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err
+			// Platform-specific transform failed on the current config data: terminal.
+			return ctrl.Result{}, reconcile.TerminalError(err)
 		}
 		sourceCM.Data[defaultConfigKey] = output
 	}
@@ -174,12 +211,8 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// If the config does not exist, it will be created later, so we can ignore a Not Found error
-	if err := r.Get(ctx, targetConfigMapKey, targetCM); err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("unable to get target cloud-config for sync")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+	if err := r.Get(ctx, targetConfigMapKey, targetCM); err != nil && !apierrors.IsNotFound(err) {
+		return ctrl.Result{}, err // transient
 	}
 
 	// Note that the source config map is actually a *transformed* source config map
@@ -193,16 +226,52 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err := r.syncCloudConfigData(ctx, sourceCM, targetCM); err != nil {
 		klog.Errorf("unable to sync cloud config")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, err // transient
 	}
 
 	if err := r.setAvailableCondition(ctx); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 	}
 
+	return ctrl.Result{}, nil
+}
+
+// clearFailureWindow resets the transient-error tracking. Called by the deferred
+// dispatcher in Reconcile on every successful (nil-error) return path.
+func (r *CloudConfigReconciler) clearFailureWindow() {
+	r.failures.clear()
+}
+
+// handleTransientError records the start of a failure window and degrades the
+// controller only after transientDegradedThreshold has elapsed. It always
+// returns a non-nil error so controller-runtime requeues with exponential backoff.
+// Called only from the deferred dispatcher in Reconcile.
+func (r *CloudConfigReconciler) handleTransientError(ctx context.Context, err error) (ctrl.Result, error) {
+	elapsed, started := r.failures.observe(r.Clock.Now(), 0)
+	if started {
+		klog.V(4).Infof("CloudConfigReconciler: transient failure started (%v), will degrade after %s", err, transientDegradedThreshold)
+		return ctrl.Result{}, err
+	}
+	if elapsed < transientDegradedThreshold {
+		klog.V(4).Infof("CloudConfigReconciler: transient failure ongoing for %s (threshold %s): %v", elapsed, transientDegradedThreshold, err)
+		return ctrl.Result{}, err
+	}
+	klog.Warningf("CloudConfigReconciler: transient failure exceeded threshold (%s), setting degraded: %v", elapsed, err)
+	if setErr := r.setDegradedCondition(ctx); setErr != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %v", setErr)
+	}
+	return ctrl.Result{}, err
+}
+
+// handleTerminalError sets CloudConfigControllerDegraded=True immediately and
+// returns nil so controller-runtime does NOT requeue. An existing watch on the
+// relevant resource will re-trigger reconciliation when the problem is fixed.
+// Called only from the deferred dispatcher in Reconcile.
+func (r *CloudConfigReconciler) handleTerminalError(ctx context.Context, err error) (ctrl.Result, error) {
+	klog.Errorf("CloudConfigReconciler: terminal error, setting degraded: %v", err)
+	if setErr := r.setDegradedCondition(ctx); setErr != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %v", setErr)
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -279,7 +348,7 @@ func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source 
 	// check if target config exists, create if not
 	err := r.Get(ctx, client.ObjectKeyFromObject(target), &corev1.ConfigMap{})
 
-	if err != nil && errors.IsNotFound(err) {
+	if err != nil && apierrors.IsNotFound(err) {
 		return r.Create(ctx, target)
 	} else if err != nil {
 		return err
