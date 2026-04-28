@@ -151,18 +151,18 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		return ctrl.Result{}, nil
 	} else if err != nil {
-		return ctrl.Result{}, err // transient
+		return ctrl.Result{}, fmt.Errorf("failed to get Infrastructure: %w", err)
 	}
 
 	network := &configv1.Network{}
 	if err := r.Get(ctx, client.ObjectKey{Name: "cluster"}, network); err != nil {
-		return ctrl.Result{}, err // transient
+		return ctrl.Result{}, fmt.Errorf("failed to get cluster Network: %w", err)
 	}
 
 	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus, infra.Spec.CloudConfig)
 	if err != nil {
 		// nil platformStatus is a terminal misconfiguration.
-		return ctrl.Result{}, reconcile.TerminalError(err)
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to check cloud config sync requirements: %w", err))
 	}
 	if !syncNeeded {
 		if err := r.setAvailableCondition(ctx); err != nil {
@@ -194,7 +194,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		// Unsupported platform won't change without a cluster reconfigure.
 		klog.Errorf("unable to get cloud config transformer function; unsupported platform")
-		return ctrl.Result{}, reconcile.TerminalError(err)
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to get cloud config transformer: %w", err))
 	}
 
 	platformType := infra.Status.PlatformStatus.Type
@@ -219,7 +219,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		} else if apierrors.IsNotFound(err) {
 			klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
 		} else {
-			return ctrl.Result{}, err // transient
+			return ctrl.Result{}, fmt.Errorf("failed to get managed cloud config: %w", err)
 		}
 	}
 
@@ -252,12 +252,12 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	sourceCM, err = r.prepareSourceConfigMap(sourceCM, infra)
 	if err != nil {
 		// User-supplied key mismatch: terminal until the ConfigMap or Infrastructure changes.
-		return ctrl.Result{}, reconcile.TerminalError(err)
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to prepare source cloud config: %w", err))
 	}
 
 	// Apply transformer if needed
 	if r.FeatureGateAccess == nil {
-		// Operator misconfiguration at startup: ermanent.
+		// Operator misconfiguration at startup: Permanent.
 		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("FeatureGateAccess is not configured"))
 	}
 
@@ -265,7 +265,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		// The feature-gate informer may not have synced yet: transient.
 		klog.Errorf("unable to get feature gates: %v", err)
-		return ctrl.Result{}, err // transient
+		return ctrl.Result{}, fmt.Errorf("failed to get feature gates: %w", err)
 	}
 	if cloudConfigTransformerFn != nil {
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
@@ -274,7 +274,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network, features)
 		if err != nil {
 			// Platform-specific transform failed on the current config data: terminal.
-			return ctrl.Result{}, reconcile.TerminalError(err)
+			return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to transform cloud config: %w", err))
 		}
 		sourceCM.Data[defaultConfigKey] = output
 	}
@@ -294,7 +294,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Sync the transformed config to the target configmap for CCM consumption
 	if err := r.syncCloudConfigData(ctx, sourceCM); err != nil {
 		klog.Errorf("unable to sync cloud config")
-		return ctrl.Result{}, err // transient
+		return ctrl.Result{}, fmt.Errorf("failed to sync cloud config: %w", err)
 	}
 
 	if err := r.setAvailableCondition(ctx); err != nil {
@@ -326,7 +326,7 @@ func (r *CloudConfigReconciler) handleTransientError(ctx context.Context, err er
 	}
 	klog.Warningf("CloudConfigReconciler: transient failure exceeded threshold (%s), setting degraded: %v", elapsed, err)
 	if setErr := r.setDegradedCondition(ctx); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %v", setErr)
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
 	}
 	return ctrl.Result{}, err
 }
@@ -338,7 +338,7 @@ func (r *CloudConfigReconciler) handleTransientError(ctx context.Context, err er
 func (r *CloudConfigReconciler) handleTerminalError(ctx context.Context, err error) (ctrl.Result, error) {
 	klog.Errorf("CloudConfigReconciler: terminal error, setting degraded: %v", err)
 	if setErr := r.setDegradedCondition(ctx); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %v", setErr)
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
 	}
 	return ctrl.Result{}, nil
 }

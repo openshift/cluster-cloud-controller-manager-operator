@@ -101,12 +101,12 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		klog.Infof("Infrastructure cluster does not exist. Skipping...")
 		if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 			klog.Errorf("Unable to sync cluster operator status: %s", err)
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %w", err)
 		}
 		return ctrl.Result{}, nil // defer clears failure window
 	} else if err != nil {
 		klog.Errorf("Unable to retrive Infrastructure object: %v", err)
-		return ctrl.Result{}, err // transient
+		return ctrl.Result{}, fmt.Errorf("failed to get Infrastructure: %w", err)
 	}
 
 	// Known limitation: when provisioningAllowed internally calls setStatusDegraded
@@ -119,7 +119,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	allowedToProvision, err := r.provisioningAllowed(ctx, infra, conditionOverrides)
 	if err != nil {
 		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
-		return ctrl.Result{}, err // transient; status already set inside provisioningAllowed
+		return ctrl.Result{}, fmt.Errorf("failed to check if provisioning is allowed: %w", err)
 	} else if !allowedToProvision {
 		return ctrl.Result{}, nil // defer clears failure window
 	}
@@ -127,28 +127,28 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	clusterProxy := &configv1.Proxy{}
 	if err := r.Get(ctx, client.ObjectKey{Name: proxyResourceName}, clusterProxy); err != nil && !apierrors.IsNotFound(err) {
 		klog.Errorf("Unable to retrive Proxy object: %v", err)
-		return ctrl.Result{}, err // transient
+		return ctrl.Result{}, fmt.Errorf("failed to get Proxy: %w", err)
 	}
 
 	operatorConfig, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace, r.FeatureGateAccess, r.TLSConfig)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
-		return ctrl.Result{}, reconcile.TerminalError(err) // permanent: defer calls handleDegradeError
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to build operator config: %w", err))
 	}
 
 	if err := r.sync(ctx, operatorConfig, conditionOverrides); err != nil {
 		klog.Errorf("Unable to sync operands: %s", err)
-		return ctrl.Result{}, err // transient
+		return ctrl.Result{}, fmt.Errorf("failed to sync operands: %w", err)
 	}
 
 	if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
 		klog.Errorf("Unable to sync cluster operator status: %s", err)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %w", err)
 	}
 
 	if err := r.clearCloudControllerOwnerCondition(ctx); err != nil {
 		klog.Errorf("Unable to clear CloudControllerOwner condition: %s", err)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to clear CloudControllerOwner condition: %w", err)
 	}
 
 	return ctrl.Result{}, nil // defer clears failure window
@@ -174,7 +174,7 @@ func (r *CloudOperatorReconciler) handleTransientError(ctx context.Context, cond
 	}
 	klog.Warningf("CloudOperatorReconciler: transient failure exceeded threshold (%s), setting degraded: %v", elapsed, err)
 	if setErr := r.setStatusDegraded(ctx, err, conditionOverrides); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", setErr)
+		return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %w", setErr)
 	}
 	return ctrl.Result{}, err
 }
@@ -186,7 +186,7 @@ func (r *CloudOperatorReconciler) handleTransientError(ctx context.Context, cond
 func (r *CloudOperatorReconciler) handleDegradeError(ctx context.Context, conditionOverrides []configv1.ClusterOperatorStatusCondition, err error) (ctrl.Result, error) {
 	klog.Errorf("CloudOperatorReconciler: persistent error, setting degraded: %v", err)
 	if setErr := r.setStatusDegraded(ctx, err, conditionOverrides); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %v", setErr)
+		return ctrl.Result{}, fmt.Errorf("error syncing ClusterOperatorStatus: %w", setErr)
 	}
 	return ctrl.Result{}, nil // do not requeue; a watch event will re-trigger
 }
