@@ -856,6 +856,17 @@ var _ = Describe("applyPodDisruptionBudget", func() {
 				expectModified: true,
 			},
 		),
+		Entry("When there is a mismatch of UnhealthyPodEvictionPolicy it is updated",
+			applyPodDisruptionBudgetArguments{
+				inputFn: func(namespace string) *policyv1.PodDisruptionBudget {
+					pdb := podDisruptionBudget(namespace)
+					pdb.Spec.UnhealthyPodEvictionPolicy = nil
+					return pdb
+				},
+				existingFn:     podDisruptionBudget,
+				expectModified: true,
+			},
+		),
 	)
 })
 
@@ -1012,7 +1023,8 @@ func podDisruptionBudget(namespace string) *policyv1.PodDisruptionBudget {
 			Namespace: namespace,
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
-			MinAvailable: &minAvailable,
+			MinAvailable:               &minAvailable,
+			UnhealthyPodEvictionPolicy: ptr.To(policyv1.AlwaysAllow),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{"foo": "bar"},
 			},
