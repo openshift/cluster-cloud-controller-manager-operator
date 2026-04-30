@@ -8,6 +8,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
@@ -50,7 +51,8 @@ func getPDB(config config.OperatorConfig) (*policyv1.PodDisruptionBudget, error)
 			Namespace: config.ManagedNamespace,
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
-			MinAvailable: &minAvailable,
+			MinAvailable:               &minAvailable,
+			UnhealthyPodEvictionPolicy: ptr.To(policyv1.AlwaysAllow),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: matchLabels,
 			},
