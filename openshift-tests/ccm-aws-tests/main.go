@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	kclientset "k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 
@@ -39,10 +40,9 @@ func main() {
 		Qualifiers: []string{`!labels.exists(l, l == "Serial") && labels.exists(l, l == "Conformance")`},
 	})
 
-	// Initialize framework for the tests.
-	if err := initFrameworkForTests(); err != nil {
-		panic(fmt.Errorf("failed to initialize test framework: %w", err))
-	}
+	// Initialize framework for the tests. Works with or without KUBECONFIG
+	// so that "info" and "list tests" commands can run without cluster access.
+	initFrameworkForTests()
 
 	// Build the extension test specs
 	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
@@ -125,16 +125,14 @@ func getRegionFromEnv() string {
 }
 
 // initFrameworkForTests initializes the framework for the tests globally.
-func initFrameworkForTests() error {
-	if len(os.Getenv("KUBECONFIG")) == 0 {
-		return fmt.Errorf("KUBECONFIG is empty. Set the KUBECONFIG environment variable")
-	}
-
-	// Initialize framework - required for test discovery
-	// TODO:
-	// 1. Fix the provider getting from env (when ote supports aws)
-	// 2. Build the config from the env, and set the testContext.CloudConfig (if required by the test)
-	// 3. Move this init to a dedicated function
+// When KUBECONFIG is set, it loads the cluster config and sets the host.
+// When KUBECONFIG is not set, it uses a placeholder host so that
+// AfterReadingAllFlags can run without emitting a klog warning to stdout
+// (which would violate the OTE Binary Stdout Contract for info/list commands).
+// TODO:
+// 1. Fix the provider getting from env (when ote supports aws)
+// 2. Build the config from the env, and set the testContext.CloudConfig (if required by the test)
+func initFrameworkForTests() {
 	testContext.Provider = "local" // TODO: OTE supports local or skeleton
 
 	// Set up AWS cloud configuration when environment variables are set.
@@ -157,27 +155,37 @@ func initFrameworkForTests() error {
 	testContext.NodeOSDistro = "custom"
 	testContext.MasterOSDistro = "custom"
 
-	// Load kube client config and set the host variable for kubectl
-	testContext.KubeConfig = os.Getenv("KUBECONFIG")
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{
-			ExplicitPath: testContext.KubeConfig,
-		},
-		&clientcmd.ConfigOverrides{},
-	)
-	cfg, err := clientConfig.ClientConfig()
-	if err != nil {
-		return fmt.Errorf("failed to get client config: %w", err)
+	// Load kube client config when available.
+	if kubeconfig := os.Getenv("KUBECONFIG"); len(kubeconfig) > 0 {
+		testContext.KubeConfig = kubeconfig
+		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			&clientcmd.ClientConfigLoadingRules{
+				ExplicitPath: testContext.KubeConfig,
+			},
+			&clientcmd.ConfigOverrides{},
+		)
+		if cfg, err := clientConfig.ClientConfig(); err == nil {
+			testContext.Host = cfg.Host
+		}
+	} else if _, err := restclient.InClusterConfig(); err != nil {
+		// No KUBECONFIG and not running in-cluster. Set a placeholder Host so
+		// AfterReadingAllFlags skips in-cluster config detection, which would
+		// emit a klog warning through GinkgoWriter to stdout.
+		testContext.Host = "placeholder"
 	}
-	testContext.Host = cfg.Host
 
-	// After reading all flags, this will configure the test context, and need to be
-	// called once by framework to avoid re-configuring the test context, and leding
-	// to issues in Ginkgo phases (PhaseBuildTopLevel, PhaseBuildTree, PhaseRun),
-	// such as:'cannot clone suite after tree has been built'
+	// Redirect framework.Output to stderr to preserve the OTE Binary Stdout
+	// Contract (info/list tests commands must output clean JSON on stdout).
+	framework.Output = os.Stderr
+
+	// Must be called during startup (before the Ginkgo tree is built) because it
+	// internally calls ginkgo.PreviewSpecs which clones the suite.
 	framework.AfterReadingAllFlags(testContext)
 
-	return nil
+	// Clear the placeholder so tests don't accidentally use it.
+	if testContext.Host == "placeholder" {
+		testContext.Host = ""
+	}
 }
 
 // initFrameworkForTest initializes the framework for the test instance.
