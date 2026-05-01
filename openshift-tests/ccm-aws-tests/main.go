@@ -39,10 +39,10 @@ func main() {
 		Qualifiers: []string{`!labels.exists(l, l == "Serial") && labels.exists(l, l == "Conformance")`},
 	})
 
-	// Initialize framework for the tests.
-	if err := initFrameworkForTests(); err != nil {
-		panic(fmt.Errorf("failed to initialize test framework: %w", err))
-	}
+	// Initialize framework with cluster-independent settings. Cluster-dependent
+	// initialization (kubeconfig, host) is deferred to AddBeforeAll so that
+	// "info" and "list tests" commands work without cluster access.
+	initFrameworkDefaults()
 
 	// Build the extension test specs
 	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
@@ -82,6 +82,9 @@ func main() {
 
 	}).Include(extensiontests.PlatformEquals("aws"))
 	specs.AddBeforeAll(func() {
+		if err := initFrameworkCluster(); err != nil {
+			panic(fmt.Errorf("failed to initialize cluster config: %w", err))
+		}
 		if err := initFrameworkForTest(); err != nil {
 			panic(fmt.Errorf("failed to initialize test framework: %w", err))
 		}
@@ -124,17 +127,12 @@ func getRegionFromEnv() string {
 	return ""
 }
 
-// initFrameworkForTests initializes the framework for the tests globally.
-func initFrameworkForTests() error {
-	if len(os.Getenv("KUBECONFIG")) == 0 {
-		return fmt.Errorf("KUBECONFIG is empty. Set the KUBECONFIG environment variable")
-	}
-
-	// Initialize framework - required for test discovery
-	// TODO:
-	// 1. Fix the provider getting from env (when ote supports aws)
-	// 2. Build the config from the env, and set the testContext.CloudConfig (if required by the test)
-	// 3. Move this init to a dedicated function
+// initFrameworkDefaults sets cluster-independent framework defaults needed
+// for test discovery. This runs at startup and does not require KUBECONFIG.
+// TODO:
+// 1. Fix the provider getting from env (when ote supports aws)
+// 2. Build the config from the env, and set the testContext.CloudConfig (if required by the test)
+func initFrameworkDefaults() {
 	testContext.Provider = "local" // TODO: OTE supports local or skeleton
 
 	// Set up AWS cloud configuration when environment variables are set.
@@ -157,7 +155,18 @@ func initFrameworkForTests() error {
 	testContext.NodeOSDistro = "custom"
 	testContext.MasterOSDistro = "custom"
 
-	// Load kube client config and set the host variable for kubectl
+	// Must be called during startup (before the Ginkgo tree is built) because it
+	// internally calls ginkgo.PreviewSpecs which clones the suite.
+	framework.AfterReadingAllFlags(testContext)
+}
+
+// initFrameworkCluster loads kubeconfig and sets the host for kubectl.
+// This is called in AddBeforeAll so that "info" and "list tests" work without cluster access.
+func initFrameworkCluster() error {
+	if len(os.Getenv("KUBECONFIG")) == 0 {
+		return fmt.Errorf("KUBECONFIG is empty. Set the KUBECONFIG environment variable")
+	}
+
 	testContext.KubeConfig = os.Getenv("KUBECONFIG")
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{
@@ -170,12 +179,6 @@ func initFrameworkForTests() error {
 		return fmt.Errorf("failed to get client config: %w", err)
 	}
 	testContext.Host = cfg.Host
-
-	// After reading all flags, this will configure the test context, and need to be
-	// called once by framework to avoid re-configuring the test context, and leding
-	// to issues in Ginkgo phases (PhaseBuildTopLevel, PhaseBuildTree, PhaseRun),
-	// such as:'cannot clone suite after tree has been built'
-	framework.AfterReadingAllFlags(testContext)
 
 	return nil
 }
