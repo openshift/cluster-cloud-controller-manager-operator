@@ -123,6 +123,38 @@ func (fw *failureWindow) observe(now time.Time, staleAfter time.Duration) (elaps
 	return now.Sub(*fw.consecutiveFailureSince), false
 }
 
+// handleTransient records a transient failure and degrades only after threshold has elapsed.
+// name labels log messages. staleAfter controls stale-window restart (pass 0 to disable).
+// setDegraded is invoked only when the threshold is exceeded.
+// Always returns a non-nil error so controller-runtime requeues with exponential backoff.
+func (fw *failureWindow) handleTransient(now time.Time, staleAfter, threshold time.Duration, name string, err error, setDegraded func() error) (ctrl.Result, error) {
+	elapsed, started := fw.observe(now, staleAfter)
+	if started {
+		klog.V(4).Infof("%s: transient failure started (%v), will degrade after %s", name, err, threshold)
+		return ctrl.Result{}, err
+	}
+	if elapsed < threshold {
+		klog.V(4).Infof("%s: transient failure ongoing for %s (threshold %s): %v", name, elapsed, threshold, err)
+		return ctrl.Result{}, err
+	}
+	klog.Warningf("%s: transient failure exceeded threshold (%s), setting degraded: %v", name, elapsed, err)
+	if setErr := setDegraded(); setErr != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
+	}
+	return ctrl.Result{}, err
+}
+
+// handleTerminal degrades immediately and returns nil so controller-runtime does not requeue.
+// An existing watch on the relevant resource will re-trigger reconciliation when fixed.
+// name labels log messages.
+func (fw *failureWindow) handleTerminal(name string, err error, setDegraded func() error) (ctrl.Result, error) {
+	klog.Errorf("%s: terminal error, setting degraded: %v", name, err)
+	if setErr := setDegraded(); setErr != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
+	}
+	return ctrl.Result{}, nil
+}
+
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	klog.V(1).Infof("Syncing cloud-conf ConfigMap")
 
@@ -132,13 +164,17 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// All nil-error paths clear the failure window.
 	defer func() {
 		if retErr == nil {
-			r.clearFailureWindow()
+			r.failures.clear()
 			return
 		}
 		if errors.Is(retErr, reconcile.TerminalError(nil)) {
-			result, retErr = r.handleTerminalError(ctx, retErr)
+			result, retErr = r.failures.handleTerminal("CloudConfigReconciler", retErr, func() error {
+				return r.setDegradedCondition(ctx)
+			})
 		} else {
-			result, retErr = r.handleTransientError(ctx, retErr)
+			result, retErr = r.failures.handleTransient(r.Clock.Now(), 0, transientDegradedThreshold, "CloudConfigReconciler", retErr, func() error {
+				return r.setDegradedCondition(ctx)
+			})
 		}
 	}()
 
@@ -301,45 +337,6 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 	}
 
-	return ctrl.Result{}, nil
-}
-
-// clearFailureWindow resets the transient-error tracking. Called by the deferred
-// dispatcher in Reconcile on every successful (nil-error) return path.
-func (r *CloudConfigReconciler) clearFailureWindow() {
-	r.failures.clear()
-}
-
-// handleTransientError records the start of a failure window and degrades the
-// controller only after transientDegradedThreshold has elapsed. It always
-// returns a non-nil error so controller-runtime requeues with exponential backoff.
-// Called only from the deferred dispatcher in Reconcile.
-func (r *CloudConfigReconciler) handleTransientError(ctx context.Context, err error) (ctrl.Result, error) {
-	elapsed, started := r.failures.observe(r.Clock.Now(), 0)
-	if started {
-		klog.V(4).Infof("CloudConfigReconciler: transient failure started (%v), will degrade after %s", err, transientDegradedThreshold)
-		return ctrl.Result{}, err
-	}
-	if elapsed < transientDegradedThreshold {
-		klog.V(4).Infof("CloudConfigReconciler: transient failure ongoing for %s (threshold %s): %v", elapsed, transientDegradedThreshold, err)
-		return ctrl.Result{}, err
-	}
-	klog.Warningf("CloudConfigReconciler: transient failure exceeded threshold (%s), setting degraded: %v", elapsed, err)
-	if setErr := r.setDegradedCondition(ctx); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
-	}
-	return ctrl.Result{}, err
-}
-
-// handleTerminalError sets CloudConfigControllerDegraded=True immediately and
-// returns nil so controller-runtime does NOT requeue. An existing watch on the
-// relevant resource will re-trigger reconciliation when the problem is fixed.
-// Called only from the deferred dispatcher in Reconcile.
-func (r *CloudConfigReconciler) handleTerminalError(ctx context.Context, err error) (ctrl.Result, error) {
-	klog.Errorf("CloudConfigReconciler: terminal error, setting degraded: %v", err)
-	if setErr := r.setDegradedCondition(ctx); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
-	}
 	return ctrl.Result{}, nil
 }
 

@@ -67,14 +67,18 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	defer func() {
 		if retErr == nil {
 			if !partialRun {
-				r.clearFailureWindow()
+				r.failures.clear()
 			}
 			return
 		}
 		if errors.Is(retErr, reconcile.TerminalError(nil)) {
-			result, retErr = r.handleDegradeError(ctx, retErr)
+			result, retErr = r.failures.handleTerminal("TrustedCABundleReconciler", retErr, func() error {
+				return r.setDegradedCondition(ctx)
+			})
 		} else {
-			result, retErr = r.handleTransientError(ctx, retErr)
+			result, retErr = r.failures.handleTransient(r.Clock.Now(), transientDegradedThreshold, transientDegradedThreshold, "TrustedCABundleReconciler", retErr, func() error {
+				return r.setDegradedCondition(ctx)
+			})
 		}
 	}()
 
@@ -132,45 +136,6 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	return ctrl.Result{}, nil // defer clears failure window
-}
-
-func (r *TrustedCABundleReconciler) clearFailureWindow() {
-	r.failures.clear()
-}
-
-// handleTransientError records the start of a failure window and degrades the
-// controller only after transientDegradedThreshold has elapsed. It always
-// returns a non-nil error so controller-runtime requeues with exponential backoff.
-// Called only from the deferred dispatcher in Reconcile.
-func (r *TrustedCABundleReconciler) handleTransientError(ctx context.Context, err error) (ctrl.Result, error) {
-	// Pass transientDegradedThreshold as the stale-window threshold to detect gaps
-	// where no reconcile ran (e.g. a partialRun returned nil, resetting the rate limiter).
-	elapsed, started := r.failures.observe(r.Clock.Now(), transientDegradedThreshold)
-	if started {
-		klog.V(4).Infof("TrustedCABundleReconciler: transient failure started (%v), will degrade after %s", err, transientDegradedThreshold)
-		return ctrl.Result{}, err
-	}
-	if elapsed < transientDegradedThreshold {
-		klog.V(4).Infof("TrustedCABundleReconciler: transient failure ongoing for %s (threshold %s): %v", elapsed, transientDegradedThreshold, err)
-		return ctrl.Result{}, err
-	}
-	klog.Warningf("TrustedCABundleReconciler: transient failure exceeded threshold (%s), setting degraded: %v", elapsed, err)
-	if setErr := r.setDegradedCondition(ctx); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
-	}
-	return ctrl.Result{}, err
-}
-
-// handleDegradeError sets TrustedCABundleControllerControllerDegraded=True immediately and
-// returns nil so controller-runtime does NOT requeue. An existing watch on the
-// relevant resource will re-trigger reconciliation when the problem is fixed.
-// Called only from the deferred dispatcher in Reconcile.
-func (r *TrustedCABundleReconciler) handleDegradeError(ctx context.Context, err error) (ctrl.Result, error) {
-	klog.Errorf("TrustedCABundleReconciler: persistent error, setting degraded: %v", err)
-	if setErr := r.setDegradedCondition(ctx); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
-	}
-	return ctrl.Result{}, nil
 }
 
 // addProxyCABundle checks ca bundle referred by Proxy resource and adds it to passed bundle
