@@ -53,7 +53,7 @@ azure-config-credentials-injector:
 cloud-controller-manager-aws-tests-ext:
 	cd openshift-tests/ccm-aws-tests && \
 	mkdir -p ../bin && \
-	go build $(GOGCFLAGS) -o "../bin/cloud-controller-manager-aws-tests-ext" \
+	GOWORK=off go build $(GOGCFLAGS) -o "../bin/cloud-controller-manager-aws-tests-ext" \
 	      -trimpath -ldflags "$(LD_FLAGS)" .
 
 cluster-cloud-controller-manager-operator-tests-ext:
