@@ -132,7 +132,7 @@ replace (
 	github.com/onsi/ginkgo/v2 => github.com/openshift/onsi-ginkgo/v2 v2.6.1-0.20260424201627-4d4cc33d669d
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.0
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.35.0
-	k8s.io/cloud-provider-aws/tests/e2e => github.com/mfbonfigli/cloud-provider-aws/tests/e2e v0.0.0-20260507165322-c5ade6397b34
+	k8s.io/cloud-provider-aws/tests/e2e => github.com/mfbonfigli/cloud-provider-aws/tests/e2e v0.0.0-20260507232157-7ae9e911e0ab
 	// Required for k8s.io/kubernetes v1.35.0
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.35.0
 	k8s.io/component-helpers => k8s.io/component-helpers v0.35.0
