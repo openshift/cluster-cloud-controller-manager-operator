@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	ec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
@@ -23,7 +26,15 @@ func createAWSClientLoadBalancer(ctx context.Context) (*elbv2.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to load AWS config: %v", err)
 	}
-	return elbv2.NewFromConfig(cfg), nil
+
+	customRetryer := retry.NewStandard(func(o *retry.StandardOptions) {
+		o.MaxAttempts = 10
+		o.MaxBackoff = 30 * time.Second
+	})
+
+	return elbv2.NewFromConfig(cfg, func(o *elbv2.Options) {
+		o.Retryer = customRetryer
+	}), nil
 }
 
 // getAWSLoadBalancerFromDNSName finds a load balancer by DNS name using the AWS ELBv2 client.
@@ -31,6 +42,41 @@ func getAWSLoadBalancerFromDNSName(ctx context.Context, elbClient *elbv2.Client,
 	var foundLB *elbv2types.LoadBalancer
 	framework.Logf("describing load balancers with DNS %s", lbDNSName)
 
+	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 15*time.Minute, true, func(ctx context.Context) (bool, error) {
+		paginator := elbv2.NewDescribeLoadBalancersPaginator(elbClient, &elbv2.DescribeLoadBalancersInput{})
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(ctx)
+			if err != nil {
+				framework.Logf("transient error describing load balancers (will retry): %v", err)
+				return false, nil
+			}
+
+			framework.Logf("found %d load balancers in page", len(page.LoadBalancers))
+			for i := range page.LoadBalancers {
+				if aws.ToString(page.LoadBalancers[i].DNSName) == lbDNSName {
+					foundLB = &page.LoadBalancers[i]
+					framework.Logf("found load balancer with DNS %s", aws.ToString(foundLB.DNSName))
+					return true, nil
+				}
+			}
+		}
+		return false, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to find load balancer with DNS name %s: %v", lbDNSName, err)
+	}
+
+	if foundLB == nil {
+		return nil, fmt.Errorf("no load balancer found with DNS name: %s", lbDNSName)
+	}
+
+	return foundLB, nil
+}
+
+// findAWSLoadBalancerByDNSName performs a single-attempt lookup for a load balancer by DNS name.
+// Returns nil (without error) if the load balancer is not found.
+func findAWSLoadBalancerByDNSName(ctx context.Context, elbClient *elbv2.Client, lbDNSName string) (*elbv2types.LoadBalancer, error) {
 	paginator := elbv2.NewDescribeLoadBalancersPaginator(elbClient, &elbv2.DescribeLoadBalancersInput{})
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
@@ -39,24 +85,13 @@ func getAWSLoadBalancerFromDNSName(ctx context.Context, elbClient *elbv2.Client,
 		}
 
 		framework.Logf("found %d load balancers in page", len(page.LoadBalancers))
-		// Search for the load balancer with matching DNS name in this page
 		for i := range page.LoadBalancers {
 			if aws.ToString(page.LoadBalancers[i].DNSName) == lbDNSName {
-				foundLB = &page.LoadBalancers[i]
-				framework.Logf("found load balancer with DNS %s", aws.ToString(foundLB.DNSName))
-				break
+				return &page.LoadBalancers[i], nil
 			}
 		}
-		if foundLB != nil {
-			break
-		}
 	}
-
-	if foundLB == nil {
-		return nil, fmt.Errorf("no load balancer found with DNS name: %s", lbDNSName)
-	}
-
-	return foundLB, nil
+	return nil, nil
 }
 
 // isFeatureEnabled is a convenience wrapper around common.IsFeatureEnabled.
