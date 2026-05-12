@@ -1,7 +1,6 @@
-go 1.25.0
+go 1.26.0
 
 use (
 	.
-	./openshift-tests/ccm-aws-tests
 	./openshift-tests/operator-tests
 )
