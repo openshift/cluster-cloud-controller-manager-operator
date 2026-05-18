@@ -169,22 +169,24 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 				return err == nil || apierrors.IsNotFound(err)
 			}).Should(BeTrue())
 		}
-		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+		Eventually(func() bool {
+			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))
+		}).Should(BeTrue())
 
 		if proxyResource != nil {
 			Expect(cl.Delete(ctx, proxyResource, deleteOptions)).To(Succeed())
-			Eventually(
-				apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(proxyResource), &v1.Proxy{})),
-			).Should(BeTrue())
+			Eventually(func() bool {
+				return apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(proxyResource), &v1.Proxy{}))
+			}).Should(BeTrue())
 		}
 
 		allCMs := &corev1.ConfigMapList{}
 		Expect(cl.List(ctx, allCMs)).To(Succeed())
 		for _, cm := range allCMs.Items {
 			Expect(cl.Delete(ctx, cm.DeepCopy(), deleteOptions)).To(Succeed())
-			Eventually(
-				apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})),
-			).Should(BeTrue())
+			Eventually(func() bool {
+				return apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{}))
+			}).Should(BeTrue())
 		}
 
 		proxyResource = nil

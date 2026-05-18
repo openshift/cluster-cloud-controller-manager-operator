@@ -53,7 +53,7 @@ azure-config-credentials-injector:
 cloud-controller-manager-aws-tests-ext:
 	cd openshift-tests/ccm-aws-tests && \
 	mkdir -p ../bin && \
-	go build $(GOGCFLAGS) -o "../bin/cloud-controller-manager-aws-tests-ext" \
+	GOWORK=off go build -mod=vendor $(GOGCFLAGS) -o "../bin/cloud-controller-manager-aws-tests-ext" \
 	      -trimpath -ldflags "$(LD_FLAGS)" .
 
 cluster-cloud-controller-manager-operator-tests-ext:
@@ -68,7 +68,7 @@ run: verify manifests
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests:
-	$(CONTROLLER_GEN) crd rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) crd rbac:roleName=manager-role webhook paths="./cmd/..." paths="./pkg/..." output:crd:artifacts:config=config/crd/bases
 
 # Run go fmt against code
 .PHONY: fmt
@@ -92,7 +92,7 @@ vendor:
 
 # Generate code
 generate:
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./cmd/..." paths="./pkg/..."
 
 # Build the docker image
 .PHONY: image

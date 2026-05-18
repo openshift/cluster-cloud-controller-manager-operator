@@ -3,7 +3,6 @@ package aws
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -576,24 +575,19 @@ func deleteServiceAndWaitForLoadBalancerDeletion(ctx context.Context, jig *e2ese
 	elbClient, err := createAWSClientLoadBalancer(ctx)
 	framework.ExpectNoError(err, "failed to create AWS ELB client")
 
-	// Poll for load balancer deletion
+	// Poll for load balancer deletion using single-attempt lookups.
+	// getAWSLoadBalancerFromDNSName has its own 15-minute retry loop (for creation),
+	// which would block here indefinitely when the LB is already gone.
 	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, loadBalancerCreateTimeout, true, func(ctx context.Context) (bool, error) {
-		foundLB, err := getAWSLoadBalancerFromDNSName(ctx, elbClient, lbDNS)
+		foundLB, err := findAWSLoadBalancerByDNSName(ctx, elbClient, lbDNS)
 		if err != nil {
-			// Check if the error indicates the load balancer was not found (i.e., successfully deleted)
-			if strings.Contains(err.Error(), "no load balancer found with DNS name") {
-				framework.Logf("Load balancer %s has been deleted", lbDNS)
-				return true, nil
-			}
 			framework.Logf("Error querying load balancer %s during deletion wait: %v", lbDNS, err)
 			return false, nil
 		}
 		if foundLB == nil {
-			// LB is gone - success
 			framework.Logf("Load balancer %s has been deleted", lbDNS)
 			return true, nil
 		}
-		// LB still exists, keep polling
 		framework.Logf("Load balancer %s still exists, waiting for deletion...", lbDNS)
 		return false, nil
 	})
