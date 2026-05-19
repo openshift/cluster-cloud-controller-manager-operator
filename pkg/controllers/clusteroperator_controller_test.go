@@ -664,7 +664,7 @@ var _ = Describe("CloudOperatorReconciler error handling", func() {
 			Scheme: scheme.Scheme,
 		}
 
-		_, err := reconciler.handleDegradeError(ctx, []configv1.ClusterOperatorStatusCondition{}, fmt.Errorf("test persistent error"))
+		_, err := reconciler.handleTerminalError(ctx, []configv1.ClusterOperatorStatusCondition{}, fmt.Errorf("test persistent error"))
 		Expect(err).NotTo(HaveOccurred())
 
 		co := &configv1.ClusterOperator{}

@@ -159,7 +159,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	klog.V(1).Infof("Syncing cloud-conf ConfigMap")
 
 	// Deferred dispatcher: classifies the returned error and calls the right handler.
-	// Permanent errors (wrapped with reconcile.TerminalError()) degrade immediately without requeue.
+	// Terminal errors (wrapped with reconcile.TerminalError()) degrade immediately without requeue.
 	// Transient errors enter the failure window and only degrade after the threshold.
 	// All nil-error paths clear the failure window.
 	defer func() {
@@ -293,7 +293,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Apply transformer if needed
 	if r.FeatureGateAccess == nil {
-		// Operator misconfiguration at startup: Permanent.
+		// Operator misconfiguration at startup: Terminal.
 		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("FeatureGateAccess is not configured"))
 	}
 

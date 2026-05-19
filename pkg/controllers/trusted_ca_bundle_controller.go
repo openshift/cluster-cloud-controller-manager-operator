@@ -61,7 +61,7 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	partialRun := false
 
 	// Deferred dispatcher: classifies the returned error and calls the right handler.
-	// Permanent errors (wrapped with terminal()) degrade immediately without requeue.
+	// Terminal errors degrade immediately without requeue.
 	// Transient errors enter the failure window and only degrade after the threshold.
 	// Nil-error paths clear the failure window unless partialRun is set.
 	defer func() {
