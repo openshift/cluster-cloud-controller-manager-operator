@@ -38,7 +38,6 @@ const (
 	// transientDegradedThreshold is how long transient errors must persist before
 	// the controller sets Degraded=True. This prevents brief
 	// API server blips during upgrades from immediately degrading the operator.
-	// Applies to both CloudConfigController and TrustedCAController.
 	transientDegradedThreshold = 2 * time.Minute
 )
 
