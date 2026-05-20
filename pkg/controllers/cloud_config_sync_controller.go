@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -157,25 +156,7 @@ func (fw *failureWindow) handleTerminal(name string, err error, setDegraded func
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	klog.V(1).Infof("Syncing cloud-conf ConfigMap")
 
-	// Deferred dispatcher: classifies the returned error and calls the right handler.
-	// Terminal errors (wrapped with reconcile.TerminalError()) degrade immediately without requeue.
-	// Transient errors enter the failure window and only degrade after the threshold.
-	// All nil-error paths clear the failure window.
-	defer func() {
-		if retErr == nil {
-			r.failures.clear()
-			return
-		}
-		if errors.Is(retErr, reconcile.TerminalError(nil)) {
-			result, retErr = r.failures.handleTerminal("CloudConfigReconciler", retErr, func() error {
-				return r.setDegradedCondition(ctx)
-			})
-		} else {
-			result, retErr = r.failures.handleTransient(r.Clock.Now(), 0, transientDegradedThreshold, "CloudConfigReconciler", retErr, func() error {
-				return r.setDegradedCondition(ctx)
-			})
-		}
-	}()
+	defer finalizeReconcile(&r.failures, r.Clock, 0, transientDegradedThreshold, "CloudConfigReconciler", r.failures.clear, degradedSetter(ctx, r.setDegradedCondition), &result, &retErr)
 
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); apierrors.IsNotFound(err) {

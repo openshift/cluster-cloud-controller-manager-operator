@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"os"
 
@@ -60,27 +59,11 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// reset an ongoing transient failure window from a previous full reconcile.
 	partialRun := false
 
-	// Deferred dispatcher: classifies the returned error and calls the right handler.
-	// Terminal errors degrade immediately without requeue.
-	// Transient errors enter the failure window and only degrade after the threshold.
-	// Nil-error paths clear the failure window unless partialRun is set.
-	defer func() {
-		if retErr == nil {
-			if !partialRun {
-				r.failures.clear()
-			}
-			return
+	defer finalizeReconcile(&r.failures, r.Clock, transientDegradedThreshold, transientDegradedThreshold, "TrustedCABundleReconciler", func() {
+		if !partialRun {
+			r.failures.clear()
 		}
-		if errors.Is(retErr, reconcile.TerminalError(nil)) {
-			result, retErr = r.failures.handleTerminal("TrustedCABundleReconciler", retErr, func() error {
-				return r.setDegradedCondition(ctx)
-			})
-		} else {
-			result, retErr = r.failures.handleTransient(r.Clock.Now(), transientDegradedThreshold, transientDegradedThreshold, "TrustedCABundleReconciler", retErr, func() error {
-				return r.setDegradedCondition(ctx)
-			})
-		}
-	}()
+	}, degradedSetter(ctx, r.setDegradedCondition), &result, &retErr)
 
 	proxyConfig := &configv1.Proxy{}
 	if err := r.Get(ctx, types.NamespacedName{Name: proxyResourceName}, proxyConfig); err != nil {
