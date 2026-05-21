@@ -6,7 +6,7 @@ The Cluster Cloud Controller Manager operator (CCCMO) manages and updates the va
 
 Kubernetes is in the process of migrating its cloud controller functionality out of the Kubernetes core and into separate Cloud Controller Managers (see [KEP 2395](https://github.com/kubernetes/enhancements/tree/master/keps/sig-cloud-provider/2395-removing-in-tree-cloud-providers) for more information). As this process is an on-going effort, we will document the status and progress of this operator, as well as the supported platforms, until the operator has gone into general availability (GA) in OpenShift.
 
-### Operator Status
+### Operator Status 
 
 **Stable**
 
