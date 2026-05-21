@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,17 +15,71 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
+// awsRegionPattern matches valid AWS region names across all partitions:
+// standard (aws: us-east-1), China (aws-cn: cn-northwest-1),
+// GovCloud (aws-us-gov: us-gov-west-1), European Sovereign Cloud (aws-eusc: eusc-de-east-1),
+// and ISO/ISOB (aws-iso/iso-b: us-isob-east-1).
+var awsRegionPattern = regexp.MustCompile(`^[a-z]{2,4}(?:-[a-z0-9]+)+-\d+$`)
+
 // AWS helpers
 
-// createAWSClientLoadBalancer creates an AWS ELBv2 client using default credentials configured in the environment.
-func createAWSClientLoadBalancer(ctx context.Context) (*elbv2.Client, error) {
+// loadAWSConfig loads the default AWS SDK configuration. If the resolved region
+// is not a valid AWS region (e.g. a CI lease UUID), it falls back to the region
+// from the cluster's Infrastructure resource.
+func loadAWSConfig(ctx context.Context) (aws.Config, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("unable to load AWS config: %v", err)
+		return aws.Config{}, fmt.Errorf("unable to load AWS config: %v", err)
+	}
+
+	// This validation is required to prevent landing wrong hypershift region configurations
+	// set by environment variable.
+	if !awsRegionPattern.MatchString(cfg.Region) {
+		region, err := getRegionFromInfrastructure(ctx)
+		if err != nil {
+			return aws.Config{}, fmt.Errorf("AWS region %q is not valid and failed to get region from Infrastructure: %v", cfg.Region, err)
+		}
+		framework.Logf("AWS SDK region %q is not valid, using region from Infrastructure: %s", cfg.Region, region)
+		cfg.Region = region
+	}
+
+	framework.Logf("AWS config loaded: region=%s", cfg.Region)
+	return cfg, nil
+}
+
+// getRegionFromInfrastructure reads the AWS region from the cluster's
+// Infrastructure resource (status.platformStatus.aws.region).
+func getRegionFromInfrastructure(ctx context.Context) (string, error) {
+	oc, err := common.GetOcClient(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to create config client: %v", err)
+	}
+	infra, err := oc.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get Infrastructure: %v", err)
+	}
+	if infra.Status.PlatformStatus == nil || infra.Status.PlatformStatus.AWS == nil {
+		return "", fmt.Errorf("Infrastructure platformStatus.aws is nil")
+	}
+	region := infra.Status.PlatformStatus.AWS.Region
+	if region == "" {
+		return "", fmt.Errorf("Infrastructure platformStatus.aws.region is empty")
+	}
+	return region, nil
+}
+
+// createAWSClientLoadBalancer creates an AWS ELBv2 client using default credentials configured in the environment.
+// It forces the public regional endpoint to avoid VPC private endpoint DNS
+// resolution issues when running from a management cluster (HyperShift).
+func createAWSClientLoadBalancer(ctx context.Context) (*elbv2.Client, error) {
+	cfg, err := loadAWSConfig(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	customRetryer := retry.NewStandard(func(o *retry.StandardOptions) {
@@ -34,6 +89,9 @@ func createAWSClientLoadBalancer(ctx context.Context) (*elbv2.Client, error) {
 
 	return elbv2.NewFromConfig(cfg, func(o *elbv2.Options) {
 		o.Retryer = customRetryer
+		if cfg.Region != "" {
+			o.BaseEndpoint = aws.String(fmt.Sprintf("https://elasticloadbalancing.%s.amazonaws.com", cfg.Region))
+		}
 	}), nil
 }
 
@@ -100,13 +158,19 @@ func isFeatureEnabled(ctx context.Context, featureName string) (bool, error) {
 	return common.IsFeatureEnabled(ctx, featureName)
 }
 
-// getAWSClientEC2 creates an AWS EC2 client using default credentials configured in the environment.
+// createAWSClientEC2 creates an AWS EC2 client using default credentials configured in the environment.
+// It forces the public regional endpoint to avoid VPC private endpoint DNS
+// resolution issues when running from a management cluster (HyperShift).
 func createAWSClientEC2(ctx context.Context) (*ec2.Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
+	cfg, err := loadAWSConfig(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("unable to load AWS config: %v", err)
+		return nil, err
 	}
-	return ec2.NewFromConfig(cfg), nil
+	return ec2.NewFromConfig(cfg, func(o *ec2.Options) {
+		if cfg.Region != "" {
+			o.BaseEndpoint = aws.String(fmt.Sprintf("https://ec2.%s.amazonaws.com", cfg.Region))
+		}
+	}), nil
 }
 
 // getAWSSecurityGroup retrieves a security group by ID using the AWS EC2 client.

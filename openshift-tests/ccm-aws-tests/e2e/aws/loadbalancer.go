@@ -77,8 +77,9 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 	//   - The test must skip if the feature gate is not enabled
 	It("should have NLBSecurityGroupMode with 'Managed value in cloud-config", func(ctx context.Context) {
 		isNLBFeatureEnabled(ctx)
+		common.SkipIfManagementClusterTestsDisabled()
 
-		By("getting cloud-config ConfigMap from openshift-cloud-controller-manager namespace")
+		By("getting cloud-config ConfigMap")
 		cm, err := common.GetCloudConfig(ctx, cs)
 		framework.ExpectNoError(err, "failed to get cloud-config ConfigMap")
 
