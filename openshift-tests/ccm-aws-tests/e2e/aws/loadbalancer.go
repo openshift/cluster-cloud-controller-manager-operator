@@ -9,6 +9,7 @@ import (
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -30,10 +31,6 @@ const (
 	featureGateAWSServiceLBNetworkSecurityGroup = "AWSServiceLBNetworkSecurityGroup"
 
 	annotationLBType = "service.beta.kubernetes.io/aws-load-balancer-type"
-
-	cloudConfigNamespace = "openshift-cloud-controller-manager"
-	cloudConfigName      = "cloud-conf"
-	cloudConfigKey       = "cloud.conf"
 )
 
 // TestAWSServiceLBNetworkSecurityGroup validates the AWSServiceLBNetworkSecurityGroup feature gate functionality.
@@ -82,19 +79,13 @@ var _ = Describe(fmt.Sprintf("%s NLB [OCPFeatureGate:%s]", e2eTestPrefixLoadBala
 		isNLBFeatureEnabled(ctx)
 
 		By("getting cloud-config ConfigMap from openshift-cloud-controller-manager namespace")
-		cm, err := cs.CoreV1().ConfigMaps(cloudConfigNamespace).Get(ctx, cloudConfigName, metav1.GetOptions{})
+		cm, err := common.GetCloudConfig(ctx, cs)
 		framework.ExpectNoError(err, "failed to get cloud-config ConfigMap")
 
-		By("checking if cloud.conf key exists in ConfigMap")
-		cloudConf, exists := cm.Data[cloudConfigKey]
-		Expect(exists).To(BeTrue(), "cloud.conf key not found in ConfigMap")
-
-		By("verifying NLBSecurityGroupMode is present in cloud config")
-		Expect(cloudConf).To(ContainSubstring("NLBSecurityGroupMode"),
-			"NLBSecurityGroupMode must be present in cloud-config when feature gate is enabled")
-
 		By("verifying NLBSecurityGroupMode is set to Managed")
-		Expect(cloudConf).To(MatchRegexp(`NLBSecurityGroupMode\s*=\s*Managed`),
+		managed, err := common.IsNLBSecurityGroupModeManaged(cm)
+		framework.ExpectNoError(err, "failed to check NLBSecurityGroupMode in cloud-config")
+		Expect(managed).To(BeTrue(),
 			"NLBSecurityGroupMode must be set to 'Managed' in cloud-config when feature gate is enabled")
 
 		framework.Logf("Successfully validated cloud-config contains NLBSecurityGroupMode = Managed")
@@ -531,7 +522,21 @@ func createServiceNLB(ctx context.Context, cs clientset.Interface, ns *v1.Namesp
 		},
 	}
 
-	_, err := jig.Client.CoreV1().Services(jig.Namespace).Create(ctx, svc, metav1.CreateOptions{})
+	cloudCfg, err := common.GetCloudConfig(ctx, cs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get cloud-config: %w", err)
+	}
+	isDualStack, _, err := common.IsDualStack(cloudCfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to detect dual-stack from cloud-config: %w", err)
+	}
+	if isDualStack {
+		framework.Logf("Detected DualStack clusters, patching Service setting IPFamilyPolicy to %q", v1.IPFamilyPolicyRequireDualStack)
+		dualStack := v1.IPFamilyPolicyRequireDualStack
+		svc.Spec.IPFamilyPolicy = &dualStack
+	}
+
+	_, err = jig.Client.CoreV1().Services(jig.Namespace).Create(ctx, svc, metav1.CreateOptions{})
 	framework.ExpectNoError(err, "failed to create LoadBalancer Service")
 
 	By("waiting for AWS load balancer provisioning")

@@ -21,13 +21,17 @@ import (
 
 	// Importing ginkgo tests from the CCM e2e packages
 	_ "github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/aws"
-	_ "github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
 	_ "k8s.io/cloud-provider-aws/tests/e2e"
 )
 
 var (
 	// testContext is the global test context that is used to store the test configuration.
 	testContext = &framework.TestContext
+
+	isDualStackCluster      bool
+	isDualStackPrimaryIpv6  bool
+	dualStackDetectionReady bool
 )
 
 func main() {
@@ -44,6 +48,20 @@ func main() {
 		panic(fmt.Errorf("failed to initialize test framework: %w", err))
 	}
 
+	// Detect dual-stack from cloud-config before building specs.
+	// Upstream load balancer tests do not support dual-stack yet, so they
+	// must be excluded when the cluster is configured for dual-stack.
+	if cm, err := common.GetCloudConfig(context.TODO(), nil); err != nil {
+		log.Debugf("failed to get cloud-config for dual-stack detection: %v", err)
+	} else {
+		isDualStackCluster, isDualStackPrimaryIpv6, err = common.IsDualStack(cm)
+		if err != nil {
+			log.Debugf("failed to evaluate dual-stack configuration, leaving default Service config: %v", err)
+		}
+		dualStackDetectionReady = true
+		log.Debugf("Dual-stack cluster detected: %v", isDualStackCluster)
+	}
+
 	// Build the extension test specs
 	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
 	if err != nil {
@@ -54,11 +72,22 @@ func main() {
 	// We need to filter to prevent adding ECR tests.
 	// All upstream tests must be runnable on OpenShift, if issues are found, let's try to
 	// fix in upstream to work well with OpenShift and cloud-provider-aws CI.
-	specs, err = specs.MustSelectAny([]extensiontests.SelectFunction{
-		extensiontests.NameContains("[cloud-provider-aws-e2e] loadbalancer"),
+	specSelectors := []extensiontests.SelectFunction{
 		extensiontests.NameContains("[cloud-provider-aws-e2e] nodes"),
 		extensiontests.NameContains("[cloud-provider-aws-e2e-openshift]"),
-	})
+	}
+	// Exclude upstream load balancer tests on dual-stack clusters — upstream
+	// does not support dual-stack yet. When detection fails, the upstream LB
+	// tests are also excluded to avoid false positives.
+	// FIXME when upstream e2e supports Service Dual-stack scenarios:
+	// https://github.com/kubernetes/cloud-provider-aws/pull/1313
+	// https://github.com/kubernetes/cloud-provider-aws/pull/1356
+	if isDualStackCluster && isDualStackPrimaryIpv6 {
+		framework.Logf("Dual-stack cluster with Primary IPv6 detected, skipping test name that contains '[cloud-provider-aws-e2e] loadbalancer'")
+	} else {
+		specSelectors = append(specSelectors, extensiontests.NameContains("[cloud-provider-aws-e2e] loadbalancer"))
+	}
+	specs, err = specs.MustSelectAny(specSelectors)
 	if err != nil {
 		panic(fmt.Errorf("failed to select specs: %w", err))
 	}
@@ -79,7 +108,6 @@ func main() {
 				spec.Exclude(extensiontests.TopologyEquals("SingleReplica"))
 			}
 		}
-
 	}).Include(extensiontests.PlatformEquals("aws"))
 	specs.AddBeforeAll(func() {
 		if err := initFrameworkForTest(); err != nil {
