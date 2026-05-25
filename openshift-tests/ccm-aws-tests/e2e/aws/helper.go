@@ -28,24 +28,25 @@ var awsRegionPattern = regexp.MustCompile(`^[a-z]{2,4}(?:-[a-z0-9]+)+-\d+$`)
 
 // AWS helpers
 
-// loadAWSConfig loads the default AWS SDK configuration. If the resolved region
-// is not a valid AWS region (e.g. a CI lease UUID), it falls back to the region
-// from the cluster's Infrastructure resource.
+// loadAWSConfig loads the default AWS SDK configuration.
+// The region is discovered from the Infrastructure object and forced
+// to the client (from test binar), falling back to the cfg.Region when it is valid,
+// preveting invalid AWS region usually set through CI environment variables
+// (e.g. a CI lease UUID on Hypershift jobs), which usually runs outside cluster's
+// VPC endpoints.
 func loadAWSConfig(ctx context.Context) (aws.Config, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		return aws.Config{}, fmt.Errorf("unable to load AWS config: %v", err)
+		return aws.Config{}, fmt.Errorf("unable to load AWS config: %w", err)
 	}
 
-	// This validation is required to prevent landing wrong hypershift region configurations
-	// set by environment variable.
-	if !awsRegionPattern.MatchString(cfg.Region) {
-		region, err := getRegionFromInfrastructure(ctx)
-		if err != nil {
-			return aws.Config{}, fmt.Errorf("AWS region %q is not valid and failed to get region from Infrastructure: %v", cfg.Region, err)
-		}
-		framework.Logf("AWS SDK region %q is not valid, using region from Infrastructure: %s", cfg.Region, region)
+	// Using region defined in the Infrastructure object as source of thruth
+	// to build the AWS client config.
+	region, err := getRegionFromInfrastructure(ctx)
+	if err == nil {
 		cfg.Region = region
+	} else if !awsRegionPattern.MatchString(cfg.Region) {
+		return aws.Config{}, fmt.Errorf("AWS region %q is not valid and failed to get region from Infrastructure: %w", cfg.Region, err)
 	}
 
 	framework.Logf("AWS config loaded: region=%s", cfg.Region)
@@ -57,11 +58,11 @@ func loadAWSConfig(ctx context.Context) (aws.Config, error) {
 func getRegionFromInfrastructure(ctx context.Context) (string, error) {
 	oc, err := common.GetOcClient(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to create config client: %v", err)
+		return "", fmt.Errorf("failed to create config client: %w", err)
 	}
 	infra, err := oc.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
 	if err != nil {
-		return "", fmt.Errorf("failed to get Infrastructure: %v", err)
+		return "", fmt.Errorf("failed to get Infrastructure: %w", err)
 	}
 	if infra.Status.PlatformStatus == nil || infra.Status.PlatformStatus.AWS == nil {
 		return "", fmt.Errorf("Infrastructure platformStatus.aws is nil")
@@ -89,9 +90,9 @@ func createAWSClientLoadBalancer(ctx context.Context) (*elbv2.Client, error) {
 
 	return elbv2.NewFromConfig(cfg, func(o *elbv2.Options) {
 		o.Retryer = customRetryer
-		if cfg.Region != "" {
-			o.BaseEndpoint = aws.String(fmt.Sprintf("https://elasticloadbalancing.%s.amazonaws.com", cfg.Region))
-		}
+		// Use regional public endpoints to prevent malformed or unreachable
+		// (from test binary, which usually runs outside cluster's VPC) endpoints.
+		o.BaseEndpoint = aws.String(fmt.Sprintf("https://elasticloadbalancing.%s.amazonaws.com", cfg.Region))
 	}), nil
 }
 
@@ -122,7 +123,7 @@ func getAWSLoadBalancerFromDNSName(ctx context.Context, elbClient *elbv2.Client,
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to find load balancer with DNS name %s: %v", lbDNSName, err)
+		return nil, fmt.Errorf("failed to find load balancer with DNS name %s: %w", lbDNSName, err)
 	}
 
 	if foundLB == nil {
@@ -139,7 +140,7 @@ func findAWSLoadBalancerByDNSName(ctx context.Context, elbClient *elbv2.Client, 
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to describe load balancers: %v", err)
+			return nil, fmt.Errorf("failed to describe load balancers: %w", err)
 		}
 
 		framework.Logf("found %d load balancers in page", len(page.LoadBalancers))
@@ -167,9 +168,9 @@ func createAWSClientEC2(ctx context.Context) (*ec2.Client, error) {
 		return nil, err
 	}
 	return ec2.NewFromConfig(cfg, func(o *ec2.Options) {
-		if cfg.Region != "" {
-			o.BaseEndpoint = aws.String(fmt.Sprintf("https://ec2.%s.amazonaws.com", cfg.Region))
-		}
+		// Use regional public endpoints to prevent malformed or unreachable
+		// (from test binary, which usually runs outside cluster's VPC) endpoints.
+		o.BaseEndpoint = aws.String(fmt.Sprintf("https://ec2.%s.amazonaws.com", cfg.Region))
 	}), nil
 }
 
@@ -182,7 +183,7 @@ func getAWSSecurityGroup(ctx context.Context, ec2Client *ec2.Client, sgID string
 
 	result, err := ec2Client.DescribeSecurityGroups(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("failed to describe security group %s: %v", sgID, err)
+		return nil, fmt.Errorf("failed to describe security group %s: %w", sgID, err)
 	}
 
 	if len(result.SecurityGroups) == 0 {
@@ -220,7 +221,7 @@ func securityGroupExists(ctx context.Context, ec2Client *ec2.Client, sgID string
 			framework.Logf("security group %s does not exist", sgID)
 			return false, nil
 		}
-		return false, fmt.Errorf("failed to check security group %s: %v", sgID, err)
+		return false, fmt.Errorf("failed to check security group %s: %w", sgID, err)
 	}
 
 	framework.Logf("security group %s exists", sgID)

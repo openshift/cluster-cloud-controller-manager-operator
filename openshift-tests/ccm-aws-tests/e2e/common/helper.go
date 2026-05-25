@@ -128,16 +128,16 @@ func SkipIfManagementClusterTestsDisabled() {
 func IsExternalTopology(ctx context.Context) (bool, error) {
 	oc, err := GetOcClient(ctx)
 	if err != nil {
-		return false, fmt.Errorf("failed to create config client: %v", err)
+		return false, fmt.Errorf("failed to create config client: %w", err)
 	}
 
 	infra, err := oc.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
 	if err != nil {
-		return false, fmt.Errorf("failed to get Infrastructure 'cluster': %v", err)
+		return false, fmt.Errorf("failed to get Infrastructure 'cluster': %w", err)
 	}
 
 	isExternal := infra.Status.ControlPlaneTopology == configv1.ExternalTopologyMode
-	// framework.Logf("Cluster control plane topology: %s (external: %v)", infra.Status.ControlPlaneTopology, isExternal)
+	framework.Logf("Cluster control plane topology: %s (external: %v)", infra.Status.ControlPlaneTopology, isExternal)
 	return isExternal, nil
 }
 
@@ -157,20 +157,19 @@ func getHCPCloudConfig(ctx context.Context) (*v1.ConfigMap, error) {
 	}
 
 	framework.Logf("Using management cluster kubeconfig=%s, HCP namespace=%s", mgmtKubeconfig, hcpNamespace)
-
 	restConfig, err := clientcmd.BuildConfigFromFlags("", mgmtKubeconfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load management cluster kubeconfig")
+		return nil, fmt.Errorf("failed to create management cluster client config: %w", err)
 	}
 
 	mgmtClient, err := clientset.NewForConfig(restConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create management cluster client")
+		return nil, fmt.Errorf("failed to create management cluster client: %w", err)
 	}
 
 	cm, err := mgmtClient.CoreV1().ConfigMaps(hcpNamespace).Get(ctx, hcpCloudConfigName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get HCP cloud-config ConfigMap %s/%s", hcpNamespace, hcpCloudConfigName)
+		return nil, fmt.Errorf("failed to get HCP cloud-config ConfigMap %s/%s: %w", hcpNamespace, hcpCloudConfigName, err)
 	}
 
 	framework.Logf("Successfully retrieved HCP cloud-config from %s/%s", hcpNamespace, hcpCloudConfigName)
