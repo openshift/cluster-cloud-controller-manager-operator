@@ -1,0 +1,35 @@
+# See the OWNERS_ALIASES docs: https://git.k8s.io/community/contributors/guide/owners.md#owners_aliases
+
+aliases:
+  cccmo-approvers:
+  - JoelSpeed
+  - damdo
+  - elmiko
+  - mdbooth
+  - nrb
+  - racheljpg
+  - theobarberbany
+  cccmo-reviewers:
+  - RadekManak
+  - damdo
+  - mdbooth
+  - nrb
+  - racheljpg
+  - theobarberbany
+  splat-squad-aws-approvers:
+  - mtulio
+  - mfbonfigli
+  - rvanderp3
+  - jcpowermac
+  splat-squad-aws-reviewers:
+  - mtulio
+  - mfbonfigli
+  - vr4manta
+  splat-squad-vsphere-approvers:
+  - jcpowermac
+  - rvanderp3
+  - vr4manta
+  splat-squad-vsphere-reviewers:
+  - jcpowermac
+  - vr4manta
+  - rvanderp3

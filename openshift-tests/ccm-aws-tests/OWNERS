@@ -1,0 +1,7 @@
+approvers:
+- cccmo-approvers
+- splat-squad-aws-approvers
+reviewers:
+- cccmo-reviewers
+- splat-squad-aws-reviewers
+- miyadav
