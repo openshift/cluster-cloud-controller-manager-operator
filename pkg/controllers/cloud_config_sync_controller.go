@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -87,59 +86,6 @@ type CloudConfigReconciler struct {
 	Scheme            *runtime.Scheme
 	FeatureGateAccess featuregates.FeatureGateAccess
 	failures          failureWindow
-}
-
-// failureWindow tracks consecutive transient failures. All methods are safe for concurrent use.
-type failureWindow struct {
-	mu                      sync.Mutex
-	consecutiveFailureSince *time.Time
-	lastTransientFailureAt  *time.Time
-}
-
-// clear resets the failure window. Call this on every successful reconcile.
-func (fw *failureWindow) clear() {
-	fw.mu.Lock()
-	defer fw.mu.Unlock()
-	fw.consecutiveFailureSince = nil
-	fw.lastTransientFailureAt = nil
-}
-
-// observe records a transient failure at now and returns the elapsed time since
-// the window started plus a boolean indicating whether the window was just opened
-// or restarted. staleAfter controls stale-window detection: if the gap since the
-// last observed failure exceeds staleAfter, the window restarts. Pass 0 to disable.
-func (fw *failureWindow) observe(now time.Time, staleAfter time.Duration) (elapsed time.Duration, started bool) {
-	fw.mu.Lock()
-	defer fw.mu.Unlock()
-	stale := staleAfter > 0 && fw.lastTransientFailureAt != nil && now.Sub(*fw.lastTransientFailureAt) > staleAfter
-	if fw.consecutiveFailureSince == nil || stale {
-		fw.consecutiveFailureSince = &now
-		fw.lastTransientFailureAt = &now
-		return 0, true
-	}
-	fw.lastTransientFailureAt = &now
-	return now.Sub(*fw.consecutiveFailureSince), false
-}
-
-// handleTransient records a transient failure and degrades only after threshold has elapsed.
-// name labels log messages. staleAfter controls stale-window restart (pass 0 to disable).
-// setDegraded is invoked only when the threshold is exceeded.
-// Always returns a non-nil error so controller-runtime requeues with exponential backoff.
-func (fw *failureWindow) handleTransient(now time.Time, staleAfter, threshold time.Duration, name string, err error, setDegraded func() error) (ctrl.Result, error) {
-	elapsed, started := fw.observe(now, staleAfter)
-	if started {
-		klog.V(4).Infof("%s: transient failure started (%v), will degrade after %s", name, err, threshold)
-		return ctrl.Result{}, err
-	}
-	if elapsed < threshold {
-		klog.V(4).Infof("%s: transient failure ongoing for %s (threshold %s): %v", name, elapsed, threshold, err)
-		return ctrl.Result{}, err
-	}
-	klog.Warningf("%s: transient failure exceeded threshold (%s), setting degraded: %v", name, elapsed, err)
-	if setErr := setDegraded(); setErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
-	}
-	return ctrl.Result{}, err
 }
 
 // handleTerminal degrades immediately and returns nil so controller-runtime does not requeue.
