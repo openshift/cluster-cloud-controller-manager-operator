@@ -137,19 +137,13 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Check if FeatureGateAccess is configured (needed early for transformer)
 	if r.FeatureGateAccess == nil {
 		klog.Errorf("FeatureGateAccess is not configured")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, fmt.Errorf("FeatureGateAccess is not configured")
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("FeatureGateAccess is not configured"))
 	}
 
 	features, err := r.FeatureGateAccess.CurrentFeatureGates()
 	if err != nil {
 		klog.Errorf("unable to get feature gates: %v", err)
-		if errD := r.setDegradedCondition(ctx); errD != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", errD)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get feature gates: %w", err)
 	}
 
 	cloudConfigTransformerFn, needsManagedConfigLookup, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
@@ -202,10 +196,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 		} else if err != nil {
 			klog.Errorf("unable to get cloud-config for sync: %v", err)
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to get cloud-config for sync: %w", err)
 		} else {
 			klog.V(3).Infof("Found config in openshift-config namespace for platform %s", platformType)
 		}
@@ -246,10 +237,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if shouldManageManagedConfigMap(platformType, features) {
 		if err := r.syncManagedCloudConfig(ctx, sourceCM); err != nil {
 			klog.Errorf("failed to sync managed cloud config: %v", err)
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err // transient
+			return ctrl.Result{}, fmt.Errorf("failed to sync managed cloud config: %w", err)
 		}
 	}
 

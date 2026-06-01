@@ -101,13 +101,6 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to get Infrastructure: %w", err)
 	}
 
-	// Known limitation: when provisioningAllowed internally calls setStatusDegraded
-	// (e.g. a sub-controller has Degraded=True, or IsCloudProviderExternal errors),
-	// it returns a non-nil error. The deferred finalizeReconcile then enters the
-	// transient-failure window. After the threshold, finalizeReconcile calls
-	// setStatusDegraded again — redundant but harmless, since status is already degraded.
-	// This is a consequence of keeping status-setting inside provisioningAllowed rather
-	// than pushing it into Reconcile.
 	allowedToProvision, err := r.provisioningAllowed(ctx, infra, conditionOverrides)
 	if err != nil {
 		klog.Errorf("Unable to determine cluster state to check if provision is allowed: %v", err)
@@ -225,10 +218,6 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	// Check if dependant controllers are available
 	available, err := r.checkControllerConditions(ctx)
 	if err != nil {
-		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
 		return false, err
 	}
 	if !available {
@@ -256,11 +245,6 @@ func (r *CloudOperatorReconciler) provisioningAllowed(ctx context.Context, infra
 	external, err := cloudprovider.IsCloudProviderExternal(infra.Status.PlatformStatus)
 	if err != nil {
 		klog.Errorf("Could not determine external cloud provider state: %v", err)
-
-		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
 		return false, err
 	} else if !external {
 		klog.Infof("Platform does not require an external cloud provider. Skipping...")
@@ -280,11 +264,6 @@ func (r *CloudOperatorReconciler) isCloudControllersOwnedByCCM(ctx context.Conte
 	co, err := r.getOrCreateClusterOperator(ctx)
 	if err != nil {
 		klog.Errorf("Unable to retrive ClusterOperator object: %v", err)
-
-		if err := r.setStatusDegraded(ctx, err, conditionOverrides); err != nil {
-			klog.Errorf("Error syncing ClusterOperatorStatus: %v", err)
-			return false, fmt.Errorf("error syncing ClusterOperatorStatus: %v", err)
-		}
 		return false, err
 	}
 
