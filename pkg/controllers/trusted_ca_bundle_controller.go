@@ -59,7 +59,8 @@ func (r *TrustedCABundleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// reset an ongoing transient failure window from a previous full reconcile.
 	partialRun := false
 
-	defer finalizeReconcile(&r.failures, r.Clock, transientDegradedThreshold, transientDegradedThreshold, "TrustedCABundleReconciler", func() {
+	// transientDegradedThreshold is used as both the degraded threshold and staleness value.
+	defer finalizeReconcile(&r.failures, r.Clock, stalenessWindow, transientDegradedThreshold, "TrustedCABundleReconciler", func() {
 		if !partialRun {
 			r.failures.clear()
 		}

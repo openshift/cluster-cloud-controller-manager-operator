@@ -722,7 +722,7 @@ var _ = Describe("CloudOperatorReconciler error handling", func() {
 			result := ctrl.Result{}
 			finalizeReconcile(
 				&reconciler.failures, reconciler.Clock,
-				0, aggregatedTransientDegradedThreshold,
+				noStalenessWindow, aggregatedTransientDegradedThreshold,
 				"CloudOperatorReconciler",
 				reconciler.clearFailureWindow,
 				func() error { return reconciler.setStatusDegraded(ctx, retErr, conditionOverrides) },
@@ -770,7 +770,7 @@ var _ = Describe("CloudOperatorReconciler error handling", func() {
 			result := ctrl.Result{}
 			finalizeReconcile(
 				&reconciler.failures, reconciler.Clock,
-				0, aggregatedTransientDegradedThreshold,
+				noStalenessWindow, aggregatedTransientDegradedThreshold,
 				"CloudOperatorReconciler",
 				reconciler.clearFailureWindow,
 				func() error { return reconciler.setStatusDegraded(ctx, retErr, conditionOverrides) },

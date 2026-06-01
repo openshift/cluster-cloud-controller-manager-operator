@@ -81,7 +81,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 
 	defer finalizeReconcile(
 		&r.failures, r.Clock,
-		0, aggregatedTransientDegradedThreshold,
+		noStalenessWindow, aggregatedTransientDegradedThreshold,
 		"CloudOperatorReconciler",
 		r.clearFailureWindow,
 		func() error { return r.setStatusDegraded(ctx, retErr, conditionOverrides) },

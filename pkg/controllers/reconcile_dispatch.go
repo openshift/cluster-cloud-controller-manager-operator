@@ -13,6 +13,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	// transientDegradedThreshold is how long transient errors must persist before
+	// the controller sets Degraded=True. This prevents brief
+	// API server blips during upgrades from immediately degrading the operator.
+	transientDegradedThreshold = 2 * time.Minute
+
+	// stalenessWindow is the amount of time a failureWindow can remain "open."
+	// After the stalenessWindow, the failureWindow will be cleared.
+	// Put another way, if the gap since the last observed transient error is greater than
+	// the stalenessWindow, the failure window is reset.
+	// This is used in places where the controller does not automatically re-queue.
+	stalenessWindow = 150 * time.Second
+
+	// noStalenessWindow signals that there is no staleness threshold for this operation
+	noStalenessWindow = 0
+)
+
 // degradedSetter binds ctx to setCondition, returning a no-arg func() error
 // suitable for use as the setDegraded callback in handleTerminal and handleTransient.
 func degradedSetter(ctx context.Context, setCondition func(context.Context) error) func() error {

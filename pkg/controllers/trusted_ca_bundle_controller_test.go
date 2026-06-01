@@ -389,9 +389,9 @@ var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(reconciler.failures.consecutiveFailureSince).NotTo(BeNil())
 
-		// Step 2: Advance clock past the threshold — simulates a gap with no reconciles
+		// Step 2: Advance clock past the staleness threshold — simulates a gap with no reconciles
 		// (e.g., system recovered, no events fired for a long time).
-		fakeClock.Step(transientDegradedThreshold + time.Second)
+		fakeClock.Step(stalenessWindow + time.Second)
 
 		// Step 3: New transient error arrives. The stale-window logic should detect that
 		// lastTransientFailureAt is more than the threshold ago and restart the window

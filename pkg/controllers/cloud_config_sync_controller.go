@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,11 +31,6 @@ const (
 	// Controller conditions for the Cluster Operator resource
 	cloudConfigControllerAvailableCondition = "CloudConfigControllerAvailable"
 	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
-
-	// transientDegradedThreshold is how long transient errors must persist before
-	// the controller sets Degraded=True. This prevents brief
-	// API server blips during upgrades from immediately degrading the operator.
-	transientDegradedThreshold = 2 * time.Minute
 )
 
 // shouldManageManagedConfigMap returns true if CCCMO should manage the
@@ -102,7 +96,7 @@ func (fw *failureWindow) handleTerminal(name string, err error, setDegraded func
 func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	klog.V(1).Infof("Syncing cloud-conf ConfigMap")
 
-	defer finalizeReconcile(&r.failures, r.Clock, 0, transientDegradedThreshold, "CloudConfigReconciler", r.failures.clear, degradedSetter(ctx, r.setDegradedCondition), &result, &retErr)
+	defer finalizeReconcile(&r.failures, r.Clock, noStalenessWindow, transientDegradedThreshold, "CloudConfigReconciler", r.failures.clear, degradedSetter(ctx, r.setDegradedCondition), &result, &retErr)
 
 	infra := &configv1.Infrastructure{}
 	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); apierrors.IsNotFound(err) {
