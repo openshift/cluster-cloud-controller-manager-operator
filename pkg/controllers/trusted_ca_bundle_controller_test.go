@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	clocktesting "k8s.io/utils/clock/testing"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -164,10 +165,13 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		co := &v1.ClusterOperator{}
 		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
 		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() bool {
+			Eventually(func() error {
 				err := cl.Delete(context.Background(), co)
-				return err == nil || apierrors.IsNotFound(err)
-			}).Should(BeTrue())
+				if err == nil || apierrors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}).Should(Succeed())
 		}
 		Eventually(func() bool {
 			return apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))
@@ -296,9 +300,16 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 
 	It("merged bundle should be generated without cloud-config at all", func() {
 		Expect(cl.Delete(ctx, syncedCloudConfigConfigMap)).To(Succeed())
-		Eventually(func() bool {
-			return apierrors.IsNotFound(cl.Get(ctx, client.ObjectKeyFromObject(syncedCloudConfigConfigMap), &corev1.ConfigMap{}))
-		}).Should(BeTrue())
+		Eventually(func() error {
+			err := cl.Get(ctx, client.ObjectKeyFromObject(syncedCloudConfigConfigMap), &corev1.ConfigMap{})
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("expected synced cloud config ConfigMap to be deleted")
+		}).Should(Succeed())
 		syncedCloudConfigConfigMap = nil
 
 		mergedTrustedCA := &corev1.ConfigMap{}
@@ -308,6 +319,312 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 		Expect(cl.Delete(ctx, mergedTrustedCA)).To(Succeed())
 
 		Eventually(checkMergedTrustedCAConfig(3, "Amazon")).Should(Succeed())
+	})
+})
+
+var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
+	ctx := context.Background()
+
+	AfterEach(func() {
+		co := &v1.ClusterOperator{}
+		if err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); err == nil {
+			Expect(cl.Delete(ctx, co)).To(Succeed())
+			Eventually(func() error {
+				err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("expected ClusterOperator to be deleted")
+			}).Should(Succeed())
+		}
+	})
+
+	It("reconcile should succeed and be available if no proxy resource found", func() {
+		reconciler := &TrustedCABundleReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
+				ManagedNamespace: testManagedNamespace,
+			},
+			trustBundlePath: systemCAValid,
+		}
+
+		_, err := reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(Succeed())
+
+		co := &v1.ClusterOperator{}
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		var availCond *v1.ClusterOperatorStatusCondition
+		for i := range co.Status.Conditions {
+			if co.Status.Conditions[i].Type == trustedCABundleControllerAvailableCondition {
+				availCond = &co.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(availCond).NotTo(BeNil())
+		Expect(availCond.Status).To(Equal(v1.ConditionTrue))
+	})
+
+	It("stale failure window should be restarted when gap since last error exceeds threshold", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		reconciler := &TrustedCABundleReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			trustBundlePath: "/broken/ca/path.pem", // unreadable → transient error
+		}
+
+		// Create a Proxy so the reconcile progresses to getSystemTrustBundle.
+		proxy := &v1.Proxy{ObjectMeta: metav1.ObjectMeta{Name: proxyResourceName}}
+		Expect(cl.Create(ctx, proxy)).To(Succeed())
+		DeferCleanup(func() { _ = cl.Delete(ctx, proxy) })
+
+		// Step 1: First transient error; failure window opens at T0.
+		_, err := reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+		Expect(reconciler.failures.consecutiveFailureSince).NotTo(BeNil())
+
+		// Step 2: Advance clock past the staleness threshold — simulates a gap with no reconciles
+		// (e.g., system recovered, no events fired for a long time).
+		fakeClock.Step(stalenessWindow + time.Second)
+
+		// Step 3: New transient error arrives. The stale-window logic should detect that
+		// lastTransientFailureAt is more than the threshold ago and restart the window
+		// from 'now', NOT degrade immediately.
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+
+		co := &v1.ClusterOperator{}
+		if getErr := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); getErr == nil {
+			for _, cond := range co.Status.Conditions {
+				if cond.Type == trustedCABundleControllerDegradedCondition {
+					Expect(cond.Status).NotTo(Equal(v1.ConditionTrue),
+						"should not degrade immediately after a gap — window should restart")
+				}
+			}
+		}
+		// consecutiveFailureSince should now be 'now', not the original T0.
+		Expect(reconciler.failures.consecutiveFailureSince).NotTo(BeNil())
+		Expect(fakeClock.Now().Sub(*reconciler.failures.consecutiveFailureSince)).To(BeNumerically("<", time.Second),
+			"window should have been restarted to ~now, not retained from original T0")
+	})
+
+	It("partialRun should not clear failure window from a previous transient error", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		reconciler := &TrustedCABundleReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			trustBundlePath: "/broken/ca/path.pem", // unreadable → transient error
+		}
+
+		// Create a Proxy whose TrustedCA points to "user-ca-bundle".
+		proxy := &v1.Proxy{
+			ObjectMeta: metav1.ObjectMeta{Name: proxyResourceName},
+			Spec: v1.ProxySpec{
+				TrustedCA: v1.ConfigMapNameReference{Name: additionalCAConfigMapName},
+			},
+		}
+		Expect(cl.Create(ctx, proxy)).To(Succeed())
+		DeferCleanup(func() { _ = cl.Delete(ctx, proxy) })
+
+		// Step 1: Transient error opens the failure window at T0.
+		_, err := reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+		Expect(reconciler.failures.consecutiveFailureSince).NotTo(BeNil(),
+			"failure window should be open after transient error")
+
+		windowStart := *reconciler.failures.consecutiveFailureSince
+
+		// Step 2: Advance clock partway through the threshold, then send an event
+		// for an unrelated ConfigMap in the openshift-config namespace.
+		// This triggers the partialRun path (req.Namespace == OpenshiftConfigNamespace
+		// && req.Name != proxy.Spec.TrustedCA.Name). The reconcile returns nil,
+		// but the failure window should NOT be cleared.
+		fakeClock.Step(transientDegradedThreshold / 2)
+
+		// Fix the trust bundle path so the full reconcile path would succeed,
+		// proving that the partial-run path is what preserves the window.
+		reconciler.trustBundlePath = systemCAValid
+
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{
+			NamespacedName: client.ObjectKey{
+				Namespace: OpenshiftConfigNamespace,
+				Name:      "some-unrelated-configmap",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred(), "partial run should succeed")
+		Expect(reconciler.failures.consecutiveFailureSince).NotTo(BeNil(),
+			"failure window should still be open after partial run")
+		Expect(*reconciler.failures.consecutiveFailureSince).To(Equal(windowStart),
+			"failure window start should be unchanged by partial run")
+	})
+
+	It("full successful reconcile should clear failure window unlike partialRun", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		reconciler := &TrustedCABundleReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			trustBundlePath: "/broken/ca/path.pem",
+		}
+
+		// Create a Proxy whose TrustedCA points to "user-ca-bundle".
+		proxy := &v1.Proxy{
+			ObjectMeta: metav1.ObjectMeta{Name: proxyResourceName},
+			Spec: v1.ProxySpec{
+				TrustedCA: v1.ConfigMapNameReference{Name: additionalCAConfigMapName},
+			},
+		}
+		Expect(cl.Create(ctx, proxy)).To(Succeed())
+		DeferCleanup(func() { _ = cl.Delete(ctx, proxy) })
+
+		// Create the user CA bundle ConfigMap so the full path can succeed.
+		userCA, err := makeValidUserCAConfigMap(additionalAmazonCAPemPath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cl.Create(ctx, userCA)).To(Succeed())
+		DeferCleanup(func() { _ = cl.Delete(ctx, userCA) })
+
+		// Step 1: Transient error opens the failure window.
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+		Expect(reconciler.failures.consecutiveFailureSince).NotTo(BeNil())
+
+		// Step 2: Fix the trust bundle path and trigger a full reconcile
+		// (request is NOT for an unrelated ConfigMap in openshift-config).
+		reconciler.trustBundlePath = systemCAValid
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).NotTo(HaveOccurred(), "full successful reconcile should not error")
+		Expect(reconciler.failures.consecutiveFailureSince).To(BeNil(),
+			"full successful reconcile should clear the failure window")
+	})
+
+	It("partialRun preserves failure window so degradation fires after threshold", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		reconciler := &TrustedCABundleReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			trustBundlePath: "/broken/ca/path.pem",
+		}
+
+		proxy := &v1.Proxy{
+			ObjectMeta: metav1.ObjectMeta{Name: proxyResourceName},
+			Spec: v1.ProxySpec{
+				TrustedCA: v1.ConfigMapNameReference{Name: additionalCAConfigMapName},
+			},
+		}
+		Expect(cl.Create(ctx, proxy)).To(Succeed())
+		DeferCleanup(func() { _ = cl.Delete(ctx, proxy) })
+
+		// Step 1: Transient error opens the failure window at T0.
+		_, err := reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+
+		// Step 2: Advance partway and send an unrelated ConfigMap event (partialRun).
+		// Window stays open.
+		fakeClock.Step(transientDegradedThreshold / 2)
+		reconciler.trustBundlePath = systemCAValid
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{
+			NamespacedName: client.ObjectKey{
+				Namespace: OpenshiftConfigNamespace,
+				Name:      "some-unrelated-configmap",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Step 3: Advance past the threshold and trigger another transient error.
+		// Because partialRun preserved the window, the total elapsed time from
+		// the original failure exceeds the threshold → degraded should be set.
+		fakeClock.Step(transientDegradedThreshold/2 + time.Second)
+		reconciler.trustBundlePath = "/broken/ca/path.pem"
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+
+		co := &v1.ClusterOperator{}
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		var degradedCond *v1.ClusterOperatorStatusCondition
+		for i := range co.Status.Conditions {
+			if co.Status.Conditions[i].Type == trustedCABundleControllerDegradedCondition {
+				degradedCond = &co.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(degradedCond).NotTo(BeNil())
+		Expect(degradedCond.Status).To(Equal(v1.ConditionTrue),
+			"should degrade because partialRun preserved the failure window past the threshold")
+	})
+
+	It("should not degrade on transient error before threshold, but degrade after threshold", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		reconciler := &TrustedCABundleReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			trustBundlePath: "/broken/ca/path.pem", // unreadable → transient error
+		}
+
+		// Create a Proxy so the Proxy get succeeds and we reach the system trust bundle read.
+		proxy := &v1.Proxy{ObjectMeta: metav1.ObjectMeta{Name: proxyResourceName}}
+		Expect(cl.Create(ctx, proxy)).To(Succeed())
+		DeferCleanup(func() { _ = cl.Delete(ctx, proxy) })
+
+		// First reconcile at T0: transient failure starts; error is returned but no degraded condition set.
+		_, err := reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+		co := &v1.ClusterOperator{}
+		if getErr := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); getErr == nil {
+			for _, cond := range co.Status.Conditions {
+				if cond.Type == trustedCABundleControllerDegradedCondition {
+					Expect(cond.Status).NotTo(Equal(v1.ConditionTrue), "should not be degraded before threshold")
+				}
+			}
+		}
+
+		// Advance clock to mid-window (half the threshold) and reconcile again to simulate
+		// continuous failures. This updates lastTransientFailureAt, keeping it fresh.
+		fakeClock.Step(transientDegradedThreshold / 2)
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+		if getErr := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); getErr == nil {
+			for _, cond := range co.Status.Conditions {
+				if cond.Type == trustedCABundleControllerDegradedCondition {
+					Expect(cond.Status).NotTo(Equal(v1.ConditionTrue), "should not be degraded before threshold")
+				}
+			}
+		}
+
+		// Advance clock so total elapsed from T0 exceeds the threshold, but the gap since the
+		// most recent failure (lastTransientFailureAt) is less than the threshold. This ensures
+		// the degradation path is taken rather than the stale-window restart path.
+		fakeClock.Step(transientDegradedThreshold/2 + time.Second)
+
+		// Final reconcile: threshold exceeded, controller sets degraded.
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
+		Expect(err).To(HaveOccurred())
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		var degradedCond *v1.ClusterOperatorStatusCondition
+		for i := range co.Status.Conditions {
+			if co.Status.Conditions[i].Type == trustedCABundleControllerDegradedCondition {
+				degradedCond = &co.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(degradedCond).NotTo(BeNil())
+		Expect(degradedCond.Status).To(Equal(v1.ConditionTrue))
 	})
 })
 

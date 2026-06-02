@@ -6,7 +6,7 @@ import (
 	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/api/features"
@@ -78,34 +79,46 @@ type CloudConfigReconciler struct {
 	ClusterOperatorStatusClient
 	Scheme            *runtime.Scheme
 	FeatureGateAccess featuregates.FeatureGateAccess
+	failures          failureWindow
 }
 
-func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// handleTerminal degrades immediately and returns nil so controller-runtime does not requeue.
+// An existing watch on the relevant resource will re-trigger reconciliation when fixed.
+// name labels log messages.
+func (fw *failureWindow) handleTerminal(name string, err error, setDegraded func() error) (ctrl.Result, error) {
+	klog.Errorf("%s: terminal error, setting degraded: %v", name, err)
+	if setErr := setDegraded(); setErr != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set degraded condition: %w", setErr)
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	klog.V(1).Infof("Syncing cloud-conf ConfigMap")
 
+	defer finalizeReconcile(&r.failures, r.Clock, noStalenessWindow, transientDegradedThreshold, "CloudConfigReconciler", r.failures.clear, degradedSetter(ctx, r.setDegradedCondition), &result, &retErr)
+
 	infra := &configv1.Infrastructure{}
-	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
-		klog.Errorf("infrastructure resource not found")
-		if err := r.setDegradedCondition(ctx); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); apierrors.IsNotFound(err) {
+		// No cloud platform: mirror the main controller's behaviour of returning Available.
+		klog.Infof("Infrastructure cluster does not exist. Skipping...")
+		if err := r.setAvailableCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
+	} else if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get Infrastructure: %w", err)
 	}
 
 	network := &configv1.Network{}
 	if err := r.Get(ctx, client.ObjectKey{Name: "cluster"}, network); err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller when getting cluster Network object: %v", err)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get cluster Network: %w", err)
 	}
 
 	syncNeeded, err := r.isCloudConfigSyncNeeded(infra.Status.PlatformStatus, infra.Spec.CloudConfig)
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		// nil platformStatus is a terminal misconfiguration.
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to check cloud config sync requirements: %w", err))
 	}
 	if !syncNeeded {
 		if err := r.setAvailableCondition(ctx); err != nil {
@@ -118,28 +131,20 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Check if FeatureGateAccess is configured (needed early for transformer)
 	if r.FeatureGateAccess == nil {
 		klog.Errorf("FeatureGateAccess is not configured")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, fmt.Errorf("FeatureGateAccess is not configured")
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("FeatureGateAccess is not configured"))
 	}
 
 	features, err := r.FeatureGateAccess.CurrentFeatureGates()
 	if err != nil {
 		klog.Errorf("unable to get feature gates: %v", err)
-		if errD := r.setDegradedCondition(ctx); errD != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", errD)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get feature gates: %w", err)
 	}
 
 	cloudConfigTransformerFn, needsManagedConfigLookup, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
 	if err != nil {
+		// Unsupported platform won't change without a cluster reconfigure.
 		klog.Errorf("unable to get cloud config transformer function; unsupported platform")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to get cloud config transformer: %w", err))
 	}
 
 	platformType := infra.Status.PlatformStatus.Type
@@ -161,14 +166,10 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		if err := r.Get(ctx, defaultSourceCMObjectKey, sourceCM); err == nil {
 			managedConfigFound = true
-		} else if errors.IsNotFound(err) {
+		} else if apierrors.IsNotFound(err) {
 			klog.Warningf("managed cloud-config is not found, falling back to infrastructure config")
-		} else if err != nil {
-			klog.Errorf("unable to get managed cloud-config for sync")
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err
+		} else {
+			return ctrl.Result{}, fmt.Errorf("failed to get managed cloud config: %w", err)
 		}
 	}
 
@@ -179,7 +180,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Name:      infra.Spec.CloudConfig.Name,
 			Namespace: OpenshiftConfigNamespace,
 		}
-		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); errors.IsNotFound(err) {
+		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); apierrors.IsNotFound(err) {
 			klog.Warningf("cloud-config not found in either openshift-config-managed or openshift-config namespace")
 			// For platforms we manage, create a minimal valid config that will be populated by the transformer
 			if shouldManageManagedConfigMap(platformType, features) {
@@ -189,10 +190,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 		} else if err != nil {
 			klog.Errorf("unable to get cloud-config for sync: %v", err)
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to get cloud-config for sync: %w", err)
 		} else {
 			klog.V(3).Infof("Found config in openshift-config namespace for platform %s", platformType)
 		}
@@ -200,23 +198,30 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	sourceCM, err = r.prepareSourceConfigMap(sourceCM, infra)
 	if err != nil {
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		// User-supplied key mismatch: terminal until the ConfigMap or Infrastructure changes.
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to prepare source cloud config: %w", err))
 	}
 
 	// Apply transformer if needed
+	if r.FeatureGateAccess == nil {
+		// Operator misconfiguration at startup: Terminal.
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("FeatureGateAccess is not configured"))
+	}
+
+	features, err = r.FeatureGateAccess.CurrentFeatureGates()
+	if err != nil {
+		// The feature-gate informer may not have synced yet: transient.
+		klog.Errorf("unable to get feature gates: %v", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get feature gates: %w", err)
+	}
 	if cloudConfigTransformerFn != nil {
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
 		// we're not expecting users to put their data in the former.
 		output, err := cloudConfigTransformerFn(sourceCM.Data[defaultConfigKey], infra, network, features)
 		if err != nil {
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err
+			// Platform-specific transform failed on the current config data: terminal.
+			return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to transform cloud config: %w", err))
 		}
 		sourceCM.Data[defaultConfigKey] = output
 	}
@@ -226,20 +231,14 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if shouldManageManagedConfigMap(platformType, features) {
 		if err := r.syncManagedCloudConfig(ctx, sourceCM); err != nil {
 			klog.Errorf("failed to sync managed cloud config: %v", err)
-			if err := r.setDegradedCondition(ctx); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-			}
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to sync managed cloud config: %w", err)
 		}
 	}
 
 	// Sync the transformed config to the target configmap for CCM consumption
 	if err := r.syncCloudConfigData(ctx, sourceCM); err != nil {
 		klog.Errorf("unable to sync cloud config")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to sync cloud config: %w", err)
 	}
 
 	if err := r.setAvailableCondition(ctx); err != nil {
@@ -335,7 +334,7 @@ func (r *CloudConfigReconciler) syncConfigMapToTarget(ctx context.Context, sourc
 
 	// Check if target exists
 	err := r.Get(ctx, targetKey, targetCM)
-	if err != nil && !errors.IsNotFound(err) {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to get target configmap %s/%s: %w", targetNamespace, targetName, err)
 	}
 
