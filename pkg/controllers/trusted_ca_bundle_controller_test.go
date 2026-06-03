@@ -162,18 +162,7 @@ var _ = Describe("Trusted CA bundle sync controller", func() {
 			GracePeriodSeconds: ptr.To[int64](0),
 		}
 
-		co := &v1.ClusterOperator{}
-		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
-		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() error {
-				err := cl.Delete(context.Background(), co)
-				if err == nil || apierrors.IsNotFound(err) {
-					return nil
-				}
-				return err
-			}).Should(Succeed())
-		}
-		Eventually(apierrors.IsNotFound(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co))).Should(BeTrue())
+		deleteClusterOperator(context.Background(), cl)
 
 		if proxyResource != nil {
 			Expect(cl.Delete(ctx, proxyResource, deleteOptions)).To(Succeed())
@@ -324,20 +313,7 @@ var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
 	ctx := context.Background()
 
 	AfterEach(func() {
-		co := &v1.ClusterOperator{}
-		if err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); err == nil {
-			Expect(cl.Delete(ctx, co)).To(Succeed())
-			Eventually(func() error {
-				err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)
-				if apierrors.IsNotFound(err) {
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-				return fmt.Errorf("expected ClusterOperator to be deleted")
-			}).Should(Succeed())
-		}
+		deleteClusterOperator(ctx, cl)
 	})
 
 	It("reconcile should succeed and be available if no proxy resource found", func() {
