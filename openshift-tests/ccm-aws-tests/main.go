@@ -212,7 +212,7 @@ func initFrameworkForTests() error {
 func initFrameworkForTest() error {
 	if ad := os.Getenv("ARTIFACT_DIR"); len(strings.TrimSpace(ad)) == 0 {
 		if err := os.Setenv("ARTIFACT_DIR", filepath.Join(os.TempDir(), "artifacts")); err != nil {
-			return fmt.Errorf("unable to set ARTIFACT_DIR: %v", err)
+			return fmt.Errorf("unable to set ARTIFACT_DIR: %w", err)
 		}
 	}
 

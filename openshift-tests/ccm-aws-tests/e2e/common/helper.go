@@ -3,19 +3,31 @@ package common
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
+	"github.com/onsi/ginkgo/v2"
+	configv1 "github.com/openshift/api/config/v1"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
 const (
 	cloudConfigNamespace = "openshift-cloud-controller-manager"
 	cloudConfigName      = "cloud-conf"
+
+	// HyperShift uses different ConfigMap naming for the CCM cloud config.
+	hcpCloudConfigName = "aws-cloud-config"
+
+	// EnvSkipManagementClusterTests when set to "true" skips tests that
+	// require a kubeconfig for the management cluster (e.g. reading the
+	// CCM cloud-config from a HyperShift hosted control plane).
+	EnvSkipManagementClusterTests = "SKIP_MANAGEMENT_CLUSTER_TESTS"
 )
 
 // GetOcClient returns an OpenShift config/v1 API client (FeatureGates, Infrastructures, etc.).
@@ -100,12 +112,84 @@ func IsFeatureEnabled(ctx context.Context, featureName string) (bool, error) {
 	return false, nil
 }
 
-// GetCloudConfig retrieves the CCM cloud-config ConfigMap.
+// SkipIfManagementClusterTestsDisabled skips the current test when
+// SKIP_MANAGEMENT_CLUSTER_TESTS=true. Call this at the beginning of any
+// test that requires access to the management cluster kubeconfig.
+// This is useful to provide flexibility on Hypershift jobs that don't want to always
+// runs that checks this flag, forcing to skip any matching.
+func SkipIfManagementClusterTestsDisabled() {
+	if os.Getenv(EnvSkipManagementClusterTests) == "true" {
+		ginkgo.Skip("Skipping: test requires management cluster access and SKIP_MANAGEMENT_CLUSTER_TESTS=true")
+	}
+}
+
+// IsExternalTopology checks if the cluster has an external control plane topology
+// (e.g., HyperShift hosted clusters) by querying the Infrastructure resource.
+func IsExternalTopology(ctx context.Context) (bool, error) {
+	oc, err := GetOcClient(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to create config client: %w", err)
+	}
+
+	infra, err := oc.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
+	if err != nil {
+		return false, fmt.Errorf("failed to get Infrastructure 'cluster': %w", err)
+	}
+
+	isExternal := infra.Status.ControlPlaneTopology == configv1.ExternalTopologyMode
+	framework.Logf("Cluster control plane topology: %s (external: %v)", infra.Status.ControlPlaneTopology, isExternal)
+	return isExternal, nil
+}
+
+// getHCPCloudConfig retrieves the CCM cloud config from a HyperShift hosted
+// control plane. It reads the management cluster kubeconfig and HCP namespace
+// from environment variables set by the CI step, then fetches the
+// aws-cloud-config ConfigMap from the HCP namespace.
+func getHCPCloudConfig(ctx context.Context) (*v1.ConfigMap, error) {
+	mgmtKubeconfig := os.Getenv("HYPERSHIFT_MANAGEMENT_CLUSTER_KUBECONFIG")
+	if len(mgmtKubeconfig) == 0 {
+		return nil, fmt.Errorf("HYPERSHIFT_MANAGEMENT_CLUSTER_KUBECONFIG must be set for HyperShift topology")
+	}
+
+	hcpNamespace := os.Getenv("HYPERSHIFT_MANAGEMENT_CLUSTER_NAMESPACE")
+	if len(hcpNamespace) == 0 {
+		return nil, fmt.Errorf("HYPERSHIFT_MANAGEMENT_CLUSTER_NAMESPACE must be set for HyperShift topology")
+	}
+
+	framework.Logf("Using management cluster kubeconfig=%s, HCP namespace=%s", mgmtKubeconfig, hcpNamespace)
+	restConfig, err := clientcmd.BuildConfigFromFlags("", mgmtKubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create management cluster client config: %w", err)
+	}
+
+	mgmtClient, err := clientset.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create management cluster client: %w", err)
+	}
+
+	cm, err := mgmtClient.CoreV1().ConfigMaps(hcpNamespace).Get(ctx, hcpCloudConfigName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get HCP cloud-config ConfigMap %s/%s: %w", hcpNamespace, hcpCloudConfigName, err)
+	}
+
+	framework.Logf("Successfully retrieved HCP cloud-config from %s/%s", hcpNamespace, hcpCloudConfigName)
+	return cm, nil
+}
+
+// GetCloudConfig retrieves the CCM cloud-config ConfigMap, choosing the right
+// source based on cluster topology (HyperShift HCP vs standalone).
 // When cs is nil, a clientset is created from the current kubeconfig.
 // This function must not call Ginkgo control-flow helpers (Skip, Fail, etc.)
 // because it is also called from main.go outside a spec context.
 func GetCloudConfig(ctx context.Context, cs clientset.Interface) (*v1.ConfigMap, error) {
-	var err error
+	isExternal, err := IsExternalTopology(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect cluster topology: %w", err)
+	}
+
+	if isExternal {
+		return getHCPCloudConfig(ctx)
+	}
 	if cs == nil {
 		cs, err = GetKubeClient(ctx)
 		if err != nil {
