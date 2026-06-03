@@ -52,18 +52,7 @@ var _ = Describe("Cluster Operator status controller", func() {
 	})
 
 	AfterEach(func() {
-		co := &configv1.ClusterOperator{}
-		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
-		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() error {
-				err := cl.Delete(context.Background(), operator)
-				if err == nil || apierrors.IsNotFound(err) {
-					return nil
-				}
-				return err
-			}).Should(Succeed())
-		}
-		Expect(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)).To(MatchError(apierrors.IsNotFound, "ClusterOperator should have been deleted"))
+		deleteClusterOperator(context.Background(), cl)
 	})
 
 	type testCase struct {
@@ -654,7 +643,9 @@ var _ = Describe("Apply resources should", func() {
 		Expect(progressing).To(BeTrue(), "sync should report progressing when resources are newly applied")
 
 		Expect(cl.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
-		Expect(v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing).Status).To(
+		progressingCond := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
+		Expect(progressingCond).NotTo(BeNil(), "Progressing condition should exist after first sync")
+		Expect(progressingCond.Status).To(
 			Equal(configv1.ConditionTrue), "Progressing should be True after resources are first applied",
 		)
 
@@ -665,24 +656,15 @@ var _ = Describe("Apply resources should", func() {
 
 		// Progressing remains True because sync() does not clear it; only setStatusAvailable() does.
 		Expect(cl.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
-		Expect(v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing).Status).To(
+		progressingCond = v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
+		Expect(progressingCond).NotTo(BeNil(), "Progressing condition should still exist after second sync")
+		Expect(progressingCond.Status).To(
 			Equal(configv1.ConditionTrue), "Progressing should remain True until setStatusAvailable is called",
 		)
 	})
 
 	AfterEach(func() {
-		co := &configv1.ClusterOperator{}
-		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
-		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() error {
-				err := cl.Delete(context.Background(), co)
-				if err == nil || apierrors.IsNotFound(err) {
-					return nil
-				}
-				return err
-			}, timeout).Should(Succeed())
-		}
-		Expect(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)).To(MatchError(apierrors.IsNotFound, "ClusterOperator should have been deleted"))
+		deleteClusterOperator(context.Background(), cl)
 
 		for _, operand := range resources {
 			Expect(cl.Delete(context.Background(), operand)).To(Succeed())
@@ -705,17 +687,7 @@ var _ = Describe("CloudOperatorReconciler error handling", func() {
 	ctx := context.Background()
 
 	AfterEach(func() {
-		co := &configv1.ClusterOperator{}
-		if err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); err == nil {
-			Eventually(func() error {
-				err := cl.Delete(ctx, co)
-				if err == nil || apierrors.IsNotFound(err) {
-					return nil
-				}
-				return err
-			}).Should(Succeed())
-		}
-		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(MatchError(apierrors.IsNotFound, "ClusterOperator should have been deleted"))
+		deleteClusterOperator(ctx, cl)
 
 		infra := &configv1.Infrastructure{ObjectMeta: metav1.ObjectMeta{Name: infrastructureResourceName}}
 		cl.Delete(ctx, infra) //nolint:errcheck
@@ -812,7 +784,113 @@ var _ = Describe("CloudOperatorReconciler error handling", func() {
 		Expect(v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorDegraded).Status).To(Equal(configv1.ConditionTrue))
 	})
 
-	It("successful reconcile clears the failure window so subsequent transient errors start fresh", func() {
+	It("transient error should not set OperatorDegraded before threshold", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		getErr := fmt.Errorf("connection refused")
+		faultyClient := errorInjectingClient{Client: cl, getErr: &getErr, failType: &configv1.Infrastructure{}}
+
+		co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: clusterOperatorName}}
+		Expect(cl.Create(ctx, co)).To(Succeed())
+
+		reconciler := &CloudOperatorReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           &faultyClient,
+				Clock:            fakeClock,
+				ManagedNamespace: defaultManagementNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme: scheme.Scheme,
+		}
+
+		// Reconcile several times, advancing the clock each iteration but
+		// staying under the threshold. OperatorDegraded must never be set.
+		stepSize := aggregatedTransientDegradedThreshold / 5
+		for range 4 {
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{})
+			Expect(err).To(HaveOccurred(), "transient error should be returned for controller-runtime to requeue")
+			fakeClock.Step(stepSize)
+		}
+
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, configv1.OperatorDegraded)).To(BeFalse(),
+			"OperatorDegraded should not be True before the transient threshold elapses")
+	})
+
+	It("transient error should set OperatorDegraded after threshold is crossed", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		getErr := fmt.Errorf("connection refused")
+		faultyClient := errorInjectingClient{Client: cl, getErr: &getErr, failType: &configv1.Infrastructure{}}
+
+		co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: clusterOperatorName}}
+		Expect(cl.Create(ctx, co)).To(Succeed())
+
+		reconciler := &CloudOperatorReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           &faultyClient,
+				Clock:            fakeClock,
+				ManagedNamespace: defaultManagementNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme: scheme.Scheme,
+		}
+
+		// First Reconcile opens the failure window.
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).To(HaveOccurred())
+
+		// Advance past the threshold.
+		fakeClock.Step(aggregatedTransientDegradedThreshold + time.Second)
+
+		// Next Reconcile crosses the threshold and sets OperatorDegraded.
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).To(HaveOccurred())
+
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		degradedCond := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorDegraded)
+		Expect(degradedCond).NotTo(BeNil(), "OperatorDegraded condition should exist after threshold is crossed")
+		Expect(degradedCond.Status).To(Equal(configv1.ConditionTrue),
+			"OperatorDegraded should be True after threshold is crossed")
+	})
+
+	It("successful reconcile resets the failure window so transient errors must start fresh", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		getErr := fmt.Errorf("connection refused")
+		faultyClient := errorInjectingClient{Client: cl, getErr: &getErr, failType: &configv1.Infrastructure{}}
+
+		co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: clusterOperatorName}}
+		Expect(cl.Create(ctx, co)).To(Succeed())
+
+		reconciler := &CloudOperatorReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           &faultyClient,
+				Clock:            fakeClock,
+				ManagedNamespace: defaultManagementNamespace,
+				Recorder:         record.NewFakeRecorder(32),
+			},
+			Scheme: scheme.Scheme,
+		}
+
+		By("opening the failure window with a transient error")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).To(HaveOccurred())
+
+		By("clearing the fault so Reconcile succeeds via the Infrastructure-not-found path")
+		getErr = nil
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("advancing past the original threshold and re-injecting the fault")
+		fakeClock.Step(aggregatedTransientDegradedThreshold + time.Second)
+		getErr = fmt.Errorf("connection refused")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).To(HaveOccurred())
+
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, configv1.OperatorDegraded)).To(BeFalse(),
+			"OperatorDegraded should not be True because the failure window was reset by the successful reconcile")
+	})
+
+	It("successful finalizeReconcile clears the failure window so subsequent transient errors start fresh", func() {
 		fakeClock := clocktesting.NewFakeClock(time.Now())
 		reconciler := &CloudOperatorReconciler{
 			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
@@ -914,16 +992,7 @@ var _ = Describe("Reconcile progressing flow", func() {
 	})
 
 	AfterEach(func() {
-		co := &configv1.ClusterOperator{}
-		if err := cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co); err == nil {
-			Eventually(func() error {
-				err := cl.Delete(ctx, co)
-				if err == nil || apierrors.IsNotFound(err) {
-					return nil
-				}
-				return err
-			}).Should(Succeed())
-		}
+		deleteClusterOperator(ctx, cl)
 
 		infra := &configv1.Infrastructure{ObjectMeta: metav1.ObjectMeta{Name: infrastructureResourceName}}
 		cl.Delete(ctx, infra) //nolint:errcheck
@@ -962,7 +1031,9 @@ var _ = Describe("Reconcile progressing flow", func() {
 
 		co := &configv1.ClusterOperator{}
 		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
-		Expect(v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing).Status).To(
+		progressingCond := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
+		Expect(progressingCond).NotTo(BeNil(), "Progressing condition should exist after first reconcile")
+		Expect(progressingCond.Status).To(
 			Equal(configv1.ConditionTrue), "Progressing should be True after first reconcile creates resources",
 		)
 		availCond := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorAvailable)
@@ -976,10 +1047,14 @@ var _ = Describe("Reconcile progressing flow", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
-		Expect(v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing).Status).To(
+		progressingCond = v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
+		Expect(progressingCond).NotTo(BeNil(), "Progressing condition should exist after second reconcile")
+		Expect(progressingCond.Status).To(
 			Equal(configv1.ConditionFalse), "Progressing should be False after second reconcile with no changes",
 		)
-		Expect(v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorAvailable).Status).To(
+		availCond = v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorAvailable)
+		Expect(availCond).NotTo(BeNil(), "Available condition should exist after second reconcile")
+		Expect(availCond.Status).To(
 			Equal(configv1.ConditionTrue), "Available should be True after second reconcile",
 		)
 	})
