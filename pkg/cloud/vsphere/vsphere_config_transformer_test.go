@@ -31,6 +31,19 @@ func newVsphereInfraBuilder() infraBuilder {
 	}
 }
 
+func newVsphereInfraBuilderWithoutSpec() infraBuilder {
+	return infraBuilder{
+		platformSpec: configv1.PlatformSpec{
+			Type:    configv1.VSpherePlatformType,
+			VSphere: nil,
+		},
+		platformStatus: configv1.PlatformStatus{
+			Type:    configv1.VSpherePlatformType,
+			VSphere: &configv1.VSpherePlatformStatus{},
+		},
+	}
+}
+
 type infraBuilder struct {
 	platformSpec   configv1.PlatformSpec
 	platformStatus configv1.PlatformStatus
@@ -71,6 +84,16 @@ func (b infraBuilder) withVSphereDefaultNodeNetworking() infraBuilder {
 	vspereSpecRef.NodeNetworking.Internal.ExcludeNetworkSubnetCIDR = []string{"192.0.2.0/24", "fe80::1/128"}
 	vspereSpecRef.NodeNetworking.Internal.NetworkSubnetCIDR = []string{"192.0.3.0/24", "fe80::4/128"}
 
+	return b
+}
+
+func (b infraBuilder) withDefaultVCenter() infraBuilder {
+	vcenterSpec := configv1.VSpherePlatformVCenterSpec{
+		Server:      "test-server",
+		Datacenters: []string{"DC1"},
+	}
+	vspereSpecRef := b.platformSpec.VSphere
+	vspereSpecRef.VCenters = append(vspereSpecRef.VCenters, vcenterSpec)
 	return b
 }
 
@@ -387,6 +410,31 @@ labels:
   zone: openshift-zone
   region: openshift-region`
 
+const yamlConfigWithMultipleVCenters = `
+global:
+  insecureFlag: true
+  secretName: vsphere-creds
+  secretNamespace: kube-system
+vcenter:
+  test-server:
+    server: test-server
+    port: 443
+    datacenters:
+    - DC1
+    - DC2
+    - DC3
+  old-server-1:
+    server: old-server-1
+    datacenters:
+    - OLD-DC1
+  old-server-2:
+    server: old-server-2
+    datacenters:
+    - OLD-DC2
+labels:
+  zone: openshift-zone
+  region: openshift-region`
+
 func TestCloudConfigTransformer(t *testing.T) {
 	testcases := []struct {
 		name             string
@@ -399,7 +447,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 	}{
 		{
 			name:             "in-tree to external with empty infra",
-			infraBuilder:     newVsphereInfraBuilder(),
+			infraBuilder:     newVsphereInfraBuilderWithoutSpec(),
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      iniConfigWithWorkspace,
 			equivalentConfig: iniConfigWithoutWorkspace,
@@ -407,7 +455,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "in-tree to external with node networking",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking(),
+			infraBuilder:     newVsphereInfraBuilder().withDefaultVCenter().withVSphereDefaultNodeNetworking(),
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      iniConfigWithWorkspace,
 			equivalentConfig: iniConfigNodeNetworking,
@@ -431,7 +479,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "yaml and ini config parsing results should be the same",
-			infraBuilder:     newVsphereInfraBuilder(),
+			infraBuilder:     newVsphereInfraBuilderWithoutSpec(),
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: iniConfigWithoutWorkspace,
@@ -447,7 +495,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "yaml and ini config parsing results should be the same, node networking",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking(),
+			infraBuilder:     newVsphereInfraBuilder().withDefaultVCenter().withVSphereDefaultNodeNetworking(),
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfigNodeNetworking,
 			equivalentConfig: iniConfigNodeNetworking,
@@ -455,7 +503,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "yaml config should contain node networking if it's specified in infra",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking(),
+			infraBuilder:     newVsphereInfraBuilder().withDefaultVCenter().withVSphereDefaultNodeNetworking(),
 			networkBuilder:   makeDummyNetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworking,
@@ -471,7 +519,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "yaml config should contain ipv4-primary dual-stack config and correct excluded subnets",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking().withPrimaryIPv4VIP(),
+			infraBuilder:     newVsphereInfraBuilder().withDefaultVCenter().withVSphereDefaultNodeNetworking().withPrimaryIPv4VIP(),
 			networkBuilder:   withDualStackPrimaryIPv4NetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworkingDualStackPrimaryIPv4,
@@ -479,7 +527,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "yaml config should contain ipv6-primary dual-stack config and correct excluded subnets",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereDefaultNodeNetworking().withPrimaryIPv6VIP(),
+			infraBuilder:     newVsphereInfraBuilder().withDefaultVCenter().withVSphereDefaultNodeNetworking().withPrimaryIPv6VIP(),
 			networkBuilder:   withDualStackPrimaryIPv6NetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworkingDualStackPrimaryIPv6,
@@ -487,7 +535,7 @@ func TestCloudConfigTransformer(t *testing.T) {
 		},
 		{
 			name:             "yaml config should contain ipv6-only config and correct excluded subnets",
-			infraBuilder:     newVsphereInfraBuilder().withVSphereIPv6onlyNodeNetworking().withIPv6onlyVIP(),
+			infraBuilder:     newVsphereInfraBuilder().withDefaultVCenter().withVSphereIPv6onlyNodeNetworking().withIPv6onlyVIP(),
 			networkBuilder:   withIPv6onlyNetworkConfig(),
 			inputConfig:      yamlConfig,
 			equivalentConfig: yamlConfigNodeNetworkingIPv6only,
@@ -514,6 +562,14 @@ func TestCloudConfigTransformer(t *testing.T) {
 			inputConfig:    ":",
 			errMsg:         "failed to read the cloud.conf",
 			features:       featuregates.NewFeatureGate(nil, nil),
+		},
+		{
+			name:             "removing vcenters should clean up old vcenters from config",
+			infraBuilder:     newVsphereInfraBuilder().withVSphereZones(),
+			networkBuilder:   makeDummyNetworkConfig(),
+			inputConfig:      yamlConfigWithMultipleVCenters,
+			equivalentConfig: yamlConfigZonal,
+			features:         featuregates.NewFeatureGate(nil, nil),
 		},
 	}
 
