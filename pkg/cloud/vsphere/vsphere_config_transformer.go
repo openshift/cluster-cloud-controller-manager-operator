@@ -77,6 +77,9 @@ func setNodes(cfg *ccmConfig.CPIConfig, nodeNetworking *configv1.VSpherePlatform
 
 // setVirtualCenters sets vcenter server sections according passed VSpherePlatformSpec
 func setVirtualCenters(cfg *ccmConfig.CPIConfig, vSphereSpec *configv1.VSpherePlatformSpec) {
+	// Clear existing vcenters to ensure removed vcenters are not carried over
+	cfg.Vcenter = make(map[string]*ccmConfig.VirtualCenterConfig)
+
 	for _, vcenter := range vSphereSpec.VCenters {
 		cfg.Vcenter[vcenter.Server] = &ccmConfig.VirtualCenterConfig{
 			VCenterIP:   vcenter.Server,
