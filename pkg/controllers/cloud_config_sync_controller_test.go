@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -23,6 +24,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
@@ -259,19 +261,7 @@ var _ = Describe("Cloud config sync controller", func() {
 		mgrCtxCancel()
 		Eventually(mgrStopped, timeout).Should(BeClosed())
 
-		co := &configv1.ClusterOperator{}
-		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
-		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() error {
-				return cl.Delete(context.Background(), co)
-			}).Should(SatisfyAny(
-				Not(HaveOccurred()),
-				MatchError(apierrors.IsNotFound, "IsNotFound"),
-			))
-		}
-		Eventually(func() error {
-			return cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
-		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+		deleteClusterOperator(context.Background(), cl)
 
 		By("Cleanup resources")
 		deleteOptions := &client.DeleteOptions{
@@ -457,19 +447,7 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			GracePeriodSeconds: ptr.To[int64](0),
 		}
 
-		co := &configv1.ClusterOperator{}
-		err := cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
-		if err == nil || !apierrors.IsNotFound(err) {
-			Eventually(func() error {
-				return cl.Delete(context.Background(), co)
-			}).Should(SatisfyAny(
-				Not(HaveOccurred()),
-				MatchError(apierrors.IsNotFound, "IsNotFound"),
-			))
-		}
-		Eventually(func() error {
-			return cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)
-		}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+		deleteClusterOperator(context.Background(), cl)
 
 		infra := &configv1.Infrastructure{
 			ObjectMeta: metav1.ObjectMeta{
@@ -865,5 +843,120 @@ var _ = Describe("vSphere managed config sync", func() {
 
 			Expect(shouldManageManagedConfigMap(configv1.GCPPlatformType, features)).To(BeFalse())
 		})
+	})
+})
+
+var _ = Describe("CloudConfigReconciler error handling", func() {
+	ctx := context.Background()
+
+	AfterEach(func() {
+		deleteClusterOperator(ctx, cl)
+	})
+
+	It("transient error should not set cloudConfigControllerDegraded before threshold", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		getErr := fmt.Errorf("connection refused")
+		faultyClient := errorInjectingClient{Client: cl, getErr: &getErr, failType: &configv1.Infrastructure{}}
+
+		co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: clusterOperatorName}}
+		Expect(cl.Create(ctx, co)).To(Succeed())
+
+		reconciler := &CloudConfigReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           &faultyClient,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+		}
+
+		stepSize := transientDegradedThreshold / 5
+		for range 4 {
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{})
+			Expect(err).To(HaveOccurred(), "transient error should be returned for controller-runtime to requeue")
+			fakeClock.Step(stepSize)
+		}
+
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, cloudConfigControllerDegradedCondition)).To(BeFalse(),
+			"cloudConfigControllerDegraded should not be True before the transient threshold elapses")
+	})
+
+	It("transient error should set cloudConfigControllerDegraded after threshold is crossed", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		getErr := fmt.Errorf("connection refused")
+		faultyClient := errorInjectingClient{Client: cl, getErr: &getErr, failType: &configv1.Infrastructure{}}
+
+		co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: clusterOperatorName}}
+		Expect(cl.Create(ctx, co)).To(Succeed())
+
+		reconciler := &CloudConfigReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           &faultyClient,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).To(HaveOccurred())
+
+		fakeClock.Step(transientDegradedThreshold + time.Second)
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).To(HaveOccurred())
+
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		var degradedCond *configv1.ClusterOperatorStatusCondition
+		for i := range co.Status.Conditions {
+			if co.Status.Conditions[i].Type == cloudConfigControllerDegradedCondition {
+				degradedCond = &co.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(degradedCond).NotTo(BeNil(), "cloudConfigControllerDegraded condition should exist after threshold is crossed")
+		Expect(degradedCond.Status).To(Equal(configv1.ConditionTrue),
+			"cloudConfigControllerDegraded should be True after threshold is crossed")
+	})
+
+	It("successful reconcile resets the failure window so transient errors must start fresh", func() {
+		fakeClock := clocktesting.NewFakeClock(time.Now())
+		getErr := fmt.Errorf("connection refused")
+		faultyClient := errorInjectingClient{Client: cl, getErr: &getErr, failType: &configv1.Infrastructure{}}
+
+		co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: clusterOperatorName}}
+		Expect(cl.Create(ctx, co)).To(Succeed())
+
+		reconciler := &CloudConfigReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           &faultyClient,
+				Clock:            fakeClock,
+				ManagedNamespace: testManagedNamespace,
+			},
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+		}
+
+		By("opening the failure window with a transient error")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).To(HaveOccurred())
+
+		By("clearing the fault so Reconcile succeeds via the Infrastructure-not-found path")
+		getErr = nil
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("advancing past the original threshold and re-injecting the fault")
+		fakeClock.Step(transientDegradedThreshold + time.Second)
+		getErr = fmt.Errorf("connection refused")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{})
+		Expect(err).To(HaveOccurred())
+
+		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, cloudConfigControllerDegradedCondition)).To(BeFalse(),
+			"cloudConfigControllerDegraded should not be True because the failure window was reset by the successful reconcile")
 	})
 })
