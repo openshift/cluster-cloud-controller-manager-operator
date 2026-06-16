@@ -548,6 +548,31 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			Expect(degradedCond.Status).To(Equal(configv1.ConditionTrue))
 		})
 
+		It("should treat a missing source configmap as transient until it reappears", func() {
+			Expect(cl.Delete(ctx, makeInfraCloudConfig(configv1.AWSPlatformType))).To(Succeed())
+
+			infraResource := makeInfrastructureResource(configv1.AWSPlatformType)
+			Expect(cl.Create(ctx, infraResource)).To(Succeed())
+
+			infraResource.Status = makeInfraStatus(infraResource.Spec.PlatformSpec.Type)
+			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
+
+			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
+			Expect(err).To(HaveOccurred())
+
+			co := &configv1.ClusterOperator{}
+			Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(MatchError(apierrors.IsNotFound, "IsNotFound"))
+
+			Expect(cl.Create(ctx, makeInfraCloudConfig(configv1.AWSPlatformType))).To(Succeed())
+
+			_, err = reconciler.Reconcile(context.TODO(), ctrl.Request{})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+			Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, cloudConfigControllerDegradedCondition)).To(BeFalse())
+			Expect(v1helpers.IsStatusConditionTrue(co.Status.Conditions, cloudConfigControllerAvailableCondition)).To(BeTrue())
+		})
+
 		It("should continue with reconcile when feature gates are available", func() {
 			reconciler.FeatureGateAccess = featuregates.NewHardcodedFeatureGateAccessForTesting(
 				[]configv1.FeatureGateName{"CloudControllerManagerWebhook", "ChocobombVanilla", "ChocobombStrawberry"},
@@ -604,9 +629,8 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
 			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 			Expect(err).To(BeNil())
-			allCMs := &corev1.ConfigMapList{}
-			Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
-			Expect(len(allCMs.Items)).To(BeZero())
+			Expect(cl.Get(ctx, client.ObjectKey{Namespace: targetNamespaceName, Name: syncedCloudConfigMapName}, &corev1.ConfigMap{})).
+				To(MatchError(apierrors.IsNotFound, "IsNotFound"))
 		})
 	})
 

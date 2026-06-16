@@ -187,6 +187,8 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				klog.Infof("Initializing minimal config for platform %s", platformType)
 				minimalConfig := getMinimalConfigForPlatform(platformType)
 				sourceCM.Data = map[string]string{defaultConfigKey: minimalConfig}
+			} else {
+				return ctrl.Result{}, fmt.Errorf("cloud-config source configmap %s/%s not found", openshiftUnmanagedCMKey.Namespace, openshiftUnmanagedCMKey.Name)
 			}
 		} else if err != nil {
 			klog.Errorf("unable to get cloud-config for sync: %v", err)
