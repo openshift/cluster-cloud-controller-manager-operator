@@ -3,7 +3,6 @@ package aws
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -15,18 +14,9 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
-
-// awsRegionPattern matches valid AWS region names across all partitions:
-// standard (aws: us-east-1), China (aws-cn: cn-northwest-1),
-// GovCloud (aws-us-gov: us-gov-west-1), European Sovereign Cloud (aws-eusc: eusc-de-east-1),
-// and ISO/ISOB (aws-iso/iso-b: us-isob-east-1).
-var awsRegionPattern = regexp.MustCompile(`^[a-z]{2,4}(?:-[a-z0-9]+)+-\d+$`)
-
-// AWS helpers
 
 // loadAWSConfig loads the default AWS SDK configuration.
 // The region is discovered from the Infrastructure object and forced
@@ -42,36 +32,15 @@ func loadAWSConfig(ctx context.Context) (aws.Config, error) {
 
 	// Using region defined in the Infrastructure object as source of thruth
 	// to build the AWS client config.
-	region, err := getRegionFromInfrastructure(ctx)
+	region, err := common.GetRegionFromInfrastructure(ctx)
 	if err == nil {
 		cfg.Region = region
-	} else if !awsRegionPattern.MatchString(cfg.Region) {
+	} else if !common.AWSRegionPattern.MatchString(cfg.Region) {
 		return aws.Config{}, fmt.Errorf("AWS region %q is not valid and failed to get region from Infrastructure: %w", cfg.Region, err)
 	}
 
 	framework.Logf("AWS config loaded: region=%s", cfg.Region)
 	return cfg, nil
-}
-
-// getRegionFromInfrastructure reads the AWS region from the cluster's
-// Infrastructure resource (status.platformStatus.aws.region).
-func getRegionFromInfrastructure(ctx context.Context) (string, error) {
-	oc, err := common.GetOcClient(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to create config client: %w", err)
-	}
-	infra, err := oc.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("failed to get Infrastructure: %w", err)
-	}
-	if infra.Status.PlatformStatus == nil || infra.Status.PlatformStatus.AWS == nil {
-		return "", fmt.Errorf("Infrastructure platformStatus.aws is nil")
-	}
-	region := infra.Status.PlatformStatus.AWS.Region
-	if region == "" {
-		return "", fmt.Errorf("Infrastructure platformStatus.aws.region is empty")
-	}
-	return region, nil
 }
 
 // createAWSClientLoadBalancer creates an AWS ELBv2 client using default credentials configured in the environment.
