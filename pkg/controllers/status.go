@@ -110,20 +110,6 @@ func (r *ClusterOperatorStatusClient) setStatusProgressing(ctx context.Context, 
 	return r.syncStatus(ctx, co, conds, overrides)
 }
 
-func (r *ClusterOperatorStatusClient) ensureStatusProgressing(ctx context.Context, overrides []configv1.ClusterOperatorStatusCondition) error {
-	co, err := r.getOrCreateClusterOperator(ctx)
-	if err != nil {
-		return err
-	}
-	progressing := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
-	upgradeable := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorUpgradeable)
-	if progressing != nil && progressing.Status == configv1.ConditionTrue &&
-		upgradeable != nil && upgradeable.Status == configv1.ConditionTrue {
-		return nil
-	}
-	return r.setStatusProgressing(ctx, overrides)
-}
-
 // setStatusAvailable sets the Available condition to True, with the given reason
 // and message, and sets both the Progressing and Degraded conditions to False.
 func (r *ClusterOperatorStatusClient) setStatusAvailable(ctx context.Context, overrides []configv1.ClusterOperatorStatusCondition) error {
