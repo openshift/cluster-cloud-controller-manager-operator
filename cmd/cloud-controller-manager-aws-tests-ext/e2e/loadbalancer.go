@@ -532,21 +532,7 @@ func createServiceNLB(ctx context.Context, cs clientset.Interface, ns *v1.Namesp
 		},
 	}
 
-	cloudCfg, err := GetCloudConfig(ctx, cs)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get cloud-config: %w", err)
-	}
-	isDualStackCluster, _, err := IsDualStack(cloudCfg)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to detect dual-stack from cloud-config: %w", err)
-	}
-	if isDualStackCluster {
-		framework.Logf("Detected DualStack clusters, patching Service setting IPFamilyPolicy to %q", v1.IPFamilyPolicyRequireDualStack)
-		dualStack := v1.IPFamilyPolicyRequireDualStack
-		svc.Spec.IPFamilyPolicy = &dualStack
-	}
-
-	_, err = jig.Client.CoreV1().Services(jig.Namespace).Create(ctx, svc, metav1.CreateOptions{})
+	_, err := jig.Client.CoreV1().Services(jig.Namespace).Create(ctx, svc, metav1.CreateOptions{})
 	framework.ExpectNoError(err, "failed to create LoadBalancer Service")
 
 	By("waiting for AWS load balancer provisioning")
