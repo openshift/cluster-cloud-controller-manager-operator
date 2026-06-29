@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/openshift-eng/openshift-tests-extension/pkg/cmd"
 	e "github.com/openshift-eng/openshift-tests-extension/pkg/extension"
@@ -15,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	klog "k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 
 	log "github.com/sirupsen/logrus"
@@ -32,7 +34,49 @@ var (
 	isDualStackPrimaryIpv6 bool
 )
 
+// redirectStdoutToStderr moves file descriptor 1 (stdout) so that it
+// points to stderr, keeping stdout clean for JSON output expected by
+// openshift-tests-extension during "list".
+//
+// The Ginkgo init() (core_dsl.go) captures os.Stdout and wires it into
+// GinkgoWriter *before* main() runs.  Any code that writes through
+// GinkgoWriter (framework.Logf, klog via the ginkgo text-logger, etc.)
+// therefore writes to fd 1.  Simply reassigning os.Stdout does not help
+// because GinkgoWriter already holds the original *os.File.
+//
+// To solve this we:
+//  1. Dup fd 1 → savedFd  (preserve the real stdout)
+//  2. Dup2 fd 2 → fd 1    (fd 1 now points to stderr)
+//  3. os.Stdout = NewFile(savedFd) (so OTE's explicit os.Stdout writes
+//     still reach the real stdout)
+//
+// After this, anything that writes to the *original* os.Stdout (fd 1)
+// — including GinkgoWriter — actually goes to stderr, while code that
+// references the os.Stdout variable (OTE list/info commands) goes to
+// the real stdout via savedFd.
+func redirectStdoutToStderr() {
+	savedFd, err := syscall.Dup(int(os.Stdout.Fd()))
+	if err != nil {
+		// If we can't dup, fall through — best-effort.
+		fmt.Fprintf(os.Stderr, "warning: failed to dup stdout: %v\n", err)
+		return
+	}
+	if err := syscall.Dup2(int(os.Stderr.Fd()), int(os.Stdout.Fd())); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to redirect stdout to stderr: %v\n", err)
+		syscall.Close(savedFd)
+		return
+	}
+	os.Stdout = os.NewFile(uintptr(savedFd), "/dev/stdout")
+}
+
 func main() {
+	// Redirect fd 1 to stderr so that framework/klog/ginkgo log output
+	// does not corrupt the JSON stream expected by OTE on stdout.
+	redirectStdoutToStderr()
+
+	// Belt-and-suspenders: explicitly send klog output to stderr.
+	klog.SetOutput(os.Stderr)
+
 	registry := e.NewRegistry()
 	ext := e.NewExtension("openshift", "payload", "aws-cloud-controller-manager")
 

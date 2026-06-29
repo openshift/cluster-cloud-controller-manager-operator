@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.45.2
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
-	github.com/openshift-eng/openshift-tests-extension v0.0.0-20250916161632-d81c09058835
+	github.com/openshift-eng/openshift-tests-extension v0.0.0-20260626105913-1f81f3df939a
 	github.com/openshift/client-go v0.0.0-20260108185524-48f4ccfc4e13
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.10.1
@@ -17,6 +17,7 @@ require (
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
 	k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260227223131-ea961d6fafc4
+	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.35.0
 	k8s.io/pod-security-admission v0.35.0
 )
@@ -88,7 +89,6 @@ require (
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/openshift/api v0.0.0-20260209232644-126cbbe24427 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
@@ -133,7 +133,6 @@ require (
 	k8s.io/component-base v0.35.0 // indirect
 	k8s.io/component-helpers v0.35.0 // indirect
 	k8s.io/controller-manager v0.35.0 // indirect
-	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	k8s.io/kubectl v0.33.0 // indirect
 	k8s.io/kubelet v0.35.0 // indirect
