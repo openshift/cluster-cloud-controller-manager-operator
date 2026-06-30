@@ -46,6 +46,12 @@ func main() {
 		Qualifiers: []string{`labels.exists(l, l == "Serial") && labels.exists(l, l == "Conformance")`},
 	})
 
+	kubeTestsExtension.AddSuite(extension.Suite{
+		Name:             "ccm/operator/disruptive/serial",
+		Qualifiers:       []string{`labels.exists(l, l == "Serial") && labels.exists(l, l == "Disruptive")`},
+		ClusterStability: extension.ClusterStabilityDisruptive,
+	})
+
 	// Build our specs from ginkgo
 	specs, err := ginkgo.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
 	if err != nil {

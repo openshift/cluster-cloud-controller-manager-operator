@@ -20,13 +20,14 @@ The test suite is organized into separate sub-projects, each with independent de
 
 ## Test Binaries
 
-### 1. `cluster-cloud-controller-manager-operator-tests-ext`
+### 1. `cloud-controller-manager-operator-tests-ext`
 
 **Purpose:** General cloud controller manager operator tests that run on multiple platforms
 
 **Suites:**
 - `ccm/operator/conformance/parallel` - Parallel conformance tests
 - `ccm/operator/conformance/serial` - Serial conformance tests
+- `ccm/operator/disruptive/serial` - Serial disruptive operator tests
 
 **Test Selection:**
 - Platform-agnostic tests that work across cloud providers
@@ -37,6 +38,7 @@ The test suite is organized into separate sub-projects, each with independent de
 - General operator conformance testing
 - Multi-platform test runs
 - OpenShift-specific feature validation (e.g., VSphereMixedNodeEnv)
+- Focused disruptive operator rehearsals
 
 ### 2. `cloud-controller-manager-aws-tests-ext`
 
@@ -69,6 +71,7 @@ The test suite is organized into separate sub-projects, each with independent de
 ### Operator Tests (`operator-tests/e2e/`)
 
 - `operator/vsphere_mixed_node.go` - VSphereMixedNodeEnv feature gate tests
+- `operator/ccm_status_disruption.go` - Disruptive CCM operator tests
 - `common/helper.go` - Client configuration (`NewClientConfigForTest`)
 
 ### Test Prefixes
@@ -110,12 +113,12 @@ make build
 
 # Or build individually from within each sub-project
 cd openshift-tests/ccm-aws-tests && go build -o ../bin/cloud-controller-manager-aws-tests-ext .
-cd openshift-tests/operator-tests && go build -o ../bin/cluster-cloud-controller-manager-operator-tests-ext .
+cd openshift-tests/operator-tests && go build -o ../bin/cloud-controller-manager-operator-tests-ext .
 ```
 
 Binaries are built to `openshift-tests/bin/`:
 - `cloud-controller-manager-aws-tests-ext` (~95MB)
-- `cluster-cloud-controller-manager-operator-tests-ext` (~85MB)
+- `cloud-controller-manager-operator-tests-ext` (~85MB)
 
 ### Running Tests
 
@@ -129,11 +132,14 @@ The test binaries are OpenShift Tests Extension (OTE) binaries and follow the OT
 ./openshift-tests/bin/cloud-controller-manager-aws-tests-ext run ccm/aws/conformance/parallel
 
 # List operator tests
-./openshift-tests/bin/cluster-cloud-controller-manager-operator-tests-ext list
+./openshift-tests/bin/cloud-controller-manager-operator-tests-ext list
 
 # Run operator tests (parallel or serial)
-./openshift-tests/bin/cluster-cloud-controller-manager-operator-tests-ext run ccm/operator/conformance/parallel
-./openshift-tests/bin/cluster-cloud-controller-manager-operator-tests-ext run ccm/operator/conformance/serial
+./openshift-tests/bin/cloud-controller-manager-operator-tests-ext run ccm/operator/conformance/parallel
+./openshift-tests/bin/cloud-controller-manager-operator-tests-ext run ccm/operator/conformance/serial
+
+# Run disruptive operator recovery tests
+./openshift-tests/bin/cloud-controller-manager-operator-tests-ext run ccm/operator/disruptive/serial
 ```
 
 **Prerequisites:**
