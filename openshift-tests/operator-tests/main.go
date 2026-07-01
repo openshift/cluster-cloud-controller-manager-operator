@@ -46,8 +46,13 @@ func main() {
 		Qualifiers: []string{`labels.exists(l, l == "Serial") && labels.exists(l, l == "Conformance")`},
 	})
 
+	// TEMPORARY: the release presubmit already merged with TEST_SUITE set to
+	// "openshift/ccm/operator/disruptive/serial" (OCPBUGS-88732, openshift/release#81252).
+	// Registering under that name lets us validate the test logic against the live
+	// job now instead of waiting on a second release PR to merge. Revert to
+	// "ccm/operator/disruptive/serial" once the release TEST_SUITE fix lands.
 	kubeTestsExtension.AddSuite(extension.Suite{
-		Name:             "ccm/operator/disruptive/serial",
+		Name:             "openshift/ccm/operator/disruptive/serial",
 		Qualifiers:       []string{`labels.exists(l, l == "Serial") && labels.exists(l, l == "Disruptive")`},
 		ClusterStability: extension.ClusterStabilityDisruptive,
 	})
