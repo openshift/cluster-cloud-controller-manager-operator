@@ -99,6 +99,14 @@ func main() {
 		"nodes should set zone-id topology label",
 	}
 
+	// Skip BYO SG transition tests on HyperShift (External topology) —
+	// the cloud-controller IAM role lacks elasticloadbalancing:SetSecurityGroups.
+	// These should be re-enabled when PR https://github.com/openshift/hypershift/pull/8401 is merged.
+	externalTopologySkips := []string{
+		"NLB should transition from BYO SG to Managed Security Group",
+		"NLB should transition from Managed SG to BYO Security Group",
+	}
+
 	// Add the suite name to the spec name and apply topology-based exclusions.
 	specs.Walk(func(spec *extensiontests.ExtensionTestSpec) {
 		spec.Name = spec.Name + " [Suite:openshift/conformance/parallel]"
@@ -107,6 +115,13 @@ func main() {
 		for _, skip := range singleReplicaSkips {
 			if strings.Contains(spec.Name, skip) {
 				spec.Exclude(extensiontests.TopologyEquals("SingleReplica"))
+			}
+		}
+
+		// Exclude specific tests when topology is External (HyperShift).
+		for _, skip := range externalTopologySkips {
+			if strings.Contains(spec.Name, skip) {
+				spec.Exclude(extensiontests.TopologyEquals("External"))
 			}
 		}
 	}).Include(extensiontests.PlatformEquals("aws"))
