@@ -1318,30 +1318,6 @@ var _ = Describe("Rollout completion checks", func() {
 			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse())
 		})
 
-		It("is not complete when NumberMisscheduled > 0 even if updated count matches", func() {
-			ds := &appsv1.DaemonSet{}
-			ds.Generation = 1
-			ds.Status = appsv1.DaemonSetStatus{
-				ObservedGeneration:     1,
-				DesiredNumberScheduled: 3,
-				UpdatedNumberScheduled: 3,
-				NumberMisscheduled:     1,
-			}
-			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse())
-		})
-
-		It("is not complete when NumberUnavailable > 0 even if scheduled counts match", func() {
-			ds := &appsv1.DaemonSet{}
-			ds.Generation = 1
-			ds.Status = appsv1.DaemonSetStatus{
-				ObservedGeneration:     1,
-				DesiredNumberScheduled: 3,
-				UpdatedNumberScheduled: 3,
-				NumberUnavailable:      1,
-			}
-			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse())
-		})
-
 		It("is not complete when ObservedGeneration lags behind Generation", func() {
 			ds := &appsv1.DaemonSet{}
 			ds.Generation = 2
@@ -1353,17 +1329,50 @@ var _ = Describe("Rollout completion checks", func() {
 			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse())
 		})
 
-		It("is complete when all conditions are met", func() {
+		It("is complete when generation and updated counts match", func() {
 			ds := &appsv1.DaemonSet{}
 			ds.Generation = 2
 			ds.Status = appsv1.DaemonSetStatus{
 				ObservedGeneration:     2,
 				DesiredNumberScheduled: 3,
 				UpdatedNumberScheduled: 3,
-				NumberMisscheduled:     0,
-				NumberUnavailable:      0,
 			}
 			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue())
+		})
+
+		// NumberUnavailable and NumberMisscheduled are deliberately not checked.
+		// During MCO-driven node reboots, DaemonSet pods are evicted and
+		// rescheduled without a spec change. The pod hash is unchanged so
+		// UpdatedNumberScheduled stays at DesiredNumberScheduled and
+		// ObservedGeneration == Generation. Only NumberUnavailable bumps
+		// transiently. Treating that as "not complete" would cause
+		// Progressing=True flapping during upgrades (run level ~29 CCCMO
+		// re-entering Progressing while run level ~90 MCO rolls nodes).
+		// See also: CNO uses an observed-stable-generation annotation for
+		// finer-grained tracking; our simpler check is sufficient because
+		// CCCMO's DaemonSet has already converged before CVO advances.
+		It("is complete despite NumberUnavailable > 0 when generation and updated counts match (node reboot)", func() {
+			ds := &appsv1.DaemonSet{}
+			ds.Generation = 1
+			ds.Status = appsv1.DaemonSetStatus{
+				ObservedGeneration:     1,
+				DesiredNumberScheduled: 3,
+				UpdatedNumberScheduled: 3,
+				NumberUnavailable:      1,
+			}
+			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue(), "node reboot should not prevent rollout from being considered complete")
+		})
+
+		It("is complete despite NumberMisscheduled > 0 when generation and updated counts match", func() {
+			ds := &appsv1.DaemonSet{}
+			ds.Generation = 1
+			ds.Status = appsv1.DaemonSetStatus{
+				ObservedGeneration:     1,
+				DesiredNumberScheduled: 3,
+				UpdatedNumberScheduled: 3,
+				NumberMisscheduled:     1,
+			}
+			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue(), "misscheduled pods are a scheduling concern, not a rollout concern")
 		})
 	})
 })

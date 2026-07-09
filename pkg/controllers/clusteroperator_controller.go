@@ -232,11 +232,14 @@ func isDeploymentRolloutStalled(deploy *appsv1.Deployment) bool {
 	return false
 }
 
+// isDaemonSetRolloutComplete checks only generation and pod-template-hash
+// counters. NumberUnavailable is deliberately ignored: during MCO-driven node
+// reboots pods are evicted and rescheduled without a spec change, which bumps
+// NumberUnavailable transiently. Treating that as incomplete would cause
+// Progressing=True flapping while MCO rolls nodes at a later run level.
 func isDaemonSetRolloutComplete(ds *appsv1.DaemonSet) bool {
 	return ds.Status.ObservedGeneration >= ds.Generation &&
-		ds.Status.UpdatedNumberScheduled >= ds.Status.DesiredNumberScheduled &&
-		ds.Status.NumberUnavailable == 0 &&
-		ds.Status.NumberMisscheduled == 0
+		ds.Status.UpdatedNumberScheduled >= ds.Status.DesiredNumberScheduled
 }
 
 func (r *CloudOperatorReconciler) operandsConverged(ctx context.Context, resources []client.Object) (bool, error) {
