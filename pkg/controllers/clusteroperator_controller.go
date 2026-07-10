@@ -28,6 +28,7 @@ import (
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/cloudprovider"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -128,7 +129,7 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 	}
 
 	if progressing {
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	if err := r.setStatusAvailable(ctx, conditionOverrides); err != nil {
@@ -164,6 +165,17 @@ func (r *CloudOperatorReconciler) sync(ctx context.Context, config config.Operat
 		return true, nil
 	}
 
+	converged, err := r.operandsConverged(ctx, resources)
+	if err != nil {
+		return false, err
+	}
+	if !converged {
+		if err := r.ensureStatusProgressing(ctx, conditionOverrides); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
 	return false, nil
 }
 
@@ -190,6 +202,79 @@ func (r *CloudOperatorReconciler) applyResources(ctx context.Context, resources 
 	}
 
 	return anyUpdated, nil
+}
+
+func isDeploymentRolloutComplete(deploy *appsv1.Deployment) bool {
+	if deploy.Status.ObservedGeneration < deploy.Generation {
+		return false
+	}
+	for _, condition := range deploy.Status.Conditions {
+		if condition.Type == appsv1.DeploymentProgressing &&
+			condition.Status == corev1.ConditionTrue &&
+			condition.Reason == "NewReplicaSetAvailable" {
+			return true
+		}
+	}
+	return false
+}
+
+func isDeploymentRolloutStalled(deploy *appsv1.Deployment) bool {
+	if deploy.Status.ObservedGeneration < deploy.Generation {
+		return false
+	}
+	for _, condition := range deploy.Status.Conditions {
+		if condition.Type == appsv1.DeploymentProgressing &&
+			condition.Status == corev1.ConditionFalse &&
+			condition.Reason == "ProgressDeadlineExceeded" {
+			return true
+		}
+	}
+	return false
+}
+
+// isDaemonSetRolloutComplete checks only generation and pod-template-hash
+// counters. NumberUnavailable is deliberately ignored: during MCO-driven node
+// reboots pods are evicted and rescheduled without a spec change, which bumps
+// NumberUnavailable transiently. Treating that as incomplete would cause
+// Progressing=True flapping while MCO rolls nodes at a later run level.
+func isDaemonSetRolloutComplete(ds *appsv1.DaemonSet) bool {
+	return ds.Status.ObservedGeneration >= ds.Generation &&
+		ds.Status.UpdatedNumberScheduled >= ds.Status.DesiredNumberScheduled
+}
+
+func (r *CloudOperatorReconciler) operandsConverged(ctx context.Context, resources []client.Object) (bool, error) {
+	for _, resource := range resources {
+		switch resource.(type) {
+		case *appsv1.Deployment:
+			live := &appsv1.Deployment{}
+			if err := r.Get(ctx, client.ObjectKeyFromObject(resource), live); apierrors.IsNotFound(err) {
+				klog.V(2).Infof("Deployment %s not found, treating as not converged", resource.GetName())
+				return false, nil
+			} else if err != nil {
+				return false, fmt.Errorf("failed to get Deployment %s: %w", resource.GetName(), err)
+			}
+			if isDeploymentRolloutStalled(live) {
+				return false, fmt.Errorf("deployment %s rollout stalled: ProgressDeadlineExceeded", resource.GetName())
+			}
+			if !isDeploymentRolloutComplete(live) {
+				klog.V(2).Infof("Deployment %s rollout not complete", resource.GetName())
+				return false, nil
+			}
+		case *appsv1.DaemonSet:
+			live := &appsv1.DaemonSet{}
+			if err := r.Get(ctx, client.ObjectKeyFromObject(resource), live); apierrors.IsNotFound(err) {
+				klog.V(2).Infof("DaemonSet %s not found, treating as not converged", resource.GetName())
+				return false, nil
+			} else if err != nil {
+				return false, fmt.Errorf("failed to get DaemonSet %s: %w", resource.GetName(), err)
+			}
+			if !isDaemonSetRolloutComplete(live) {
+				klog.V(2).Infof("DaemonSet %s rollout not complete", resource.GetName())
+				return false, nil
+			}
+		}
+	}
+	return true, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
