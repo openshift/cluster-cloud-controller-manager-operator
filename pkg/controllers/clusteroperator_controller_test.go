@@ -620,56 +620,17 @@ var _ = Describe("Apply resources should", func() {
 			}
 		}
 
-		updated, err = reconciler.applyResources(context.Background(), resources)
+		updated, err = reconciler.applyResources(context.TODO(), resources)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(updated).To(BeTrue(), "should report updated even when only a non-final resource changed")
 	})
 
-	Context("operandsConverged", func() {
-		It("returns false when deployment rollout is not complete, true after patching status", func() {
-			operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
-			awsResources, err := cloud.GetResources(operatorConfig)
-			Expect(err).To(Succeed())
-			resources = append(resources, awsResources...)
-
-			updated, err := reconciler.applyResources(context.Background(), resources)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(updated).To(BeTrue())
-
-			// envtest has no deployment controller, so no Progressing condition exists.
-			converged, err := reconciler.operandsConverged(context.Background(), resources)
-			Expect(err).To(Succeed())
-			Expect(converged).To(BeFalse(), "should not be converged when deployment has no Progressing condition")
-
-			// Patch the deployment status to mark rollout complete.
-			for _, res := range resources {
-				if dep, ok := res.(*appsv1.Deployment); ok {
-					live := &appsv1.Deployment{}
-					Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), live)).To(Succeed())
-					live.Status.ObservedGeneration = live.Generation
-					live.Status.Conditions = []appsv1.DeploymentCondition{
-						{
-							Type:   appsv1.DeploymentProgressing,
-							Status: corev1.ConditionTrue,
-							Reason: "NewReplicaSetAvailable",
-						},
-					}
-					Expect(cl.Status().Update(context.Background(), live)).To(Succeed())
-				}
-			}
-
-			converged, err = reconciler.operandsConverged(context.Background(), resources)
-			Expect(err).To(Succeed())
-			Expect(converged).To(BeTrue(), "should be converged after deployment rollout completes")
-		})
-	})
-
-	It("should set Progressing=True on first sync, remain progressing until rollout completes, then stop", func() {
+	It("should set Progressing=True on first sync and not signal progressing when resources are stable", func() {
 		reconciler.ManagedNamespace = DefaultManagedNamespace
 
 		co := &configv1.ClusterOperator{}
 		co.SetName(clusterOperatorName)
-		Expect(cl.Create(context.Background(), co)).To(Succeed())
+		Expect(cl.Create(context.TODO(), co)).To(Succeed())
 
 		operatorConfig := getConfigForPlatform(&configv1.PlatformStatus{Type: configv1.AWSPlatformType})
 		awsResources, err := cloud.GetResources(operatorConfig)
@@ -677,45 +638,29 @@ var _ = Describe("Apply resources should", func() {
 		resources = append(resources, awsResources...)
 
 		// First sync: resources do not yet exist, so applyResources reports updated=true.
-		progressing, err := reconciler.sync(context.Background(), operatorConfig, nil)
+		progressing, err := reconciler.sync(context.TODO(), operatorConfig, nil)
 		Expect(err).To(Succeed())
 		Expect(progressing).To(BeTrue(), "sync should report progressing when resources are newly applied")
 
-		Expect(cl.Get(context.Background(), client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		Expect(cl.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
 		progressingCond := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
 		Expect(progressingCond).NotTo(BeNil(), "Progressing condition should exist after first sync")
 		Expect(progressingCond.Status).To(
 			Equal(configv1.ConditionTrue), "Progressing should be True after resources are first applied",
 		)
 
-		// Second sync: resources exist and are unchanged, but deployment rollout is
-		// not complete (envtest has no deployment controller). sync should still
-		// report progressing.
-		progressing, err = reconciler.sync(context.Background(), operatorConfig, nil)
+		// Second sync: resources exist and are unchanged, so applyResources reports updated=false.
+		progressing, err = reconciler.sync(context.TODO(), operatorConfig, nil)
 		Expect(err).To(Succeed())
-		Expect(progressing).To(BeTrue(), "sync should report progressing while deployment rollout is incomplete")
+		Expect(progressing).To(BeFalse(), "sync should not report progressing when resources are already up to date")
 
-		// Patch deployment status to mark rollout complete.
-		for _, res := range resources {
-			if dep, ok := res.(*appsv1.Deployment); ok {
-				live := &appsv1.Deployment{}
-				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dep), live)).To(Succeed())
-				live.Status.ObservedGeneration = live.Generation
-				live.Status.Conditions = []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionTrue,
-						Reason: "NewReplicaSetAvailable",
-					},
-				}
-				Expect(cl.Status().Update(context.Background(), live)).To(Succeed())
-			}
-		}
-
-		// Third sync: deployment rollout is complete, sync should report not progressing.
-		progressing, err = reconciler.sync(context.Background(), operatorConfig, nil)
-		Expect(err).To(Succeed())
-		Expect(progressing).To(BeFalse(), "sync should not report progressing once deployment rollout completes")
+		// Progressing remains True because sync() does not clear it; only setStatusAvailable() does.
+		Expect(cl.Get(context.TODO(), client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
+		progressingCond = v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
+		Expect(progressingCond).NotTo(BeNil(), "Progressing condition should still exist after second sync")
+		Expect(progressingCond.Status).To(
+			Equal(configv1.ConditionTrue), "Progressing should remain True until setStatusAvailable is called",
+		)
 	})
 
 	AfterEach(func() {
@@ -1067,7 +1012,7 @@ var _ = Describe("Reconcile progressing flow", func() {
 		}
 	})
 
-	It("sets Progressing=True on first reconcile, stays progressing until rollout completes, then Available", func() {
+	It("sets Progressing=True on first reconcile, then Available on second", func() {
 		// First Reconcile: resources are created, Progressing=True, Available not set.
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{})
 		Expect(err).NotTo(HaveOccurred())
@@ -1097,8 +1042,7 @@ var _ = Describe("Reconcile progressing flow", func() {
 				"Available should not be True while progressing")
 		}
 
-		// Second Reconcile: nothing changed, but deployment rollout is not complete
-		// (envtest has no deployment controller). Progressing should remain True.
+		// Second Reconcile: nothing changed, Progressing=False, Available=True.
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1106,273 +1050,12 @@ var _ = Describe("Reconcile progressing flow", func() {
 		progressingCond = v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
 		Expect(progressingCond).NotTo(BeNil(), "Progressing condition should exist after second reconcile")
 		Expect(progressingCond.Status).To(
-			Equal(configv1.ConditionTrue), "Progressing should remain True while deployment rollout is incomplete",
-		)
-
-		// Patch deployment status to mark rollout complete.
-		for _, res := range operandResources {
-			if dep, ok := res.(*appsv1.Deployment); ok {
-				live := &appsv1.Deployment{}
-				Expect(cl.Get(ctx, client.ObjectKeyFromObject(dep), live)).To(Succeed())
-				live.Status.ObservedGeneration = live.Generation
-				live.Status.Conditions = []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionTrue,
-						Reason: "NewReplicaSetAvailable",
-					},
-				}
-				Expect(cl.Status().Update(ctx, live)).To(Succeed())
-			}
-		}
-
-		// Third Reconcile: deployment rollout is complete, Progressing=False, Available=True.
-		_, err = reconciler.Reconcile(ctx, reconcile.Request{})
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(cl.Get(ctx, client.ObjectKey{Name: clusterOperatorName}, co)).To(Succeed())
-		progressingCond = v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
-		Expect(progressingCond).NotTo(BeNil(), "Progressing condition should exist after third reconcile")
-		Expect(progressingCond.Status).To(
-			Equal(configv1.ConditionFalse), "Progressing should be False after deployment rollout completes",
+			Equal(configv1.ConditionFalse), "Progressing should be False after second reconcile with no changes",
 		)
 		availCond = v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorAvailable)
-		Expect(availCond).NotTo(BeNil(), "Available condition should exist after third reconcile")
+		Expect(availCond).NotTo(BeNil(), "Available condition should exist after second reconcile")
 		Expect(availCond.Status).To(
-			Equal(configv1.ConditionTrue), "Available should be True after deployment rollout completes",
+			Equal(configv1.ConditionTrue), "Available should be True after second reconcile",
 		)
-	})
-})
-
-var _ = Describe("Rollout completion checks", func() {
-	Context("isDeploymentRolloutComplete", func() {
-		It("is not complete when no conditions exist", func() {
-			deploy := &appsv1.Deployment{}
-			Expect(isDeploymentRolloutComplete(deploy)).To(BeFalse())
-		})
-
-		It("is complete when ObservedGeneration matches and Reason=NewReplicaSetAvailable", func() {
-			deploy := &appsv1.Deployment{}
-			deploy.Generation = 2
-			deploy.Status = appsv1.DeploymentStatus{
-				ObservedGeneration: 2,
-				Conditions: []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionTrue,
-						Reason: "NewReplicaSetAvailable",
-					},
-				},
-			}
-			Expect(isDeploymentRolloutComplete(deploy)).To(BeTrue())
-		})
-
-		It("is not complete when ObservedGeneration lags behind Generation", func() {
-			deploy := &appsv1.Deployment{}
-			deploy.Generation = 3
-			deploy.Status = appsv1.DeploymentStatus{
-				ObservedGeneration: 2,
-				Conditions: []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionTrue,
-						Reason: "NewReplicaSetAvailable",
-					},
-				},
-			}
-			Expect(isDeploymentRolloutComplete(deploy)).To(BeFalse())
-		})
-
-		It("is not complete when Progressing=True with Reason=ReplicaSetUpdated", func() {
-			deploy := &appsv1.Deployment{}
-			deploy.Generation = 1
-			deploy.Status = appsv1.DeploymentStatus{
-				ObservedGeneration: 1,
-				Conditions: []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionTrue,
-						Reason: "ReplicaSetUpdated",
-					},
-				},
-			}
-			Expect(isDeploymentRolloutComplete(deploy)).To(BeFalse())
-		})
-
-		It("is not complete when Progressing=False due to deadline exceeded", func() {
-			deploy := &appsv1.Deployment{}
-			deploy.Generation = 1
-			deploy.Status = appsv1.DeploymentStatus{
-				ObservedGeneration: 1,
-				Conditions: []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionFalse,
-						Reason: "ProgressDeadlineExceeded",
-					},
-				},
-			}
-			Expect(isDeploymentRolloutComplete(deploy)).To(BeFalse())
-		})
-
-		It("is not complete when Progressing=True with Reason=FoundNewReplicaSet", func() {
-			deploy := &appsv1.Deployment{}
-			deploy.Generation = 1
-			deploy.Status = appsv1.DeploymentStatus{
-				ObservedGeneration: 1,
-				Conditions: []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionTrue,
-						Reason: "FoundNewReplicaSet",
-					},
-				},
-			}
-			Expect(isDeploymentRolloutComplete(deploy)).To(BeFalse())
-		})
-
-		It("keys off Progressing condition even when other conditions are present", func() {
-			deploy := &appsv1.Deployment{}
-			deploy.Generation = 1
-			deploy.Status = appsv1.DeploymentStatus{
-				ObservedGeneration: 1,
-				Conditions: []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentAvailable,
-						Status: corev1.ConditionTrue,
-						Reason: "MinimumReplicasAvailable",
-					},
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionTrue,
-						Reason: "NewReplicaSetAvailable",
-					},
-				},
-			}
-			Expect(isDeploymentRolloutComplete(deploy)).To(BeTrue())
-		})
-	})
-
-	Context("isDeploymentRolloutStalled", func() {
-		It("is stalled when ProgressDeadlineExceeded", func() {
-			deploy := &appsv1.Deployment{
-				Status: appsv1.DeploymentStatus{
-					Conditions: []appsv1.DeploymentCondition{
-						{
-							Type:   appsv1.DeploymentProgressing,
-							Status: corev1.ConditionFalse,
-							Reason: "ProgressDeadlineExceeded",
-						},
-					},
-				},
-			}
-			Expect(isDeploymentRolloutStalled(deploy)).To(BeTrue())
-		})
-
-		It("is not stalled during normal rollout", func() {
-			deploy := &appsv1.Deployment{
-				Status: appsv1.DeploymentStatus{
-					Conditions: []appsv1.DeploymentCondition{
-						{
-							Type:   appsv1.DeploymentProgressing,
-							Status: corev1.ConditionTrue,
-							Reason: "ReplicaSetUpdated",
-						},
-					},
-				},
-			}
-			Expect(isDeploymentRolloutStalled(deploy)).To(BeFalse())
-		})
-
-		It("is not stalled when no conditions exist", func() {
-			deploy := &appsv1.Deployment{}
-			Expect(isDeploymentRolloutStalled(deploy)).To(BeFalse())
-		})
-
-		It("ignores stale ProgressDeadlineExceeded from a previous generation", func() {
-			deploy := &appsv1.Deployment{}
-			deploy.Generation = 2
-			deploy.Status = appsv1.DeploymentStatus{
-				ObservedGeneration: 1,
-				Conditions: []appsv1.DeploymentCondition{
-					{
-						Type:   appsv1.DeploymentProgressing,
-						Status: corev1.ConditionFalse,
-						Reason: "ProgressDeadlineExceeded",
-					},
-				},
-			}
-			Expect(isDeploymentRolloutStalled(deploy)).To(BeFalse())
-		})
-	})
-
-	Context("isDaemonSetRolloutComplete", func() {
-		It("is not complete when UpdatedNumberScheduled < DesiredNumberScheduled", func() {
-			ds := &appsv1.DaemonSet{}
-			ds.Generation = 1
-			ds.Status = appsv1.DaemonSetStatus{
-				ObservedGeneration:     1,
-				DesiredNumberScheduled: 3,
-				UpdatedNumberScheduled: 1,
-			}
-			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse())
-		})
-
-		It("is not complete when ObservedGeneration lags behind Generation", func() {
-			ds := &appsv1.DaemonSet{}
-			ds.Generation = 2
-			ds.Status = appsv1.DaemonSetStatus{
-				ObservedGeneration:     1,
-				DesiredNumberScheduled: 3,
-				UpdatedNumberScheduled: 3,
-			}
-			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse())
-		})
-
-		It("is complete when generation and updated counts match", func() {
-			ds := &appsv1.DaemonSet{}
-			ds.Generation = 2
-			ds.Status = appsv1.DaemonSetStatus{
-				ObservedGeneration:     2,
-				DesiredNumberScheduled: 3,
-				UpdatedNumberScheduled: 3,
-			}
-			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue())
-		})
-
-		// NumberUnavailable and NumberMisscheduled are deliberately not checked.
-		// During MCO-driven node reboots, DaemonSet pods are evicted and
-		// rescheduled without a spec change. The pod hash is unchanged so
-		// UpdatedNumberScheduled stays at DesiredNumberScheduled and
-		// ObservedGeneration == Generation. Only NumberUnavailable bumps
-		// transiently. Treating that as "not complete" would cause
-		// Progressing=True flapping during upgrades (run level ~29 CCCMO
-		// re-entering Progressing while run level ~90 MCO rolls nodes).
-		// See also: CNO uses an observed-stable-generation annotation for
-		// finer-grained tracking; our simpler check is sufficient because
-		// CCCMO's DaemonSet has already converged before CVO advances.
-		It("is complete despite NumberUnavailable > 0 when generation and updated counts match (node reboot)", func() {
-			ds := &appsv1.DaemonSet{}
-			ds.Generation = 1
-			ds.Status = appsv1.DaemonSetStatus{
-				ObservedGeneration:     1,
-				DesiredNumberScheduled: 3,
-				UpdatedNumberScheduled: 3,
-				NumberUnavailable:      1,
-			}
-			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue(), "node reboot should not prevent rollout from being considered complete")
-		})
-
-		It("is complete despite NumberMisscheduled > 0 when generation and updated counts match", func() {
-			ds := &appsv1.DaemonSet{}
-			ds.Generation = 1
-			ds.Status = appsv1.DaemonSetStatus{
-				ObservedGeneration:     1,
-				DesiredNumberScheduled: 3,
-				UpdatedNumberScheduled: 3,
-				NumberMisscheduled:     1,
-			}
-			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue(), "misscheduled pods are a scheduling concern, not a rollout concern")
-		})
 	})
 })
