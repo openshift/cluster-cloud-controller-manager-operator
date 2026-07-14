@@ -1307,12 +1307,13 @@ var _ = Describe("Rollout completion checks", func() {
 	})
 
 	Context("isDaemonSetRolloutComplete", func() {
-		It("is not complete when UpdatedNumberScheduled < DesiredNumberScheduled", func() {
+		It("is not complete when UpdatedNumberScheduled < CurrentNumberScheduled", func() {
 			ds := &appsv1.DaemonSet{}
 			ds.Generation = 1
 			ds.Status = appsv1.DaemonSetStatus{
 				ObservedGeneration:     1,
 				DesiredNumberScheduled: 3,
+				CurrentNumberScheduled: 3,
 				UpdatedNumberScheduled: 1,
 			}
 			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse())
@@ -1324,6 +1325,7 @@ var _ = Describe("Rollout completion checks", func() {
 			ds.Status = appsv1.DaemonSetStatus{
 				ObservedGeneration:     1,
 				DesiredNumberScheduled: 3,
+				CurrentNumberScheduled: 3,
 				UpdatedNumberScheduled: 3,
 			}
 			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse())
@@ -1335,6 +1337,7 @@ var _ = Describe("Rollout completion checks", func() {
 			ds.Status = appsv1.DaemonSetStatus{
 				ObservedGeneration:     2,
 				DesiredNumberScheduled: 3,
+				CurrentNumberScheduled: 3,
 				UpdatedNumberScheduled: 3,
 			}
 			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue())
@@ -1343,20 +1346,18 @@ var _ = Describe("Rollout completion checks", func() {
 		// NumberUnavailable and NumberMisscheduled are deliberately not checked.
 		// During MCO-driven node reboots, DaemonSet pods are evicted and
 		// rescheduled without a spec change. The pod hash is unchanged so
-		// UpdatedNumberScheduled stays at DesiredNumberScheduled and
+		// UpdatedNumberScheduled stays at CurrentNumberScheduled and
 		// ObservedGeneration == Generation. Only NumberUnavailable bumps
 		// transiently. Treating that as "not complete" would cause
 		// Progressing=True flapping during upgrades (run level ~29 CCCMO
 		// re-entering Progressing while run level ~90 MCO rolls nodes).
-		// See also: CNO uses an observed-stable-generation annotation for
-		// finer-grained tracking; our simpler check is sufficient because
-		// CCCMO's DaemonSet has already converged before CVO advances.
 		It("is complete despite NumberUnavailable > 0 when generation and updated counts match (node reboot)", func() {
 			ds := &appsv1.DaemonSet{}
 			ds.Generation = 1
 			ds.Status = appsv1.DaemonSetStatus{
 				ObservedGeneration:     1,
 				DesiredNumberScheduled: 3,
+				CurrentNumberScheduled: 3,
 				UpdatedNumberScheduled: 3,
 				NumberUnavailable:      1,
 			}
@@ -1369,10 +1370,42 @@ var _ = Describe("Rollout completion checks", func() {
 			ds.Status = appsv1.DaemonSetStatus{
 				ObservedGeneration:     1,
 				DesiredNumberScheduled: 3,
+				CurrentNumberScheduled: 3,
 				UpdatedNumberScheduled: 3,
 				NumberMisscheduled:     1,
 			}
 			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue(), "misscheduled pods are a scheduling concern, not a rollout concern")
+		})
+
+		// OCPBUGS-98617: MachineSet scale-up increases DesiredNumberScheduled
+		// before pods are created on new nodes. Comparing against
+		// DesiredNumberScheduled caused Progressing=True during scaling.
+		// Per API convention, operators must not report Progressing due to
+		// DaemonSets adjusting to new nodes from cluster scale-up.
+		It("is complete during node scale-up when all existing pods are updated (OCPBUGS-98617)", func() {
+			ds := &appsv1.DaemonSet{}
+			ds.Generation = 1
+			ds.Status = appsv1.DaemonSetStatus{
+				ObservedGeneration:     1,
+				DesiredNumberScheduled: 5,
+				CurrentNumberScheduled: 3,
+				UpdatedNumberScheduled: 3,
+			}
+			Expect(isDaemonSetRolloutComplete(ds)).To(BeTrue(),
+				"new nodes without pods yet should not cause Progressing=True")
+		})
+
+		It("is not complete when no pods have been scheduled yet (initial deploy)", func() {
+			ds := &appsv1.DaemonSet{}
+			ds.Generation = 1
+			ds.Status = appsv1.DaemonSetStatus{
+				ObservedGeneration:     1,
+				DesiredNumberScheduled: 3,
+				CurrentNumberScheduled: 0,
+				UpdatedNumberScheduled: 0,
+			}
+			Expect(isDaemonSetRolloutComplete(ds)).To(BeFalse(),
+				"zero pods scheduled means rollout has not started")
 		})
 	})
 })
