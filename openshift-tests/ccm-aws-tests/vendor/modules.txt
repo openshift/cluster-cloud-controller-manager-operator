@@ -1141,7 +1141,7 @@ k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.35.1 => k8s.io/cloud-provider v0.36.0
 ## explicit; go 1.26.0
 k8s.io/cloud-provider/service/helpers
-# k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260507005622-746099eda51c
+# k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260606003233-c34d66ed717a
 ## explicit; go 1.26.0
 k8s.io/cloud-provider-aws/tests/e2e
 # k8s.io/component-base v0.36.0
