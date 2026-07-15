@@ -30,32 +30,6 @@ const (
 	EnvSkipManagementClusterTests = "SKIP_MANAGEMENT_CLUSTER_TESTS"
 )
 
-// AWSRegionPattern matches valid AWS region names across all partitions:
-// standard (us-east-1), China (cn-northwest-1), GovCloud (us-gov-west-1),
-// European Sovereign Cloud (eusc-de-east-1), and ISO/ISOB (us-isob-east-1).
-var AWSRegionPattern = regexp.MustCompile(`^[a-z]{2,4}(?:-[a-z0-9]+)+-\d+$`)
-
-// GetRegionFromInfrastructure reads the AWS region from the cluster's
-// Infrastructure resource (status.platformStatus.aws.region).
-func GetRegionFromInfrastructure(ctx context.Context) (string, error) {
-	oc, err := GetOcClient(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to create config client: %w", err)
-	}
-	infra, err := oc.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("failed to get Infrastructure: %w", err)
-	}
-	if infra.Status.PlatformStatus == nil || infra.Status.PlatformStatus.AWS == nil {
-		return "", fmt.Errorf("Infrastructure platformStatus.aws is nil")
-	}
-	region := infra.Status.PlatformStatus.AWS.Region
-	if region == "" {
-		return "", fmt.Errorf("Infrastructure platformStatus.aws.region is empty")
-	}
-	return region, nil
-}
-
 // GetOcClient returns an OpenShift config/v1 API client (FeatureGates, Infrastructures, etc.).
 func GetOcClient(ctx context.Context) (*configv1client.ConfigV1Client, error) {
 	restConfig, err := framework.LoadConfig()
