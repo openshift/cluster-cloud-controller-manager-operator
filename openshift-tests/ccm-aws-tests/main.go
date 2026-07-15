@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/openshift-eng/openshift-tests-extension/pkg/cmd"
 	e "github.com/openshift-eng/openshift-tests-extension/pkg/extension"
@@ -131,35 +130,26 @@ func main() {
 	}
 }
 
-// getRegionFromEnv gets the region from environment variables, validating
-// that the value looks like a real AWS region. When no valid region is
-// found in the environment (e.g. HyperShift CI where LEASED_RESOURCE is
-// a UUID), it falls back to the cluster's Infrastructure object.
+// getRegionFromEnv gets the region from the environment variables.
 func getRegionFromEnv() string {
-	for _, env := range []string{"LEASED_RESOURCE", "AWS_REGION", "AWS_DEFAULT_REGION"} {
-		if v := os.Getenv(env); common.AWSRegionPattern.MatchString(v) {
-			log.Infof("Using region from %s: %s", env, v)
-			if err := os.Setenv("AWS_REGION", v); err != nil {
-				log.Warnf("Failed to set AWS_REGION from %s: %v", env, err)
-				return ""
-			}
-			return v
-		}
+	region := os.Getenv("LEASED_RESOURCE")
+	if len(region) > 0 {
+		log.Debugf("Using region from LEASED_RESOURCE: %s", region)
+		os.Setenv("AWS_REGION", region)
+		return region
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	region, err := common.GetRegionFromInfrastructure(ctx)
-	if err != nil {
-		log.Warnf("Failed to get region from Infrastructure: %v", err)
-		return ""
+	region = os.Getenv("AWS_REGION")
+	if len(region) > 0 {
+		log.Debugf("Using region from AWS_REGION: %s", region)
+		return region
 	}
-	log.Infof("Using region from Infrastructure object: %s", region)
-	if err := os.Setenv("AWS_REGION", region); err != nil {
-		log.Warnf("Failed to set AWS_REGION from Infrastructure: %v", err)
-		return ""
+	region = os.Getenv("AWS_DEFAULT_REGION")
+	if len(region) > 0 {
+		log.Debugf("Using region from AWS_DEFAULT_REGION: %s", region)
+		os.Setenv("AWS_REGION", region)
+		return region
 	}
-	return region
+	return ""
 }
 
 // initFrameworkForTests initializes the framework for the tests globally.
@@ -174,7 +164,6 @@ func initFrameworkForTests() error {
 	// 2. Build the config from the env, and set the testContext.CloudConfig (if required by the test)
 	// 3. Move this init to a dedicated function
 	testContext.Provider = "local" // TODO: OTE supports local or skeleton
-	testContext.KubeConfig = os.Getenv("KUBECONFIG")
 
 	// Set up AWS cloud configuration when environment variables are set.
 	region := getRegionFromEnv()
@@ -197,6 +186,7 @@ func initFrameworkForTests() error {
 	testContext.MasterOSDistro = "custom"
 
 	// Load kube client config and set the host variable for kubectl
+	testContext.KubeConfig = os.Getenv("KUBECONFIG")
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{
 			ExplicitPath: testContext.KubeConfig,
