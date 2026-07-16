@@ -237,9 +237,16 @@ func isDeploymentRolloutStalled(deploy *appsv1.Deployment) bool {
 // reboots pods are evicted and rescheduled without a spec change, which bumps
 // NumberUnavailable transiently. Treating that as incomplete would cause
 // Progressing=True flapping while MCO rolls nodes at a later run level.
+//
+// We compare UpdatedNumberScheduled against CurrentNumberScheduled rather than
+// DesiredNumberScheduled. DesiredNumberScheduled includes nodes that match the
+// selector but don't yet have a pod (e.g. during MachineSet scale-up). Comparing
+// against it would violate the API convention that operators must not report
+// Progressing due to DaemonSets adjusting to new nodes from cluster scale-up.
 func isDaemonSetRolloutComplete(ds *appsv1.DaemonSet) bool {
 	return ds.Status.ObservedGeneration >= ds.Generation &&
-		ds.Status.UpdatedNumberScheduled >= ds.Status.DesiredNumberScheduled
+		ds.Status.CurrentNumberScheduled > 0 &&
+		ds.Status.UpdatedNumberScheduled >= ds.Status.CurrentNumberScheduled
 }
 
 func (r *CloudOperatorReconciler) operandsConverged(ctx context.Context, resources []client.Object) (bool, error) {
