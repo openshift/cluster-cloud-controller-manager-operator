@@ -112,7 +112,7 @@ var _ = Describe("Cluster Operator status controller", func() {
 			Expect(v1helpers.FindStatusCondition(getOp.Status.Conditions, cloudControllerOwnershipCondition)).To(BeNil())
 
 			// check related objects.
-			Expect(getOp.Status.RelatedObjects).To(Equal(operatorController.relatedObjects()))
+			Expect(getOp.Status.RelatedObjects).To(Equal(operatorController.relatedObjects(context.Background())))
 		},
 		Entry("when there's no existing cluster operator nor release version", testCase{
 			releaseVersionEnvVariableValue: "unknown",
