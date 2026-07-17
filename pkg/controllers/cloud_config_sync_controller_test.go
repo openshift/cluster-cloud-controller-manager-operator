@@ -604,9 +604,9 @@ var _ = Describe("Cloud config sync reconciler", func() {
 			Expect(cl.Status().Update(ctx, infraResource.DeepCopy())).To(Succeed())
 			_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 			Expect(err).To(BeNil())
-			Eventually(func() int {
+			Eventually(func(g Gomega) int {
 				allCMs := &corev1.ConfigMapList{}
-				Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
+				g.Expect(cl.List(ctx, allCMs, &client.ListOptions{Namespace: targetNamespaceName})).To(Succeed())
 				return len(allCMs.Items)
 			}, 2*time.Minute, 5*time.Second).Should(BeZero())
 		})
