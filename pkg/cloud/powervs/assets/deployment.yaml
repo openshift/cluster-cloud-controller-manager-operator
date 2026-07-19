@@ -89,6 +89,12 @@ spec:
             {{- if .tlsMinVersion }}
             --tls-min-version={{ .tlsMinVersion }} \
             {{- end }}
+            {{- if .tlsCipherSuites }}
+            --webhook-tls-cipher-suites={{ .tlsCipherSuites }} \
+            {{- end }}
+            {{- if .tlsMinVersion }}
+            --webhook-tls-min-version={{ .tlsMinVersion }} \
+            {{- end }}
             --v=2
         livenessProbe:
           httpGet:
