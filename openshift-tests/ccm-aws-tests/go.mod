@@ -17,7 +17,7 @@ require (
 	k8s.io/api v0.36.0
 	k8s.io/apimachinery v0.36.0
 	k8s.io/client-go v0.36.0
-	k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260507005622-746099eda51c
+	k8s.io/cloud-provider-aws/tests/e2e v0.0.0-20260606003233-c34d66ed717a
 	k8s.io/kubernetes v1.36.0
 	k8s.io/pod-security-admission v0.36.0
 )
