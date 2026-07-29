@@ -59,9 +59,6 @@ func createAWSClientLoadBalancer(ctx context.Context) (*elbv2.Client, error) {
 
 	return elbv2.NewFromConfig(cfg, func(o *elbv2.Options) {
 		o.Retryer = customRetryer
-		// Use regional public endpoints to prevent malformed or unreachable
-		// (from test binary, which usually runs outside cluster's VPC) endpoints.
-		o.BaseEndpoint = aws.String(fmt.Sprintf("https://elasticloadbalancing.%s.amazonaws.com", cfg.Region))
 	}), nil
 }
 
@@ -136,11 +133,7 @@ func createAWSClientEC2(ctx context.Context) (*ec2.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ec2.NewFromConfig(cfg, func(o *ec2.Options) {
-		// Use regional public endpoints to prevent malformed or unreachable
-		// (from test binary, which usually runs outside cluster's VPC) endpoints.
-		o.BaseEndpoint = aws.String(fmt.Sprintf("https://ec2.%s.amazonaws.com", cfg.Region))
-	}), nil
+	return ec2.NewFromConfig(cfg), nil
 }
 
 // getAWSSecurityGroup retrieves a security group by ID using the AWS EC2 client.
