@@ -73,7 +73,7 @@ func (r *ClusterOperatorStatusClient) setStatusDegraded(ctx context.Context, rec
 		newClusterOperatorStatusCondition(configv1.OperatorUpgradeable, configv1.ConditionFalse, ReasonAsExpected, ""),
 	}
 
-	r.Recorder.Eventf(co, corev1.EventTypeWarning, "Status degraded", reconcileErr.Error())
+	r.Recorder.Eventf(co, corev1.EventTypeWarning, "Status degraded", "%s", reconcileErr.Error())
 	klog.V(2).Infof("Syncing status: degraded: %s", message)
 	return r.syncStatus(ctx, co, conds, overrides)
 }
@@ -95,7 +95,7 @@ func (r *ClusterOperatorStatusClient) setStatusProgressing(ctx context.Context, 
 	if !reflect.DeepEqual(desiredVersions, currentVersions) {
 		message = fmt.Sprintf("Progressing towards %s", printOperandVersions(desiredVersions))
 		klog.V(2).Infof("Syncing status: %s", message)
-		r.Recorder.Eventf(co, corev1.EventTypeNormal, "Status upgrade", message)
+		r.Recorder.Eventf(co, corev1.EventTypeNormal, "Status upgrade", "%s", message)
 		reason = ReasonSyncing
 	} else {
 		klog.V(2).Info("Syncing status: re-syncing")
