@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: vsphere-node-label-sync
+  name: node-label-sync
   namespace: openshift-cloud-controller-manager-operator
   annotations:
     capability.openshift.io/name: CloudControllerManager
@@ -19,14 +19,14 @@ metadata:
     # once and leave it alone from then on, matching the intended "backfill once" semantics.
     release.openshift.io/create-only: "true"
   labels:
-    k8s-app: vsphere-node-label-sync
+    k8s-app: node-label-sync
 spec:
   backoffLimit: 6
   activeDeadlineSeconds: 300
   template:
     metadata:
       labels:
-        k8s-app: vsphere-node-label-sync
+        k8s-app: node-label-sync
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
         openshift.io/required-scc: hostaccess
@@ -68,7 +68,7 @@ spec:
         operator: "Exists"
         effect: "NoSchedule"
       containers:
-      - name: vsphere-node-label-sync
+      - name: node-label-sync
         image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
         command:
         - /bin/bash
