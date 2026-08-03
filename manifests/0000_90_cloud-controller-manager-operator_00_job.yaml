@@ -89,9 +89,6 @@ spec:
           requests:
             cpu: 10m
             memory: 50Mi
-          limits:
-            cpu: 100m
-            memory: 100Mi
         terminationMessagePolicy: FallbackToLogsOnError
         # runAsNonRoot is deliberately NOT set here: this image (like the operator's own
         # Deployment container, which also runs unguarded) has no USER directive in its
