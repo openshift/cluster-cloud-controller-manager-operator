@@ -81,7 +81,7 @@ spec:
           else
             URL_ONLY_KUBECONFIG=/etc/kubernetes/kubeconfig
           fi
-          exec /vsphere-node-label-sync-job
+          exec /node-label-sync-job
         env:
         - name: RELEASE_VERSION
           value: "0.0.1-snapshot"

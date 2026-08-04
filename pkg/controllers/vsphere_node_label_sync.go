@@ -11,7 +11,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere"
@@ -25,8 +25,8 @@ import (
 // clusters can mix vSphere and bare-metal nodes, so each node's spec.providerID is checked to
 // confirm it is actually a vSphere node before labeling it.
 //
-// This is run to completion once by the vsphere-node-label-sync-job Job that the CVO installs
-// (see manifests/0000_26_cloud-controller-manager-operator_45_job-vsphere-node-label-sync.yaml),
+// This is run to completion once by the node-label-sync-job Job that the CVO installs
+// (see manifests/0000_90_cloud-controller-manager-operator_00_job.yaml),
 // rather than as an ongoing in-process controller.
 func SyncVSphereNodeLabels(ctx context.Context, c client.Client, featureGateAccess featuregates.FeatureGateAccess) error {
 	infra := &configv1.Infrastructure{}

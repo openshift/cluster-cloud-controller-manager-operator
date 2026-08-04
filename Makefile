@@ -39,7 +39,7 @@ unit:
 
 # Build operator binaries
 .PHONY: build
-build: operator config-sync-controllers azure-config-credentials-injector vsphere-node-label-sync-job cloud-controller-manager-aws-tests-ext cluster-cloud-controller-manager-operator-tests-ext
+build: operator config-sync-controllers azure-config-credentials-injector node-label-sync-job cloud-controller-manager-aws-tests-ext cluster-cloud-controller-manager-operator-tests-ext
 
 operator:
 	go build -o bin/cluster-controller-manager-operator cmd/cluster-cloud-controller-manager-operator/main.go
@@ -50,8 +50,8 @@ config-sync-controllers:
 azure-config-credentials-injector:
 	go build -o bin/azure-config-credentials-injector cmd/azure-config-credentials-injector/main.go
 
-vsphere-node-label-sync-job:
-	go build -o bin/vsphere-node-label-sync-job cmd/vsphere-node-label-sync-job/main.go
+node-label-sync-job:
+	go build -o bin/node-label-sync-job cmd/node-label-sync-job/main.go
 
 cloud-controller-manager-aws-tests-ext:
 	cd openshift-tests/ccm-aws-tests && \
