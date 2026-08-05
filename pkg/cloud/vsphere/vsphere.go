@@ -20,7 +20,16 @@ const (
 	// see manifests/0000_26_cloud-controller-manager-operator_16_credentialsrequest-vsphere.yaml
 	globalCredsSecretName = "vsphere-cloud-credentials"
 
-	vSpherePlatformTypeLabel = "node.openshift.io/platform-type=vsphere"
+	// NodePlatformTypeLabelKey and NodePlatformTypeLabelValueVSphere are the label the vSphere CCM applies
+	// (via --node-labels, see additionalLabels below) to nodes when it first initializes them. They are
+	// exported so that node.openshift.io/platform-type=vsphere can be reapplied to nodes that were
+	// initialized before the VSphereMixedNodeEnv feature gate was enabled.
+	NodePlatformTypeLabelKey          = "node.openshift.io/platform-type"
+	NodePlatformTypeLabelValueVSphere = "vsphere"
+	// NodeProviderIDPrefix is the spec.providerID prefix used by vSphere nodes, e.g. vsphere://4210e24f-...
+	NodeProviderIDPrefix = "vsphere://"
+
+	vSpherePlatformTypeLabel = NodePlatformTypeLabelKey + "=" + NodePlatformTypeLabelValueVSphere
 )
 
 var (
