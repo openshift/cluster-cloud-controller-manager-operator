@@ -13,8 +13,7 @@ import (
 )
 
 // Observer polls the AWS DescribeTargetHealth API at a configurable interval,
-// recording state transitions per target. It discovers the target group ARN
-// from the load balancer ARN.
+// recording state transitions per target and full-state snapshots per poll.
 type Observer struct {
 	elbClient  *elbv2.Client
 	tgARN      string
@@ -23,6 +22,7 @@ type Observer struct {
 
 	mu        sync.Mutex
 	events    []HealthEvent
+	snapshots []TargetSnapshot
 	lastState map[string]string
 
 	cancel context.CancelFunc
@@ -59,6 +59,30 @@ func (o *Observer) TargetGroupARN() string { return o.tgARN }
 
 // TargetType returns the target type (instance, ip, lambda, alb).
 func (o *Observer) TargetType() string { return o.targetType }
+
+// TGAttribute is a key-value pair from DescribeTargetGroupAttributes.
+type TGAttribute struct {
+	Key   string
+	Value string
+}
+
+// DescribeTGAttributes returns the target group attributes for the discovered TG.
+func (o *Observer) DescribeTGAttributes(ctx context.Context) ([]TGAttribute, error) {
+	output, err := o.elbClient.DescribeTargetGroupAttributes(ctx, &elbv2.DescribeTargetGroupAttributesInput{
+		TargetGroupArn: aws.String(o.tgARN),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("describe TG attributes: %w", err)
+	}
+	attrs := make([]TGAttribute, 0, len(output.Attributes))
+	for _, a := range output.Attributes {
+		attrs = append(attrs, TGAttribute{
+			Key:   aws.ToString(a.Key),
+			Value: aws.ToString(a.Value),
+		})
+	}
+	return attrs, nil
+}
 
 // WaitForAllHealthy blocks until at least minHealthy targets report
 // TargetHealthStateEnumHealthy, or the timeout is reached.
@@ -102,6 +126,15 @@ func (o *Observer) Events() []HealthEvent {
 	return result
 }
 
+// Snapshots returns a copy of all per-poll full-state snapshots.
+func (o *Observer) Snapshots() []TargetSnapshot {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	result := make([]TargetSnapshot, len(o.snapshots))
+	copy(result, o.snapshots)
+	return result
+}
+
 func (o *Observer) pollLoop(ctx context.Context) {
 	ticker := time.NewTicker(o.interval)
 	defer ticker.Stop()
@@ -127,11 +160,29 @@ func (o *Observer) pollOnce(ctx context.Context) {
 	defer o.mu.Unlock()
 
 	now := time.Now()
+
+	snap := TargetSnapshot{
+		Timestamp: now,
+		Targets:   make(map[string]string, len(output.TargetHealthDescriptions)),
+	}
+
 	for _, d := range output.TargetHealthDescriptions {
 		id := aws.ToString(d.Target.Id)
 		port := aws.ToInt32(d.Target.Port)
 		state := string(d.TargetHealth.State)
 		reason := string(d.TargetHealth.Reason)
+
+		snap.Targets[id] = state
+		switch d.TargetHealth.State {
+		case elbv2types.TargetHealthStateEnumHealthy:
+			snap.HealthyCount++
+		case elbv2types.TargetHealthStateEnumUnhealthy, elbv2types.TargetHealthStateEnumUnhealthyDraining:
+			snap.UnhealthyCount++
+		case elbv2types.TargetHealthStateEnumInitial:
+			snap.InitialCount++
+		case elbv2types.TargetHealthStateEnumDraining:
+			snap.DrainingCount++
+		}
 
 		prev := o.lastState[id]
 		if state != prev {
@@ -146,4 +197,6 @@ func (o *Observer) pollOnce(ctx context.Context) {
 			o.lastState[id] = state
 		}
 	}
+
+	o.snapshots = append(o.snapshots, snap)
 }

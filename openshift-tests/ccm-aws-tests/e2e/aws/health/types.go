@@ -26,3 +26,14 @@ type RequestRecord struct {
 	IsNonReadyReq   bool
 	Error           string
 }
+
+// TargetSnapshot captures the full TG health state at a single poll instant.
+// Used for per-second timeline output matching the SPLAT-307 CSV format.
+type TargetSnapshot struct {
+	Timestamp      time.Time
+	HealthyCount   int
+	UnhealthyCount int
+	InitialCount   int
+	DrainingCount  int
+	Targets        map[string]string // targetID -> health state
+}
