@@ -561,35 +561,39 @@ func setupHealthTransition(
 	return lbDNS, observer, cfg, setupTimes
 }
 
-// waitForAllTGTargetsHealthy blocks until every registered target reports
-// healthy (zero unhealthy, zero initial). This ensures the NLB data plane
-// has fully converged before the test starts.
+// waitForAllTGTargetsHealthy polls DescribeTargetHealth directly (via
+// observer.PollOnce) until every registered target reports healthy.
+// Logs per-target state every 10s so the operator can see convergence.
+// This works both during setup (observer not started) and during the test
+// (observer running — PollOnce is independent of the background loop).
 func waitForAllTGTargetsHealthy(ctx context.Context, observer *health.Observer, timeout time.Duration) error {
-	return wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		snaps := observer.Snapshots()
-		// Do a live poll by starting/stopping temporarily, or just call the
-		// observer's underlying API. For simplicity, trigger one poll by
-		// checking WaitForAllHealthy with a high count.
-		// Instead, use the observer's ELB client directly via DescribeTGAttributes trick:
-		// Actually, let's just use WaitForAllHealthy with count=0 sentinel and
-		// check via snapshots. Simpler: poll the API directly here.
-		events := observer.Events()
-		if len(events) == 0 {
-			// Observer hasn't polled yet; trigger a manual check
+	lastLog := time.Time{}
+	return wait.PollUntilContextTimeout(ctx, 5*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		snap, err := observer.PollOnce(ctx)
+		if err != nil {
+			framework.Logf("[tg-wait] poll error: %v", err)
 			return false, nil
 		}
-		// Check the latest snapshot if available
-		if len(snaps) > 0 {
-			last := snaps[len(snaps)-1]
-			total := last.HealthyCount + last.UnhealthyCount + last.InitialCount + last.DrainingCount
-			if total > 0 && last.UnhealthyCount == 0 && last.InitialCount == 0 && last.DrainingCount == 0 {
-				framework.Logf("all %d TG targets healthy", last.HealthyCount)
-				return true, nil
+
+		total := snap.HealthyCount + snap.UnhealthyCount + snap.InitialCount + snap.DrainingCount
+		allHealthy := total > 0 && snap.UnhealthyCount == 0 && snap.InitialCount == 0 && snap.DrainingCount == 0
+
+		// Log every 10s or on state change, showing per-target detail
+		if time.Since(lastLog) >= 10*time.Second || allHealthy {
+			var details []string
+			for id, state := range snap.Targets {
+				details = append(details, fmt.Sprintf("%s=%s", id, state))
 			}
-			framework.Logf("TG targets: healthy=%d unhealthy=%d initial=%d draining=%d",
-				last.HealthyCount, last.UnhealthyCount, last.InitialCount, last.DrainingCount)
+			framework.Logf("[tg-wait] healthy=%d unhealthy=%d initial=%d total=%d | %s",
+				snap.HealthyCount, snap.UnhealthyCount, snap.InitialCount, total,
+				strings.Join(details, ", "))
+			lastLog = time.Now()
 		}
-		return false, nil
+
+		if allHealthy {
+			framework.Logf("[tg-wait] all %d targets healthy", snap.HealthyCount)
+		}
+		return allHealthy, nil
 	})
 }
 
@@ -1025,9 +1029,10 @@ func buildHealthserverDeployment(namespace, name string, replicas int32, startup
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: v1.PodSpec{
-					// Schedule on master/control-plane nodes to match KAS topology
+					// Schedule on control-plane nodes to match KAS topology.
+					// OCP 5.x uses control-plane; OCP 4.x has both labels.
 					NodeSelector: map[string]string{
-						"node-role.kubernetes.io/master": "",
+						"node-role.kubernetes.io/control-plane": "",
 					},
 					// Tolerate master and control-plane taints
 					Tolerations: []v1.Toleration{
@@ -1073,7 +1078,7 @@ func buildHealthTransitionService(namespace, name, deployName string) *v1.Servic
 			Namespace: namespace,
 			Annotations: map[string]string{
 				"service.beta.kubernetes.io/aws-load-balancer-type":                            "nlb",
-				"service.beta.kubernetes.io/aws-load-balancer-target-node-labels":              "node-role.kubernetes.io/master=",
+				"service.beta.kubernetes.io/aws-load-balancer-target-node-labels":              "node-role.kubernetes.io/control-plane=",
 				"service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled": "true",
 				"service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol":            "HTTP",
 				"service.beta.kubernetes.io/aws-load-balancer-healthcheck-path":                "/readyz",

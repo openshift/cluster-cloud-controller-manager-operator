@@ -60,6 +60,39 @@ func (o *Observer) TargetGroupARN() string { return o.tgARN }
 // TargetType returns the target type (instance, ip, lambda, alb).
 func (o *Observer) TargetType() string { return o.targetType }
 
+// PollOnce performs a single DescribeTargetHealth call and returns a snapshot.
+// This can be called independently of Start/Stop — useful during setup when
+// the background polling loop is not yet running.
+func (o *Observer) PollOnce(ctx context.Context) (TargetSnapshot, error) {
+	output, err := o.elbClient.DescribeTargetHealth(ctx, &elbv2.DescribeTargetHealthInput{
+		TargetGroupArn: aws.String(o.tgARN),
+	})
+	if err != nil {
+		return TargetSnapshot{}, fmt.Errorf("describe target health: %w", err)
+	}
+
+	snap := TargetSnapshot{
+		Timestamp: time.Now(),
+		Targets:   make(map[string]string, len(output.TargetHealthDescriptions)),
+	}
+	for _, d := range output.TargetHealthDescriptions {
+		id := aws.ToString(d.Target.Id)
+		state := string(d.TargetHealth.State)
+		snap.Targets[id] = state
+		switch d.TargetHealth.State {
+		case elbv2types.TargetHealthStateEnumHealthy:
+			snap.HealthyCount++
+		case elbv2types.TargetHealthStateEnumUnhealthy, elbv2types.TargetHealthStateEnumUnhealthyDraining:
+			snap.UnhealthyCount++
+		case elbv2types.TargetHealthStateEnumInitial:
+			snap.InitialCount++
+		case elbv2types.TargetHealthStateEnumDraining:
+			snap.DrainingCount++
+		}
+	}
+	return snap, nil
+}
+
 // TGAttribute is a key-value pair from DescribeTargetGroupAttributes.
 type TGAttribute struct {
 	Key   string
