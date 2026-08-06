@@ -132,8 +132,10 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			)
 
 			observer.Start(ctx)
+			framework.Logf("[observer] started TG health polling (1s interval)")
 			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
 			client.Start(ctx)
+			framework.Logf("[client] started sending requests to %s every %s", lbDNS, defaultClientInterval)
 			defer func() { client.Stop(); observer.Stop() }()
 
 			// Steady state: 90s after all targets healthy — confirms stable
@@ -274,8 +276,10 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			fetchTGHealthCheckConfig(ctx, &svcCfg)
 
 			observer.Start(ctx)
+			framework.Logf("[observer] started TG health polling (1s interval)")
 			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
 			client.Start(ctx)
+			framework.Logf("[client] started sending requests to %s every %s", lbDNS, defaultClientInterval)
 			defer func() { client.Stop(); observer.Stop() }()
 
 			By(fmt.Sprintf("verifying steady state for %s", postHealthyObserve))
@@ -383,8 +387,10 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			)
 
 			observer.Start(ctx)
+			framework.Logf("[observer] started TG health polling (1s interval)")
 			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
 			client.Start(ctx)
+			framework.Logf("[client] started sending requests to %s every %s", lbDNS, defaultClientInterval)
 			defer func() { client.Stop(); observer.Stop() }()
 
 			By(fmt.Sprintf("verifying steady state for %s", postHealthyObserve))
