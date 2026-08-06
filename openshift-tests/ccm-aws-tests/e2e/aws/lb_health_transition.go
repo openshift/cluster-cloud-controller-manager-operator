@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/aws/health"
+	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,13 +38,10 @@ const (
 	// through the NLB. Lower values increase load density for propagation testing.
 	defaultClientInterval = 200 * time.Millisecond
 
-	// defaultSteadyState is how long we observe healthy traffic before triggering
-	// the test scenario. Must be long enough for all replicas to receive traffic.
-	defaultSteadyState = 2 * time.Minute
-
-	// postRestartObserve is how long we observe after the new pod starts.
-	// Must be long enough for NLB HC + Hyperplane propagation to complete.
-	postRestartObserve = 5 * time.Minute
+	// postHealthyObserve is how long we continue observing after all targets
+	// become healthy (both initial setup and post-restart). 90s gives enough
+	// time to confirm stable routing while keeping test duration reasonable.
+	postHealthyObserve = 90 * time.Second
 )
 
 // transitionTimeline captures all timing milestones from the SPLAT-307 state
@@ -83,7 +81,7 @@ type transitionTimeline struct {
 	NewPod     string
 }
 
-// serviceConfig records Service and TG configuration for the report.
+// serviceConfig records Service, TG, and environment configuration for the report.
 type serviceConfig struct {
 	ServiceAnnotations map[string]string
 	TGAttributes       []health.TGAttribute
@@ -91,6 +89,11 @@ type serviceConfig struct {
 	TGTargetType       string
 	LBARN              string
 	LBDNS              string
+
+	// Environment summary
+	Region   string
+	Platform string // e.g., "AWS"
+	Topology string // e.g., "HighlyAvailable"
 }
 
 var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
@@ -133,10 +136,10 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			client.Start(ctx)
 			defer func() { client.Stop(); observer.Stop() }()
 
-			// Steady state: long enough for all replicas to receive traffic and
-			// for the NLB to establish stable routing patterns.
-			By(fmt.Sprintf("verifying steady state for %s", defaultSteadyState))
-			time.Sleep(defaultSteadyState)
+			// Steady state: 90s after all targets healthy — confirms stable
+			// routing to all replicas before triggering the test scenario.
+			By(fmt.Sprintf("verifying steady state for %s", postHealthyObserve))
+			time.Sleep(postHealthyObserve)
 
 			steadyRecords := client.Records()
 			steadyNonReady := 0
@@ -184,10 +187,14 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			By("waiting for replacement pod")
 			newPod := waitForNewPod(ctx, cs, ns.Name, deployName, targetPod)
 
-			// Observe long enough for: startup-delay + HC threshold + Hyperplane propagation
-			observeDuration := startupDelay + postRestartObserve
-			By(fmt.Sprintf("observing for %s (startup-delay + propagation buffer)", observeDuration))
-			time.Sleep(observeDuration)
+			// Wait for the restarted target to become healthy again, then observe
+			// for postHealthyObserve to confirm stable routing.
+			By("waiting for restarted target to become healthy")
+			err = waitForAllTGTargetsHealthy(ctx, observer, 10*time.Minute)
+			framework.ExpectNoError(err, "restarted target healthy")
+
+			By(fmt.Sprintf("observing post-recovery traffic for %s", postHealthyObserve))
+			time.Sleep(postHealthyObserve)
 
 			allRecords := client.Records()
 			allEvents := observer.Events()
@@ -271,8 +278,8 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			client.Start(ctx)
 			defer func() { client.Stop(); observer.Stop() }()
 
-			By(fmt.Sprintf("verifying steady state for %s", defaultSteadyState))
-			time.Sleep(defaultSteadyState)
+			By(fmt.Sprintf("verifying steady state for %s", postHealthyObserve))
+			time.Sleep(postHealthyObserve)
 
 			steadyRecords := client.Records()
 			steadyNonReady := 0
@@ -313,9 +320,12 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			By("waiting for replacement pod")
 			newPod := waitForNewPod(ctx, cs, ns.Name, deployName, targetPod)
 
-			observeDuration := startupDelay + postRestartObserve
-			By(fmt.Sprintf("observing for %s (startup-delay + propagation buffer)", observeDuration))
-			time.Sleep(observeDuration)
+			By("waiting for restarted target to become healthy")
+			err = waitForAllTGTargetsHealthy(ctx, observer, 10*time.Minute)
+			framework.ExpectNoError(err, "restarted target healthy")
+
+			By(fmt.Sprintf("observing post-recovery traffic for %s", postHealthyObserve))
+			time.Sleep(postHealthyObserve)
 
 			allRecords := client.Records()
 			allEvents := observer.Events()
@@ -377,8 +387,8 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			client.Start(ctx)
 			defer func() { client.Stop(); observer.Stop() }()
 
-			By(fmt.Sprintf("verifying steady state for %s", defaultSteadyState))
-			time.Sleep(defaultSteadyState)
+			By(fmt.Sprintf("verifying steady state for %s", postHealthyObserve))
+			time.Sleep(postHealthyObserve)
 
 			pods, err := cs.CoreV1().Pods(ns.Name).List(ctx, metav1.ListOptions{
 				LabelSelector: fmt.Sprintf("app=%s", deployName),
@@ -464,6 +474,19 @@ func setupHealthTransition(
 	_, err = cs.CoreV1().Services(ns.Name).Create(ctx, svc, metav1.CreateOptions{})
 	framework.ExpectNoError(err, "create service")
 	cfg.ServiceAnnotations = svc.Annotations
+
+	// Populate environment summary from the cluster's Infrastructure resource
+	cfg.Platform = "AWS"
+	if region, rErr := common.GetRegionFromInfrastructure(ctx); rErr == nil {
+		cfg.Region = region
+	}
+	if isExternal, tErr := common.IsExternalTopology(ctx); tErr == nil {
+		if isExternal {
+			cfg.Topology = "External (HyperShift)"
+		} else {
+			cfg.Topology = "HighlyAvailable"
+		}
+	}
 
 	DeferCleanup(func(cleanupCtx context.Context) {
 		framework.Logf("cleaning up health transition resources")
@@ -849,6 +872,13 @@ func buildReport(
 	w(sep)
 	w("HEALTH TRANSITION REPORT — Scenario %s", scenario)
 	w(sep)
+
+	// ── Environment ──
+	w("")
+	w("ENVIRONMENT")
+	w("  Platform:       %s", cfg.Platform)
+	w("  Region:         %s", cfg.Region)
+	w("  Topology:       %s", cfg.Topology)
 
 	// ── Identity ──
 	w("")
