@@ -220,7 +220,7 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 
 			report := buildReport("5.5 (Pre-Readyz Routing / OCPBUGS-86789)",
 				tl, svcCfg, replicas, startupDelay, shutdownDelay,
-				allEvents, observer.Snapshots())
+				allRecords, allEvents, observer.Snapshots())
 
 			if tl.PreReadyzReqCount > 0 {
 				report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to pre-readyz target(s) — OCPBUGS-86789 reproduced\n", tl.PreReadyzReqCount)
@@ -351,7 +351,7 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 
 			report := buildReport("5.5-CAPA (Pre-Readyz + conn_term=false draining=300s)",
 				tl, svcCfg, replicas, startupDelay, shutdownDelay,
-				allEvents, observer.Snapshots())
+				allRecords, allEvents, observer.Snapshots())
 
 			if tl.PreReadyzReqCount > 0 {
 				report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to pre-readyz target(s) — OCPBUGS-86789 reproduced (CAPA config)\n", tl.PreReadyzReqCount)
@@ -439,7 +439,7 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 
 			report := buildReport("5.2 (Shutdown Propagation / SPLAT-307)",
 				tl, svcCfg, replicas, startupDelay, 0,
-				allEvents, observer.Snapshots())
+				allRecords, allEvents, observer.Snapshots())
 
 			report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to unhealthy target after readyz→503\n", tl.UnhealthyReqCount)
 			if !tl.T7.IsZero() && !tl.T5.IsZero() {
@@ -872,6 +872,7 @@ func buildReport(
 	cfg serviceConfig,
 	replicas int32,
 	startupDelay, shutdownDelay time.Duration,
+	records []health.RequestRecord,
 	events []health.HealthEvent,
 	snapshots []health.TargetSnapshot,
 ) string {
@@ -951,6 +952,85 @@ func buildReport(
 	w("%-25s %-14s %-14s %s", "T_tg_healthy", fmtDur(tl.T8, tl.T9), "~20s", "t9-t8: HC detect healthy")
 	w("%-25s %-14s %-14s %s", "T_route_start", fmtDur(tl.T8, tl.T10), "20-120s", "t10-t8: first req after readyz→200")
 	w("%-25s %-14s %-14s %s", "T_total_cycle", fmtDur(tl.T5, tl.T10), "", "t10-t5: full cycle")
+
+	// ── Request statistics ──
+	// Compute overall and per-phase request counts from client records.
+	var totalReqs, reqs2xx, reqs4xx, reqs5xx, reqsErr int
+	for _, r := range records {
+		totalReqs++
+		switch {
+		case r.Error != "":
+			reqsErr++
+		case r.HTTPStatus >= 200 && r.HTTPStatus < 300:
+			reqs2xx++
+		case r.HTTPStatus >= 400 && r.HTTPStatus < 500:
+			reqs4xx++
+		case r.HTTPStatus >= 500:
+			reqs5xx++
+		}
+	}
+
+	w("")
+	w("REQUEST STATISTICS")
+	w("  Total:    %d", totalReqs)
+	w("  2xx:      %d", reqs2xx)
+	w("  4xx:      %d", reqs4xx)
+	w("  5xx:      %d", reqs5xx)
+	w("  Errors:   %d (connection/timeout failures)", reqsErr)
+
+	// ── Per-phase request breakdown ──
+	// Phases are defined by the timeline milestones:
+	//   Warmup:     t3→t5  (all targets healthy, steady-state traffic)
+	//   Shutdown:   t5→t7.1 or t5→t8  (readyz→503, target still serving)
+	//   Restart:    t7.1→t9  (pod deleted → new target healthy)
+	//   Recovery:   t9→end  (new target healthy, traffic flowing)
+	// For Scenario 5.2 (no restart): Shutdown=t5→t8, Recovery=t8→end
+	type phaseStats struct {
+		name                   string
+		total, ok, err, preRdz int
+	}
+	var phases []phaseStats
+
+	classifyPhase := func(name string, from, to time.Time) phaseStats {
+		ps := phaseStats{name: name}
+		for _, r := range records {
+			if (!from.IsZero() && r.Timestamp.Before(from)) || (!to.IsZero() && r.Timestamp.After(to)) {
+				continue
+			}
+			ps.total++
+			if r.Error != "" {
+				ps.err++
+			} else if r.HTTPStatus >= 200 && r.HTTPStatus < 300 {
+				ps.ok++
+			}
+			if r.IsNonReadyReq {
+				ps.preRdz++
+			}
+		}
+		return ps
+	}
+
+	// Warmup: t3 (all healthy) → t5 (readyz→503).  Includes steady state.
+	phases = append(phases, classifyPhase("Warmup (t3→t5)", tl.T3, tl.T5))
+
+	if !tl.T71.IsZero() {
+		// Scenario 5.5: has restart phase
+		phases = append(phases, classifyPhase("Shutdown (t5→t7.1)", tl.T5, tl.T71))
+		phases = append(phases, classifyPhase("Restart (t7.1→t9)", tl.T71, tl.T9))
+		phases = append(phases, classifyPhase("Recovery (t9→end)", tl.T9, time.Time{}))
+	} else {
+		// Scenario 5.2: no restart
+		phases = append(phases, classifyPhase("Shutdown (t5→t8)", tl.T5, tl.T8))
+		phases = append(phases, classifyPhase("Recovery (t8→end)", tl.T8, time.Time{}))
+	}
+
+	w("")
+	w("REQUEST BREAKDOWN BY PHASE")
+	w("%-25s %8s %8s %8s %8s", "Phase", "Total", "2xx", "Errors", "PreRdz")
+	w("%-25s %8s %8s %8s %8s", strings.Repeat("─", 25), strings.Repeat("─", 8), strings.Repeat("─", 8), strings.Repeat("─", 8), strings.Repeat("─", 8))
+	for _, ps := range phases {
+		w("%-25s %8d %8d %8d %8d", ps.name, ps.total, ps.ok, ps.err, ps.preRdz)
+	}
 
 	// ── Unified chronological timeline ──
 	w("")
