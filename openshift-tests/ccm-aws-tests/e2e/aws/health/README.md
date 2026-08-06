@@ -112,14 +112,14 @@ Test name (OTE):
 Flow:
   1. Deploy 3 healthserver pods on control-plane nodes (--startup-delay=60s)
   2. Create NLB: control-plane-only targets, cross-zone, HTTP /readyz HC
-  3. Wait for ALL TG targets healthy
-  4. Start observer + client (200ms interval, new TCP per request)
-  5. Observe 90s steady state (all replicas receiving traffic)
+  3. Wait for ALL TG targets healthy (zero initial/unhealthy)
+  4. Start observer (1s) + client (200ms × 4 parallel workers)
+  5. Observe 90s steady state (confirm all replicas receiving traffic)
   6. Signal target pod readyz→503 via K8s API proxy (t5)
   7. Wait 192s shutdown-delay (simulates KAS shutdown-delay-duration)
   8. Delete pod (t7.1), wait for replacement
   9. Wait for restarted target healthy + 90s post-recovery observation
-  10. Report full t0–t10 timing table + unified chronological timeline
+  10. Report: timing table, request stats, phase breakdown, timeline
 
 Detection: any response with X-Server-State: pre-readyz = BUG reproduced
 ```
@@ -136,6 +136,12 @@ target_health_state.unhealthy.draining_interval_seconds = 300
 
 These are the CAPA fix attributes (OCPBUGS-55626).  Tests whether they
 affect the unhealthy→healthy routing transition.
+
+**Finding (confirmed):** with `connection_termination.enabled=false`, the
+NLB TG transitions through `unhealthy.draining` instead of `unhealthy`.
+This answers v5 open question Q5 — `unhealthy.draining` occurs during
+HC-driven transitions, not just during deregistration.  The timeline
+computation uses `isUnhealthyState()` to match both states.
 
 ### Scenario 5.2 — Shutdown Propagation (SPLAT-307)
 
@@ -199,6 +205,12 @@ Also provides:
 
 HTTP client with `httptrace` hooks.  Creates a **new TCP connection** per
 request (`DisableKeepAlives`) to match NLB per-connection routing.
+
+Runs **multiple parallel worker goroutines** (default: 4) so that
+high-latency links (e.g., test runner in South America → NLB in us-east-1)
+don't bottleneck throughput.  Each worker fires independently on its own
+200ms ticker.  With ~1.8s RTT, 4 workers achieve ~2 req/s; closer to
+the cluster, the same config gives ~20 req/s.
 
 Captures per request: target IP, TCP dial duration, HTTP status,
 `X-Server-State`, `X-Server-ID`, `X-First-Readyz-Time`.
@@ -289,10 +301,14 @@ avoid per-line logger timestamps) containing:
 - **ENVIRONMENT**: platform, region, topology
 - **TARGET**: pod name, node, new pod (if restart)
 - **TEST PARAMETERS**: replicas, startup/shutdown delay, client interval
+  and worker count
 - **SERVICE CONFIGURATION**: LB DNS/ARN, all Service annotations
 - **TARGET GROUP CONFIGURATION**: TG ARN, target type, all TG attributes
   including health check config
-- **TIMING TABLE**: all computed metrics with expected values
+- **TIMING TABLE**: all computed metrics (t0–t10) with expected values
+- **REQUEST STATISTICS**: total count, 2xx/4xx/5xx breakdown, errors
+- **REQUEST BREAKDOWN BY PHASE**: per-phase (Warmup, Shutdown, Restart,
+  Recovery) duration, request count, 2xx, errors, pre-readyz count
 - **TIMELINE**: chronological merge of test milestones (t0–t10) and TG
   health events, full RFC3339 timestamps with deltas
 - **TG SNAPSHOTS**: first/last poll with healthy/unhealthy/initial counts
