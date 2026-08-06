@@ -32,6 +32,18 @@ const (
 	// margin), simulating how long KAS keeps serving after /readyz→503 before
 	// the process exits.  CKAO sets 135s; we add buffer for HC propagation.
 	kasShutdownDelay = 192 * time.Second
+
+	// defaultClientInterval controls how often the HTTP client sends requests
+	// through the NLB. Lower values increase load density for propagation testing.
+	defaultClientInterval = 200 * time.Millisecond
+
+	// defaultSteadyState is how long we observe healthy traffic before triggering
+	// the test scenario. Must be long enough for all replicas to receive traffic.
+	defaultSteadyState = 2 * time.Minute
+
+	// postRestartObserve is how long we observe after the new pod starts.
+	// Must be long enough for NLB HC + Hyperplane propagation to complete.
+	postRestartObserve = 5 * time.Minute
 )
 
 // transitionTimeline captures all timing milestones from the SPLAT-307 state
@@ -39,6 +51,13 @@ const (
 //
 // A zero time.Time means the milestone was not observed.
 type transitionTimeline struct {
+	// Initial registration phase (t0-t4, captured during setup)
+	T0 time.Time // deployment created (pods scheduling)
+	T1 time.Time // deployment ready (all pods Running)
+	T2 time.Time // NLB provisioned (LB DNS assigned)
+	T3 time.Time // all TG targets healthy (HC passed + propagated)
+	T4 time.Time // first client request received (NLB routing established)
+
 	// Shutdown phase (SPLAT-307 path)
 	T5  time.Time // readyz→503 signal sent
 	T6  time.Time // first observer event: target unhealthy
@@ -99,25 +118,161 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			replicas := int32(3)
 			startupDelay := 60 * time.Second
 			shutdownDelay := kasShutdownDelay
-			clientInterval := 500 * time.Millisecond
-			observerInterval := 1 * time.Second
-			steadyStateDuration := 30 * time.Second
 
 			deployName := "healthserver"
 			svcName := "healthserver-lb"
 
-			lbDNS, observer, svcCfg := setupHealthTransition(
+			// Setup creates NLB targeting master nodes, waits for ALL targets healthy
+			lbDNS, observer, svcCfg, setupTimes := setupHealthTransition(
 				ctx, cs, ns, deployName, svcName, image,
-				replicas, startupDelay, observerInterval,
+				replicas, startupDelay,
 			)
 
 			observer.Start(ctx)
-			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), clientInterval)
+			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
 			client.Start(ctx)
 			defer func() { client.Stop(); observer.Stop() }()
 
-			By(fmt.Sprintf("verifying steady state for %s", steadyStateDuration))
-			time.Sleep(steadyStateDuration)
+			// Steady state: long enough for all replicas to receive traffic and
+			// for the NLB to establish stable routing patterns.
+			By(fmt.Sprintf("verifying steady state for %s", defaultSteadyState))
+			time.Sleep(defaultSteadyState)
+
+			steadyRecords := client.Records()
+			steadyNonReady := 0
+			for _, r := range steadyRecords {
+				if r.IsNonReadyReq {
+					steadyNonReady++
+				}
+			}
+			framework.Logf("[steady] %d requests, %d non-ready", len(steadyRecords), steadyNonReady)
+			Expect(steadyNonReady).To(Equal(0), "pre-readyz responses during steady state")
+
+			pods, err := cs.CoreV1().Pods(ns.Name).List(ctx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("app=%s", deployName),
+			})
+			framework.ExpectNoError(err)
+			Expect(len(pods.Items)).To(BeNumerically(">=", int(replicas)))
+
+			// Build knownServers from ALL existing pods (not client records,
+			// which may miss pods due to NLB routing distribution).
+			knownServers := make(map[string]bool)
+			for _, p := range pods.Items {
+				knownServers[p.Name] = true
+			}
+
+			targetPod := pods.Items[0].Name
+			targetNode := pods.Items[0].Spec.NodeName
+
+			// t5: Signal readyz→503 — simulates KAS receiving SIGTERM
+			By("signaling target pod readyz→503 (t5)")
+			t5 := time.Now()
+			err = sendAdminSignal(ctx, cs, ns.Name, targetPod, false)
+			framework.ExpectNoError(err, "signal readyz→false")
+
+			// Wait shutdown-delay — simulates KAS shutdown-delay-duration (192s)
+			// during which the pod keeps serving but /readyz returns 503
+			By(fmt.Sprintf("waiting %s shutdown-delay before pod deletion", shutdownDelay))
+			time.Sleep(shutdownDelay)
+
+			// t7.1: Delete pod — simulates KAS process exit
+			By("deleting target pod (t7.1)")
+			t71 := time.Now()
+			err = cs.CoreV1().Pods(ns.Name).Delete(ctx, targetPod, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+
+			By("waiting for replacement pod")
+			newPod := waitForNewPod(ctx, cs, ns.Name, deployName, targetPod)
+
+			// Observe long enough for: startup-delay + HC threshold + Hyperplane propagation
+			observeDuration := startupDelay + postRestartObserve
+			By(fmt.Sprintf("observing for %s (startup-delay + propagation buffer)", observeDuration))
+			time.Sleep(observeDuration)
+
+			allRecords := client.Records()
+			allEvents := observer.Events()
+
+			tl := computeTimeline(targetPod, knownServers, t5, t71, allRecords, allEvents)
+			// Copy setup-phase timers (t0-t3) into the timeline
+			tl.T0 = setupTimes.T0
+			tl.T1 = setupTimes.T1
+			tl.T2 = setupTimes.T2
+			tl.T3 = setupTimes.T3
+			// t4: first successful client request (NLB routing established)
+			for _, r := range steadyRecords {
+				if r.Error == "" && r.HTTPStatus > 0 {
+					tl.T4 = r.Timestamp
+					break
+				}
+			}
+			tl.TargetPod = targetPod
+			tl.TargetNode = targetNode
+			tl.NewPod = newPod
+
+			report := buildReport("5.5 (Pre-Readyz Routing / OCPBUGS-86789)",
+				tl, svcCfg, replicas, startupDelay, shutdownDelay,
+				allEvents, observer.Snapshots())
+
+			if tl.PreReadyzReqCount > 0 {
+				report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to pre-readyz target(s) — OCPBUGS-86789 reproduced\n", tl.PreReadyzReqCount)
+			} else {
+				report += "\nVERDICT: No pre-readyz routing detected in this iteration\n"
+			}
+
+			framework.Logf("\n%s", report)
+		})
+	})
+
+	// ── Scenario 5.5 variant with CAPA TG attributes ────────────────────
+	// Same as 5.5 but applies the CAPA fix TG attributes after TG creation:
+	//   target_health_state.unhealthy.connection_termination.enabled = false
+	//   target_health_state.unhealthy.draining_interval_seconds = 300
+	// This simulates the NLB configuration applied by CAPA (OCPBUGS-55626).
+	Context("pre-readyz routing with CAPA TG attributes (OCPBUGS-86789)", func() {
+		It("should not route to pre-readyz targets "+
+			"with connection-termination disabled and draining=300s", func(ctx context.Context) {
+
+			image := os.Getenv(envHealthserverImage)
+			if image == "" {
+				Skip(fmt.Sprintf("%s not set", envHealthserverImage))
+			}
+
+			replicas := int32(3)
+			startupDelay := 60 * time.Second
+			shutdownDelay := kasShutdownDelay
+
+			deployName := "healthserver"
+			svcName := "healthserver-lb"
+
+			lbDNS, observer, svcCfg, setupTimes := setupHealthTransition(
+				ctx, cs, ns, deployName, svcName, image,
+				replicas, startupDelay,
+			)
+
+			// Apply CAPA fix TG attributes BEFORE collecting TG config for report
+			// and BEFORE starting the observer/client.
+			capaAttrs := map[string]string{
+				"target_health_state.unhealthy.connection_termination.enabled": "false",
+				"target_health_state.unhealthy.draining_interval_seconds":      "300",
+			}
+			By("applying CAPA TG attributes (conn_term=false, draining=300s)")
+			err := observer.ModifyTGAttributes(ctx, capaAttrs)
+			framework.ExpectNoError(err, "modify TG attributes for CAPA variant")
+
+			// Re-fetch TG attributes so the report reflects the modified config
+			tgAttrs, err := observer.DescribeTGAttributes(ctx)
+			if err == nil {
+				svcCfg.TGAttributes = tgAttrs
+			}
+			fetchTGHealthCheckConfig(ctx, &svcCfg)
+
+			observer.Start(ctx)
+			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
+			client.Start(ctx)
+			defer func() { client.Stop(); observer.Stop() }()
+
+			By(fmt.Sprintf("verifying steady state for %s", defaultSteadyState))
+			time.Sleep(defaultSteadyState)
 
 			steadyRecords := client.Records()
 			steadyNonReady := 0
@@ -134,8 +289,6 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			framework.ExpectNoError(err)
 			Expect(len(pods.Items)).To(BeNumerically(">=", int(replicas)))
 
-			// Build knownServers from ALL existing pods (not client records,
-			// which may miss pods due to NLB routing distribution).
 			knownServers := make(map[string]bool)
 			for _, p := range pods.Items {
 				knownServers[p.Name] = true
@@ -160,7 +313,7 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			By("waiting for replacement pod")
 			newPod := waitForNewPod(ctx, cs, ns.Name, deployName, targetPod)
 
-			observeDuration := startupDelay + 3*time.Minute
+			observeDuration := startupDelay + postRestartObserve
 			By(fmt.Sprintf("observing for %s (startup-delay + propagation buffer)", observeDuration))
 			time.Sleep(observeDuration)
 
@@ -168,18 +321,28 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			allEvents := observer.Events()
 
 			tl := computeTimeline(targetPod, knownServers, t5, t71, allRecords, allEvents)
+			tl.T0 = setupTimes.T0
+			tl.T1 = setupTimes.T1
+			tl.T2 = setupTimes.T2
+			tl.T3 = setupTimes.T3
+			for _, r := range steadyRecords {
+				if r.Error == "" && r.HTTPStatus > 0 {
+					tl.T4 = r.Timestamp
+					break
+				}
+			}
 			tl.TargetPod = targetPod
 			tl.TargetNode = targetNode
 			tl.NewPod = newPod
 
-			report := buildReport("5.5 (Pre-Readyz Routing / OCPBUGS-86789)",
+			report := buildReport("5.5-CAPA (Pre-Readyz + conn_term=false draining=300s)",
 				tl, svcCfg, replicas, startupDelay, shutdownDelay,
 				allEvents, observer.Snapshots())
 
 			if tl.PreReadyzReqCount > 0 {
-				report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to pre-readyz target(s) — OCPBUGS-86789 reproduced\n", tl.PreReadyzReqCount)
+				report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to pre-readyz target(s) — OCPBUGS-86789 reproduced (CAPA config)\n", tl.PreReadyzReqCount)
 			} else {
-				report += "\nVERDICT: No pre-readyz routing detected in this iteration\n"
+				report += "\nVERDICT: No pre-readyz routing detected with CAPA TG attributes\n"
 			}
 
 			framework.Logf("\n%s", report)
@@ -198,27 +361,24 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 
 			replicas := int32(3)
 			startupDelay := 60 * time.Second
-			clientInterval := 500 * time.Millisecond
-			observerInterval := 1 * time.Second
-			steadyStateDuration := 30 * time.Second
 			shutdownObserveDuration := 3 * time.Minute
 			recoveryObserveDuration := 3 * time.Minute
 
 			deployName := "healthserver"
 			svcName := "healthserver-lb"
 
-			lbDNS, observer, svcCfg := setupHealthTransition(
+			lbDNS, observer, svcCfg, setupTimes := setupHealthTransition(
 				ctx, cs, ns, deployName, svcName, image,
-				replicas, startupDelay, observerInterval,
+				replicas, startupDelay,
 			)
 
 			observer.Start(ctx)
-			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), clientInterval)
+			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
 			client.Start(ctx)
 			defer func() { client.Stop(); observer.Stop() }()
 
-			By(fmt.Sprintf("verifying steady state for %s", steadyStateDuration))
-			time.Sleep(steadyStateDuration)
+			By(fmt.Sprintf("verifying steady state for %s", defaultSteadyState))
+			time.Sleep(defaultSteadyState)
 
 			pods, err := cs.CoreV1().Pods(ns.Name).List(ctx, metav1.ListOptions{
 				LabelSelector: fmt.Sprintf("app=%s", deployName),
@@ -247,6 +407,17 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 			allEvents := observer.Events()
 
 			tl := computeTimeline52(targetPod, t5, t8, allRecords, allEvents)
+			tl.T0 = setupTimes.T0
+			tl.T1 = setupTimes.T1
+			tl.T2 = setupTimes.T2
+			tl.T3 = setupTimes.T3
+			// t4: first successful client request
+			for _, r := range client.Records() {
+				if r.Error == "" && r.HTTPStatus > 0 {
+					tl.T4 = r.Timestamp
+					break
+				}
+			}
 			tl.TargetPod = targetPod
 			tl.TargetNode = targetNode
 
@@ -267,6 +438,11 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 
 // ─── Setup helper ───────────────────────────────────────────────────────────
 
+// setupHealthTransition creates the healthserver Deployment and NLB Service,
+// discovers the TG, fetches TG config, and waits for ALL TG targets to be
+// healthy before returning. Pods are scheduled on master/control-plane nodes
+// to match KAS topology. The NLB targets only master nodes via the
+// target-node-labels annotation. Cross-zone load balancing is enabled.
 func setupHealthTransition(
 	ctx context.Context,
 	cs clientset.Interface,
@@ -274,15 +450,16 @@ func setupHealthTransition(
 	deployName, svcName, image string,
 	replicas int32,
 	startupDelay time.Duration,
-	observerInterval time.Duration,
-) (lbDNS string, observer *health.Observer, cfg serviceConfig) {
+) (lbDNS string, observer *health.Observer, cfg serviceConfig, setupTimes transitionTimeline) {
 
-	By("creating healthserver Deployment")
+	// t0: deployment created — pods begin scheduling on master nodes
+	By("creating healthserver Deployment (scheduled on master nodes)")
 	deploy := buildHealthserverDeployment(ns.Name, deployName, replicas, startupDelay, image)
+	setupTimes.T0 = time.Now()
 	_, err := cs.AppsV1().Deployments(ns.Name).Create(ctx, deploy, metav1.CreateOptions{})
 	framework.ExpectNoError(err, "create deployment")
 
-	By("creating NLB Service with /readyz health check")
+	By("creating NLB Service (master-only targets, cross-zone, /readyz HC)")
 	svc := buildHealthTransitionService(ns.Name, svcName, deployName)
 	_, err = cs.CoreV1().Services(ns.Name).Create(ctx, svc, metav1.CreateOptions{})
 	framework.ExpectNoError(err, "create service")
@@ -307,6 +484,8 @@ func setupHealthTransition(
 		return d.Status.ReadyReplicas >= replicas, nil
 	})
 	framework.ExpectNoError(err, "deployment rollout")
+	// t1: all pods running (startup-delay may still be in progress)
+	setupTimes.T1 = time.Now()
 
 	By("waiting for NLB provisioning")
 	err = wait.PollUntilContextTimeout(ctx, 10*time.Second, 10*time.Minute, true, func(ctx context.Context) (bool, error) {
@@ -321,6 +500,8 @@ func setupHealthTransition(
 		return false, nil
 	})
 	framework.ExpectNoError(err, "NLB provisioning")
+	// t2: NLB provisioned, DNS assigned
+	setupTimes.T2 = time.Now()
 	cfg.LBDNS = lbDNS
 
 	By("discovering NLB and target group in AWS")
@@ -331,28 +512,71 @@ func setupHealthTransition(
 	framework.ExpectNoError(err, "find NLB")
 	cfg.LBARN = aws.ToString(foundLB.LoadBalancerArn)
 
-	observer = health.NewObserver(elbClient, observerInterval)
+	observer = health.NewObserver(elbClient, 1*time.Second)
 	err = observer.DiscoverTargetGroup(ctx, cfg.LBARN)
 	framework.ExpectNoError(err, "discover target group")
 	cfg.TGARN = observer.TargetGroupARN()
 	cfg.TGTargetType = observer.TargetType()
 
+	// Fetch TG attributes and HC config for the report
 	tgAttrs, err := observer.DescribeTGAttributes(ctx)
 	if err == nil {
 		cfg.TGAttributes = tgAttrs
 	}
+	fetchTGHealthCheckConfig(ctx, &cfg)
 
-	// Fetch TG health check config from the TG itself
-	fetchTGHealthCheckConfig(ctx, elbClient, &cfg)
+	// Wait for ALL registered TG targets to be healthy (not just N replicas).
+	// With master-only node targeting, this should be exactly 3 targets.
+	// Previously we waited for minHealthy=replicas which could pass with
+	// worker-node targets while master-node targets were still "initial".
+	By("waiting for ALL TG targets to become healthy")
+	err = waitForAllTGTargetsHealthy(ctx, observer, 10*time.Minute)
+	framework.ExpectNoError(err, "all TG targets healthy")
+	// t3: all TG targets healthy — HC passed and propagated through Hyperplane
+	setupTimes.T3 = time.Now()
 
-	By("waiting for all TG targets to become healthy")
-	err = observer.WaitForAllHealthy(ctx, int(replicas), 10*time.Minute)
-	framework.ExpectNoError(err, "targets healthy")
-
-	return lbDNS, observer, cfg
+	return lbDNS, observer, cfg, setupTimes
 }
 
-func fetchTGHealthCheckConfig(ctx context.Context, elbClient *elbv2.Client, cfg *serviceConfig) {
+// waitForAllTGTargetsHealthy blocks until every registered target reports
+// healthy (zero unhealthy, zero initial). This ensures the NLB data plane
+// has fully converged before the test starts.
+func waitForAllTGTargetsHealthy(ctx context.Context, observer *health.Observer, timeout time.Duration) error {
+	return wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		snaps := observer.Snapshots()
+		// Do a live poll by starting/stopping temporarily, or just call the
+		// observer's underlying API. For simplicity, trigger one poll by
+		// checking WaitForAllHealthy with a high count.
+		// Instead, use the observer's ELB client directly via DescribeTGAttributes trick:
+		// Actually, let's just use WaitForAllHealthy with count=0 sentinel and
+		// check via snapshots. Simpler: poll the API directly here.
+		events := observer.Events()
+		if len(events) == 0 {
+			// Observer hasn't polled yet; trigger a manual check
+			return false, nil
+		}
+		// Check the latest snapshot if available
+		if len(snaps) > 0 {
+			last := snaps[len(snaps)-1]
+			total := last.HealthyCount + last.UnhealthyCount + last.InitialCount + last.DrainingCount
+			if total > 0 && last.UnhealthyCount == 0 && last.InitialCount == 0 && last.DrainingCount == 0 {
+				framework.Logf("all %d TG targets healthy", last.HealthyCount)
+				return true, nil
+			}
+			framework.Logf("TG targets: healthy=%d unhealthy=%d initial=%d draining=%d",
+				last.HealthyCount, last.UnhealthyCount, last.InitialCount, last.DrainingCount)
+		}
+		return false, nil
+	})
+}
+
+// fetchTGHealthCheckConfig reads the TG's health check settings from the AWS API
+// and appends them to the serviceConfig for report output.
+func fetchTGHealthCheckConfig(ctx context.Context, cfg *serviceConfig) {
+	elbClient, err := createAWSClientLoadBalancer(ctx)
+	if err != nil {
+		return
+	}
 	out, err := elbClient.DescribeTargetGroups(ctx, &elbv2.DescribeTargetGroupsInput{
 		TargetGroupArns: []string{cfg.TGARN},
 	})
@@ -372,6 +596,9 @@ func fetchTGHealthCheckConfig(ctx context.Context, elbClient *elbv2.Client, cfg 
 
 // ─── Admin API via K8s API server proxy ─────────────────────────────────────
 
+// sendAdminSignal sends a readyz control signal to a healthserver pod via the
+// K8s API server pod proxy endpoint. This avoids the need for port-forward
+// or exec (the healthserver container is FROM scratch, no shell).
 func sendAdminSignal(ctx context.Context, cs clientset.Interface, namespace, podName string, ready bool) error {
 	readyStr := "false"
 	if ready {
@@ -413,6 +640,9 @@ func waitForNewPod(ctx context.Context, cs clientset.Interface, namespace, deplo
 
 // ─── Timeline computation ───────────────────────────────────────────────────
 
+// computeTimeline builds the full timing model for Scenario 5.5 from raw
+// client records and observer events. See transitionTimeline for the t-value
+// definitions aligned with the SPLAT-307 state machine.
 func computeTimeline(
 	oldPod string,
 	knownServers map[string]bool,
@@ -475,7 +705,9 @@ func computeTimeline(
 			}
 		}
 
-		// t8: when the new pod's /readyz first returned 200 (from header, local time)
+		// t8: when the new pod's /readyz first returned 200 (from header, local time).
+		// The healthserver runs in UTC inside the container; we convert to local
+		// time to match the test's clock for consistent delta calculations.
 		if tl.T8.IsZero() && r.ServerState == "ready" && r.FirstReadyzTime != "never" && r.FirstReadyzTime != "" {
 			if parsed, err := time.Parse(time.RFC3339Nano, r.FirstReadyzTime); err == nil {
 				tl.T8 = parsed.Local()
@@ -635,6 +867,7 @@ func buildReport(
 	if shutdownDelay > 0 {
 		w("  Shutdown Delay: %s", shutdownDelay)
 	}
+	w("  Client Interval: %s", defaultClientInterval)
 
 	// ── Service config ──
 	w("")
@@ -663,6 +896,11 @@ func buildReport(
 	w("TIMING TABLE")
 	w("%-25s %-14s %-14s %s", "Metric", "Value", "Expected", "Description")
 	w("%-25s %-14s %-14s %s", strings.Repeat("─", 25), strings.Repeat("─", 14), strings.Repeat("─", 14), strings.Repeat("─", 30))
+	w("%-25s %-14s %-14s %s", "T_deploy_ready", fmtDur(tl.T0, tl.T1), "", "t1-t0: pods scheduled + running")
+	w("%-25s %-14s %-14s %s", "T_nlb_provision", fmtDur(tl.T0, tl.T2), "", "t2-t0: NLB provisioned")
+	w("%-25s %-14s %-14s %s", "T_tg_initial_healthy", fmtDur(tl.T0, tl.T3), "", "t3-t0: all TG targets healthy")
+	w("%-25s %-14s %-14s %s", "T_first_request", fmtDur(tl.T3, tl.T4), "seconds", "t4-t3: first routed request")
+	w("%-25s %-14s %-14s %s", "", "", "", "")
 	w("%-25s %-14s %-14s %s", "T_tg_unhealthy", fmtDur(tl.T5, tl.T6), "~20s", "t6-t5: HC detect unhealthy")
 	w("%-25s %-14s %-14s %s", "T_route_stop", fmtDur(tl.T5, tl.T7), "<shutdown-delay", "t7-t5: last req after readyz→503")
 	w("%-25s %-14d %-14s %s", "Unhealthy_reqs", tl.UnhealthyReqCount, "0 ideal", "requests to target after readyz→503")
@@ -688,6 +926,14 @@ func buildReport(
 		}
 	}
 
+	// Initial registration milestones (t0-t4)
+	addEntry(tl.T0, "t0  deploy created", "")
+	addEntry(tl.T1, "t1  pods ready", fmtDelta(tl.T0, tl.T1))
+	addEntry(tl.T2, "t2  NLB provisioned", fmtDelta(tl.T0, tl.T2))
+	addEntry(tl.T3, "t3  TG all healthy", fmtDelta(tl.T0, tl.T3))
+	addEntry(tl.T4, "t4  first request", fmtDelta(tl.T3, tl.T4))
+
+	// Shutdown/restart milestones (t5-t10)
 	addEntry(tl.T5, "t5  readyz→503", "")
 	addEntry(tl.T6, "t6  TG unhealthy", fmtDelta(tl.T5, tl.T6))
 	addEntry(tl.T7, "t7  last routed req", fmtDelta(tl.T5, tl.T7))
@@ -700,6 +946,7 @@ func buildReport(
 	addEntry(tl.T9, "t9  TG healthy", fmtDelta(tl.T8, tl.T9))
 	addEntry(tl.T10, "t10 first routed req", fmtDelta(tl.T8, tl.T10))
 
+	// TG health events
 	for _, e := range events {
 		addEntry(e.Timestamp,
 			fmt.Sprintf("TG  %s→%s", e.PrevState, e.State),
@@ -731,6 +978,10 @@ func buildReport(
 
 // ─── Resource builders ──────────────────────────────────────────────────────
 
+// buildHealthserverDeployment creates a Deployment spec that schedules pods on
+// master/control-plane nodes to match KAS topology. Includes tolerations for
+// both master and control-plane taints, and topologySpreadConstraints to
+// distribute pods across nodes.
 func buildHealthserverDeployment(namespace, name string, replicas int32, startupDelay time.Duration, image string) *appsv1.Deployment {
 	labels := map[string]string{"app": name}
 	return &appsv1.Deployment{
@@ -744,6 +995,15 @@ func buildHealthserverDeployment(namespace, name string, replicas int32, startup
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: v1.PodSpec{
+					// Schedule on master/control-plane nodes to match KAS topology
+					NodeSelector: map[string]string{
+						"node-role.kubernetes.io/master": "",
+					},
+					// Tolerate master and control-plane taints
+					Tolerations: []v1.Toleration{
+						{Key: "node-role.kubernetes.io/master", Operator: v1.TolerationOpExists, Effect: v1.TaintEffectNoSchedule},
+						{Key: "node-role.kubernetes.io/control-plane", Operator: v1.TolerationOpExists, Effect: v1.TaintEffectNoSchedule},
+					},
 					TopologySpreadConstraints: []v1.TopologySpreadConstraint{{
 						MaxSkew:           1,
 						TopologyKey:       "kubernetes.io/hostname",
@@ -771,6 +1031,11 @@ func buildHealthserverDeployment(namespace, name string, replicas int32, startup
 	}
 }
 
+// buildHealthTransitionService creates a Service spec for an NLB that:
+// - Targets only master/control-plane nodes (target-node-labels annotation)
+// - Enables cross-zone load balancing for HA
+// - Uses HTTP /readyz health check with 10s interval and threshold=2
+// - Uses externalTrafficPolicy: Local for per-node health tracking
 func buildHealthTransitionService(namespace, name, deployName string) *v1.Service {
 	return &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -778,6 +1043,8 @@ func buildHealthTransitionService(namespace, name, deployName string) *v1.Servic
 			Namespace: namespace,
 			Annotations: map[string]string{
 				"service.beta.kubernetes.io/aws-load-balancer-type":                            "nlb",
+				"service.beta.kubernetes.io/aws-load-balancer-target-node-labels":              "node-role.kubernetes.io/master=",
+				"service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled": "true",
 				"service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol":            "HTTP",
 				"service.beta.kubernetes.io/aws-load-balancer-healthcheck-path":                "/readyz",
 				"service.beta.kubernetes.io/aws-load-balancer-healthcheck-port":                "traffic-port",

@@ -84,6 +84,27 @@ func (o *Observer) DescribeTGAttributes(ctx context.Context) ([]TGAttribute, err
 	return attrs, nil
 }
 
+// ModifyTGAttributes sets target group attributes via the AWS API.
+// Used to apply TG configuration variations (e.g., CAPA fix attributes)
+// after the TG is created by the cloud controller.
+func (o *Observer) ModifyTGAttributes(ctx context.Context, attrs map[string]string) error {
+	var kv []elbv2types.TargetGroupAttribute
+	for k, v := range attrs {
+		kv = append(kv, elbv2types.TargetGroupAttribute{
+			Key:   aws.String(k),
+			Value: aws.String(v),
+		})
+	}
+	_, err := o.elbClient.ModifyTargetGroupAttributes(ctx, &elbv2.ModifyTargetGroupAttributesInput{
+		TargetGroupArn: aws.String(o.tgARN),
+		Attributes:     kv,
+	})
+	if err != nil {
+		return fmt.Errorf("modify TG attributes: %w", err)
+	}
+	return nil
+}
+
 // WaitForAllHealthy blocks until at least minHealthy targets report
 // TargetHealthStateEnumHealthy, or the timeout is reached.
 func (o *Observer) WaitForAllHealthy(ctx context.Context, minHealthy int, timeout time.Duration) error {
