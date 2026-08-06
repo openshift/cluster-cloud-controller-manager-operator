@@ -128,7 +128,12 @@ spec:
                 {{- if .tlsMinVersion }}
                 --tls-min-version={{ .tlsMinVersion }} \
                 {{- end }}
-                --secure-port=0
+                {{- if .tlsCipherSuites }}
+                --webhook-tls-cipher-suites={{ .tlsCipherSuites }} \
+                {{- end }}
+                {{- if .tlsMinVersion }}
+                --webhook-tls-min-version={{ .tlsMinVersion }}
+                {{- end }}
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
             - name: host-etc-kube
