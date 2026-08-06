@@ -987,12 +987,13 @@ func buildReport(
 	// For Scenario 5.2 (no restart): Shutdown=t5→t8, Recovery=t8→end
 	type phaseStats struct {
 		name                   string
+		from, to               time.Time
 		total, ok, err, preRdz int
 	}
 	var phases []phaseStats
 
 	classifyPhase := func(name string, from, to time.Time) phaseStats {
-		ps := phaseStats{name: name}
+		ps := phaseStats{name: name, from: from, to: to}
 		for _, r := range records {
 			if (!from.IsZero() && r.Timestamp.Before(from)) || (!to.IsZero() && r.Timestamp.After(to)) {
 				continue
@@ -1010,26 +1011,30 @@ func buildReport(
 		return ps
 	}
 
-	// Warmup: t3 (all healthy) → t5 (readyz→503).  Includes steady state.
 	phases = append(phases, classifyPhase("Warmup (t3→t5)", tl.T3, tl.T5))
 
 	if !tl.T71.IsZero() {
-		// Scenario 5.5: has restart phase
 		phases = append(phases, classifyPhase("Shutdown (t5→t7.1)", tl.T5, tl.T71))
 		phases = append(phases, classifyPhase("Restart (t7.1→t9)", tl.T71, tl.T9))
 		phases = append(phases, classifyPhase("Recovery (t9→end)", tl.T9, time.Time{}))
 	} else {
-		// Scenario 5.2: no restart
 		phases = append(phases, classifyPhase("Shutdown (t5→t8)", tl.T5, tl.T8))
 		phases = append(phases, classifyPhase("Recovery (t8→end)", tl.T8, time.Time{}))
 	}
 
 	w("")
 	w("REQUEST BREAKDOWN BY PHASE")
-	w("%-25s %8s %8s %8s %8s", "Phase", "Total", "2xx", "Errors", "PreRdz")
-	w("%-25s %8s %8s %8s %8s", strings.Repeat("─", 25), strings.Repeat("─", 8), strings.Repeat("─", 8), strings.Repeat("─", 8), strings.Repeat("─", 8))
+	w("%-25s %10s %8s %8s %8s %8s", "Phase", "Duration", "Total", "2xx", "Errors", "PreRdz")
+	w("%-25s %10s %8s %8s %8s %8s", strings.Repeat("─", 25), strings.Repeat("─", 10), strings.Repeat("─", 8), strings.Repeat("─", 8), strings.Repeat("─", 8), strings.Repeat("─", 8))
 	for _, ps := range phases {
-		w("%-25s %8d %8d %8d %8d", ps.name, ps.total, ps.ok, ps.err, ps.preRdz)
+		dur := "N/A"
+		if !ps.from.IsZero() && !ps.to.IsZero() {
+			dur = ps.to.Sub(ps.from).Truncate(time.Second).String()
+		} else if !ps.from.IsZero() && len(records) > 0 {
+			// Open-ended phase (→end): use last record timestamp
+			dur = records[len(records)-1].Timestamp.Sub(ps.from).Truncate(time.Second).String()
+		}
+		w("%-25s %10s %8d %8d %8d %8d", ps.name, dur, ps.total, ps.ok, ps.err, ps.preRdz)
 	}
 
 	// ── Unified chronological timeline ──
