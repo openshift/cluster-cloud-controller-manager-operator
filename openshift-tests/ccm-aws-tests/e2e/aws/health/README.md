@@ -309,10 +309,15 @@ avoid per-line logger timestamps) containing:
 - **REQUEST STATISTICS**: total count, 2xx/4xx/5xx breakdown, errors
 - **REQUEST BREAKDOWN BY PHASE**: per-phase (Warmup, Shutdown, Restart,
   Recovery) duration, request count, 2xx, errors, pre-readyz count
+- **PER-SERVER REQUEST DISTRIBUTION BY PHASE**: how many requests each
+  backend (pod) received in each phase, annotated with role (TARGET, NEW).
+  Shows whether the NLB correctly routed away from the unhealthy target.
 - **TIMELINE**: chronological merge of test milestones (t0–t10) and TG
   health events, full RFC3339 timestamps with deltas
 - **TG SNAPSHOTS**: first/last poll with healthy/unhealthy/initial counts
-- **VERDICT**: detection result
+- **VERDICT**: multi-signal detection — checks pre-readyz header (client),
+  target pod requests after readyz→503 (server shutdown), and unhealthy
+  requests on target node during restart (server restart)
 
 ## Related Issues
 
