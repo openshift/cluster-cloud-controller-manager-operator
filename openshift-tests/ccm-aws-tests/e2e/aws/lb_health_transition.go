@@ -228,11 +228,7 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 				tl, svcCfg, replicas, startupDelay, shutdownDelay,
 				allRecords, allEvents, observer.Snapshots())
 
-			if tl.PreReadyzReqCount > 0 {
-				report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to pre-readyz target(s) — OCPBUGS-86789 reproduced\n", tl.PreReadyzReqCount)
-			} else {
-				report += "\nVERDICT: No pre-readyz routing detected in this iteration\n"
-			}
+			report += buildVerdict55(tl, allRecords)
 
 			framework.Logf("\n%s", report)
 		})
@@ -359,11 +355,7 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 				tl, svcCfg, replicas, startupDelay, shutdownDelay,
 				allRecords, allEvents, observer.Snapshots())
 
-			if tl.PreReadyzReqCount > 0 {
-				report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to pre-readyz target(s) — OCPBUGS-86789 reproduced (CAPA config)\n", tl.PreReadyzReqCount)
-			} else {
-				report += "\nVERDICT: No pre-readyz routing detected with CAPA TG attributes\n"
-			}
+			report += buildVerdict55(tl, allRecords)
 
 			framework.Logf("\n%s", report)
 		})
@@ -447,11 +439,7 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 				tl, svcCfg, replicas, startupDelay, 0,
 				allRecords, allEvents, observer.Snapshots())
 
-			report += fmt.Sprintf("\nVERDICT: NLB routed %d request(s) to unhealthy target after readyz→503\n", tl.UnhealthyReqCount)
-			if !tl.T7.IsZero() && !tl.T5.IsZero() {
-				report += fmt.Sprintf("T_route_stop = %s (NLB kept routing after readyz→503)\n",
-					tl.T7.Sub(tl.T5).Truncate(time.Second))
-			}
+			report += buildVerdict52(tl)
 
 			framework.Logf("\n%s", report)
 		})
@@ -1053,6 +1041,86 @@ func buildReport(
 		w("%-25s %10s %8d %8d %8d %8d", ps.name, dur, ps.total, ps.ok, ps.err, ps.preRdz)
 	}
 
+	// ── Per-server request distribution by phase ──
+	// Shows how many requests each backend (ServerID/pod) received in each phase.
+	// This is the key metric for detecting routing anomalies: if the target pod
+	// receives requests during Restart (after deletion), that's the NLB bug.
+	// Collect unique server IDs across all records
+	serverSet := make(map[string]bool)
+	for _, r := range records {
+		if r.ServerID != "" {
+			serverSet[r.ServerID] = true
+		}
+	}
+	var serverIDs []string
+	for id := range serverSet {
+		serverIDs = append(serverIDs, id)
+	}
+	sort.Strings(serverIDs)
+
+	if len(serverIDs) > 0 {
+		// Build per-server per-phase counts
+		type serverPhaseCount struct {
+			total, preRdz int
+		}
+		// phaseServerCounts[phaseIdx][serverID] = counts
+		phaseServerCounts := make([]map[string]serverPhaseCount, len(phases))
+		for i, ps := range phases {
+			phaseServerCounts[i] = make(map[string]serverPhaseCount)
+			for _, r := range records {
+				if r.ServerID == "" {
+					continue
+				}
+				if (!ps.from.IsZero() && r.Timestamp.Before(ps.from)) || (!ps.to.IsZero() && r.Timestamp.After(ps.to)) {
+					continue
+				}
+				sc := phaseServerCounts[i][r.ServerID]
+				sc.total++
+				if r.IsNonReadyReq {
+					sc.preRdz++
+				}
+				phaseServerCounts[i][r.ServerID] = sc
+			}
+		}
+
+		w("")
+		w("PER-SERVER REQUEST DISTRIBUTION BY PHASE")
+
+		// Annotate server IDs with their role in the test
+		serverLabel := func(id string) string {
+			switch id {
+			case tl.TargetPod:
+				return id + " ← TARGET"
+			case tl.NewPod:
+				return id + " ← NEW"
+			default:
+				return id
+			}
+		}
+
+		// Print a sub-table per phase showing each server's request count
+		for i, ps := range phases {
+			dur := "N/A"
+			if !ps.from.IsZero() && !ps.to.IsZero() {
+				dur = ps.to.Sub(ps.from).Truncate(time.Second).String()
+			} else if !ps.from.IsZero() && len(records) > 0 {
+				dur = records[len(records)-1].Timestamp.Sub(ps.from).Truncate(time.Second).String()
+			}
+			w("  %s (%s):", ps.name, dur)
+			for _, sid := range serverIDs {
+				sc := phaseServerCounts[i][sid]
+				if sc.total == 0 {
+					continue
+				}
+				preRdzNote := ""
+				if sc.preRdz > 0 {
+					preRdzNote = fmt.Sprintf("  ← %d pre-readyz!", sc.preRdz)
+				}
+				w("    %-50s  reqs=%d%s", serverLabel(sid), sc.total, preRdzNote)
+			}
+		}
+	}
+
 	// ── Unified chronological timeline ──
 	w("")
 	w("TIMELINE")
@@ -1114,6 +1182,104 @@ func buildReport(
 	}
 
 	w(sep)
+	return b.String()
+}
+
+// ─── Resource builders ──────────────────────────────────────────────────────
+
+// ─── Verdict builders ───────────────────────────────────────────────────────
+
+// buildVerdict55 produces the verdict string for Scenario 5.5 (pre-readyz routing).
+// It checks both client-side (X-Server-State: pre-readyz) and server-side
+// (did the target pod receive requests during Shutdown/Restart phases).
+func buildVerdict55(tl transitionTimeline, records []health.RequestRecord) string {
+	var b strings.Builder
+	w := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
+
+	// Count requests to the target pod AFTER readyz→503 (shutdown phase)
+	var targetAfterShutdown int
+	for _, r := range records {
+		if r.Timestamp.Before(tl.T5) || r.ServerID != tl.TargetPod {
+			continue
+		}
+		targetAfterShutdown++
+	}
+
+	// Count requests to the target pod's node during Restart phase (t7.1→t9).
+	// With externalTrafficPolicy: Local, instance target type, the target pod's
+	// node is the NLB target. Any request reaching that node's backend during
+	// restart means the NLB routed to an unhealthy target.
+	var targetDuringRestart int
+	if !tl.T71.IsZero() {
+		end := tl.T9
+		if end.IsZero() {
+			end = tl.T10
+		}
+		for _, r := range records {
+			if tl.T71.IsZero() || r.Timestamp.Before(tl.T71) {
+				continue
+			}
+			if !end.IsZero() && r.Timestamp.After(end) {
+				continue
+			}
+			// Match the target pod OR the new pod (both run on the same node
+			// when the deployment reschedules to the same node)
+			if r.ServerID == tl.TargetPod || r.ServerID == tl.NewPod {
+				if r.ServerState == "pre-readyz" || r.ServerState == "draining" || r.ServerState == "shutdown" {
+					targetDuringRestart++
+				}
+			}
+		}
+	}
+
+	w("")
+	w("VERDICT")
+
+	if tl.PreReadyzReqCount > 0 {
+		w("  [BUG] NLB routed %d request(s) with X-Server-State: pre-readyz", tl.PreReadyzReqCount)
+		w("        This reproduces OCPBUGS-86789 — NLB routes before /readyz passes")
+	}
+
+	if targetAfterShutdown > 0 {
+		w("  [SHUTDOWN] Target pod received %d request(s) after readyz→503 (T_route_stop=%s)",
+			targetAfterShutdown, fmtDur(tl.T5, tl.T7))
+		w("             NLB continued routing to unhealthy target for %s", fmtDur(tl.T5, tl.T7))
+	}
+
+	if targetDuringRestart > 0 {
+		w("  [RESTART] Target node received %d unhealthy/pre-readyz request(s) during Restart phase", targetDuringRestart)
+	}
+
+	if tl.PreReadyzReqCount == 0 && targetDuringRestart == 0 {
+		w("  [OK] No pre-readyz routing detected")
+		w("       NLB correctly waited for HC to pass before routing to restarted target")
+	}
+
+	if targetAfterShutdown > 0 {
+		w("  [INFO] Shutdown propagation: %d requests routed to target after readyz→503 (expected: NLB propagation delay)",
+			targetAfterShutdown)
+	}
+
+	return b.String()
+}
+
+// buildVerdict52 produces the verdict string for Scenario 5.2 (shutdown propagation).
+func buildVerdict52(tl transitionTimeline) string {
+	var b strings.Builder
+	w := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
+
+	w("")
+	w("VERDICT")
+	w("  NLB routed %d request(s) to unhealthy target after readyz→503", tl.UnhealthyReqCount)
+	if !tl.T7.IsZero() && !tl.T5.IsZero() {
+		w("  T_route_stop = %s (NLB kept routing after readyz→503)",
+			tl.T7.Sub(tl.T5).Truncate(time.Second))
+	}
+	if !tl.T10.IsZero() && !tl.T8.IsZero() {
+		w("  T_route_start = %s (NLB started routing after readyz→200)",
+			tl.T10.Sub(tl.T8).Truncate(time.Second))
+	}
+
 	return b.String()
 }
 
