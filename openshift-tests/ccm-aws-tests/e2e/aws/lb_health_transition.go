@@ -1011,13 +1011,16 @@ func buildReport(
 		return ps
 	}
 
+	// Warmup: t3 (all healthy) → t5 (readyz→503).  Includes steady state.
 	phases = append(phases, classifyPhase("Warmup (t3→t5)", tl.T3, tl.T5))
 
 	if !tl.T71.IsZero() {
+		// Scenario 5.5: has restart phase
 		phases = append(phases, classifyPhase("Shutdown (t5→t7.1)", tl.T5, tl.T71))
 		phases = append(phases, classifyPhase("Restart (t7.1→t9)", tl.T71, tl.T9))
 		phases = append(phases, classifyPhase("Recovery (t9→end)", tl.T9, time.Time{}))
 	} else {
+		// Scenario 5.2: no restart
 		phases = append(phases, classifyPhase("Shutdown (t5→t8)", tl.T5, tl.T8))
 		phases = append(phases, classifyPhase("Recovery (t8→end)", tl.T8, time.Time{}))
 	}
