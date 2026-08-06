@@ -16,9 +16,14 @@ import (
 // capturing per-request connection timing and server-reported state headers.
 // Each request uses a new TCP connection (DisableKeepAlives) to match NLB
 // per-connection routing behavior.
+//
+// Multiple worker goroutines run in parallel so that high-latency links
+// (e.g., client in South America → NLB in us-east-1) don't bottleneck
+// throughput — each worker fires independently on its own ticker.
 type Client struct {
 	targetURL  string
 	interval   time.Duration
+	workers    int
 	httpClient *http.Client
 
 	mu      sync.Mutex
@@ -27,11 +32,19 @@ type Client struct {
 	cancel context.CancelFunc
 }
 
-// NewClient creates a Client that polls the given URL at the given interval.
-func NewClient(targetURL string, interval time.Duration) *Client {
+// NewClient creates a Client that polls the given URL at the given interval
+// using numWorkers parallel goroutines. Each worker sends one request per
+// interval tick independently, so effective throughput is approximately
+// numWorkers / interval when RTT < interval, or numWorkers / RTT when
+// RTT > interval.
+func NewClient(targetURL string, interval time.Duration, numWorkers int) *Client {
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
 	return &Client{
 		targetURL: targetURL,
 		interval:  interval,
+		workers:   numWorkers,
 		httpClient: &http.Client{
 			Transport: &http.Transport{
 				DisableKeepAlives: true,
@@ -42,13 +55,15 @@ func NewClient(targetURL string, interval time.Duration) *Client {
 	}
 }
 
-// Start begins sending requests in a background goroutine.
+// Start begins sending requests in background goroutines (one per worker).
 func (c *Client) Start(ctx context.Context) {
 	ctx, c.cancel = context.WithCancel(ctx)
-	go c.pollLoop(ctx)
+	for i := 0; i < c.workers; i++ {
+		go c.pollLoop(ctx)
+	}
 }
 
-// Stop cancels the background request goroutine.
+// Stop cancels all background request goroutines.
 func (c *Client) Stop() {
 	if c.cancel != nil {
 		c.cancel()

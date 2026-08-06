@@ -34,9 +34,15 @@ const (
 	// the process exits.  CKAO sets 135s; we add buffer for HC propagation.
 	kasShutdownDelay = 192 * time.Second
 
-	// defaultClientInterval controls how often the HTTP client sends requests
+	// defaultClientInterval controls how often each worker sends requests
 	// through the NLB. Lower values increase load density for propagation testing.
 	defaultClientInterval = 200 * time.Millisecond
+
+	// defaultClientWorkers is the number of parallel request goroutines.
+	// Multiple workers prevent high-latency links (e.g., client in South America
+	// → NLB in us-east-1) from bottlenecking throughput. Each worker fires
+	// independently on its own ticker.
+	defaultClientWorkers = 4
 
 	// postHealthyObserve is how long we continue observing after all targets
 	// become healthy (both initial setup and post-restart). 90s gives enough
@@ -133,9 +139,9 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 
 			observer.Start(ctx)
 			framework.Logf("[observer] started TG health polling (1s interval)")
-			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
+			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval, defaultClientWorkers)
 			client.Start(ctx)
-			framework.Logf("[client] started sending requests to %s every %s", lbDNS, defaultClientInterval)
+			framework.Logf("[client] started %d workers sending requests to %s every %s", defaultClientWorkers, lbDNS, defaultClientInterval)
 			defer func() { client.Stop(); observer.Stop() }()
 
 			// Steady state: 90s after all targets healthy — confirms stable
@@ -277,9 +283,9 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 
 			observer.Start(ctx)
 			framework.Logf("[observer] started TG health polling (1s interval)")
-			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
+			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval, defaultClientWorkers)
 			client.Start(ctx)
-			framework.Logf("[client] started sending requests to %s every %s", lbDNS, defaultClientInterval)
+			framework.Logf("[client] started %d workers sending requests to %s every %s", defaultClientWorkers, lbDNS, defaultClientInterval)
 			defer func() { client.Stop(); observer.Stop() }()
 
 			By(fmt.Sprintf("verifying steady state for %s", postHealthyObserve))
@@ -388,9 +394,9 @@ var _ = Describe(healthTransitionTestPrefix+" NLB", func() {
 
 			observer.Start(ctx)
 			framework.Logf("[observer] started TG health polling (1s interval)")
-			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval)
+			client := health.NewClient(fmt.Sprintf("http://%s/", lbDNS), defaultClientInterval, defaultClientWorkers)
 			client.Start(ctx)
-			framework.Logf("[client] started sending requests to %s every %s", lbDNS, defaultClientInterval)
+			framework.Logf("[client] started %d workers sending requests to %s every %s", defaultClientWorkers, lbDNS, defaultClientInterval)
 			defer func() { client.Stop(); observer.Stop() }()
 
 			By(fmt.Sprintf("verifying steady state for %s", postHealthyObserve))
@@ -673,6 +679,13 @@ func waitForNewPod(ctx context.Context, cs clientset.Interface, namespace, deplo
 
 // ─── Timeline computation ───────────────────────────────────────────────────
 
+// isUnhealthyState returns true for any unhealthy TG state, including
+// "unhealthy.draining" which occurs when connection_termination.enabled=false
+// (CAPA fix / OCPBUGS-55626).
+func isUnhealthyState(state string) bool {
+	return strings.HasPrefix(state, "unhealthy")
+}
+
 // computeTimeline builds the full timing model for Scenario 5.5 from raw
 // client records and observer events. See transitionTimeline for the t-value
 // definitions aligned with the SPLAT-307 state machine.
@@ -692,7 +705,7 @@ func computeTimeline(
 		if e.Timestamp.Before(t5) {
 			continue
 		}
-		if e.State == "unhealthy" && e.PrevState == "healthy" {
+		if isUnhealthyState(e.State) && e.PrevState == "healthy" {
 			tl.T6 = e.Timestamp
 			break
 		}
@@ -760,7 +773,7 @@ func computeTimeline(
 		if e.Timestamp.Before(t71) {
 			continue
 		}
-		if e.State == "healthy" && (e.PrevState == "unhealthy" || e.PrevState == "initial") {
+		if e.State == "healthy" && (isUnhealthyState(e.PrevState) || e.PrevState == "initial") {
 			tl.T9 = e.Timestamp
 			break
 		}
@@ -787,7 +800,7 @@ func computeTimeline52(
 		if e.Timestamp.Before(t5) {
 			continue
 		}
-		if e.State == "unhealthy" && e.PrevState == "healthy" {
+		if isUnhealthyState(e.State) && e.PrevState == "healthy" {
 			tl.T6 = e.Timestamp
 			break
 		}
@@ -811,7 +824,7 @@ func computeTimeline52(
 		if e.Timestamp.Before(t8) {
 			continue
 		}
-		if e.State == "healthy" && e.PrevState == "unhealthy" {
+		if e.State == "healthy" && isUnhealthyState(e.PrevState) {
 			tl.T9 = e.Timestamp
 			break
 		}
@@ -908,7 +921,7 @@ func buildReport(
 	if shutdownDelay > 0 {
 		w("  Shutdown Delay: %s", shutdownDelay)
 	}
-	w("  Client Interval: %s", defaultClientInterval)
+	w("  Client Interval: %s (%d parallel workers)", defaultClientInterval, defaultClientWorkers)
 
 	// ── Service config ──
 	w("")
