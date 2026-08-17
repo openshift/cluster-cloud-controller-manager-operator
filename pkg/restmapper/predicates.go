@@ -41,6 +41,12 @@ func KubernetesPolicyGroup(group *metav1.APIGroup) bool {
 	return group.Name == "policy"
 }
 
+// KubernetesBatchGroup checks if APIGroup is the Kubernetes' "batch" group
+// Job and CronJob resources are sitting here.
+func KubernetesBatchGroup(group *metav1.APIGroup) bool {
+	return group.Name == "batch"
+}
+
 // Or combines passed predicate functions in a way to implement logical OR between them.
 func Or(predicates ...GroupFilterPredicate) GroupFilterPredicate {
 	return func(g *metav1.APIGroup) bool {
