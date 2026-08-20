@@ -108,6 +108,8 @@ spec:
         env:
         - name: RELEASE_VERSION
           value: "0.0.1-snapshot"
+        - name: OPERATOR_IMAGE
+          value: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
         resources:
           requests:
             cpu: 10m
