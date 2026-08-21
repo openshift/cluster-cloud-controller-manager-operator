@@ -232,6 +232,17 @@ rules:
       - list
       - patch
 
+  # For the operator to create (and never update) the one-shot node-label-sync Job.
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

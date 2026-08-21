@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -37,6 +38,7 @@ import (
 	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -99,6 +101,12 @@ func main() {
 
 	ctrl.SetLogger(klog.NewKlogr().WithName("CCCMOConfigSyncControllers"))
 
+	operatorImage := os.Getenv("OPERATOR_IMAGE")
+	if operatorImage == "" {
+		setupLog.Error(nil, "OPERATOR_IMAGE environment variable is required")
+		os.Exit(1)
+	}
+
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionDefaults(restConfig, configv1.LeaderElection{
 		Disable:       !leaderElectionConfig.LeaderElect,
@@ -114,7 +122,19 @@ func main() {
 		DefaultNamespaces: map[string]cache.Config{
 			*managedNamespace:                           {},
 			controllers.OpenshiftConfigNamespace:        {},
-			controllers.OpenshiftManagedConfigNamespace: {}},
+			controllers.OpenshiftManagedConfigNamespace: {},
+		},
+		// The node-label-sync Job only ever lives in the operator's own namespace. Without this
+		// override, the multi-namespace cache built from DefaultNamespaces above would otherwise
+		// try to list/watch Jobs in every one of those namespaces too, which the operator has no
+		// RBAC for.
+		ByObject: map[client.Object]cache.ByObject{
+			&batchv1.Job{}: {
+				Namespaces: map[string]cache.Config{
+					controllers.OperatorNamespace: {},
+				},
+			},
+		},
 	}
 
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
@@ -126,6 +146,7 @@ func main() {
 		MapperProvider: restmapper.NewPartialRestMapperProvider(
 			restmapper.Or(
 				restmapper.KubernetesCoreGroup,
+				restmapper.KubernetesBatchGroup,
 				restmapper.OpenshiftOperatorGroup,
 				restmapper.OpenshiftConfigGroup,
 			),
@@ -200,6 +221,17 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create Trusted CA sync controller", "controller", "ClusterOperator")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.NodeLabelSyncJobReconciler{
+		Client:            mgr.GetClient(),
+		Namespace:         controllers.OperatorNamespace,
+		Image:             operatorImage,
+		ReleaseVersion:    controllers.GetReleaseVersion(),
+		FeatureGateAccess: featureGateAccessor,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create node-label-sync Job controller", "controller", "NodeLabelSyncJob")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

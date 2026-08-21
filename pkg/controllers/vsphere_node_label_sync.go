@@ -23,9 +23,9 @@ import (
 // clusters can mix vSphere and bare-metal nodes, so each node's spec.providerID is checked to
 // confirm it is actually a vSphere node before labeling it.
 //
-// This is run to completion once by the node-label-sync-job Job that the CVO installs
-// (see manifests/0000_90_cloud-controller-manager-operator_00_job.yaml),
-// rather than as an ongoing in-process controller.
+// This is run to completion once by the node-label-sync-job Job, which the operator's own
+// NodeLabelSyncJobReconciler creates on demand (see node_label_sync_job_controller.go) rather
+// than as an ongoing in-process controller.
 func SyncVSphereNodeLabels(ctx context.Context, c client.Client) error {
 	infra := &configv1.Infrastructure{}
 	if err := c.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {

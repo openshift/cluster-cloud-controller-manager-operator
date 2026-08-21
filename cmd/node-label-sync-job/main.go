@@ -15,10 +15,10 @@ limitations under the License.
 */
 
 // Command node-label-sync-job runs to completion once, backfilling the
-// node.openshift.io/platform-type=vsphere label onto vSphere nodes that are missing it. It is
-// installed as a Kubernetes Job by the CVO (see
-// manifests/0000_90_cloud-controller-manager-operator_00_job.yaml) rather
-// than run as an ongoing in-process controller.
+// node.openshift.io/platform-type=vsphere label onto vSphere nodes that are missing it. The
+// operator's own NodeLabelSyncJobReconciler (see
+// pkg/controllers/node_label_sync_job_controller.go) creates this as a Kubernetes Job on demand,
+// rather than running it as an ongoing in-process controller.
 package main
 
 import (

@@ -5,6 +5,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -127,6 +128,28 @@ func ccmTrustedCABundleConfigMapPredicates(targetNamespace string) predicate.Fun
 		UpdateFunc:  func(e event.UpdateEvent) bool { return isTrustedCaConfigMap(e.ObjectNew) },
 		GenericFunc: func(e event.GenericEvent) bool { return isTrustedCaConfigMap(e.Object) },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return isTrustedCaConfigMap(e.Object) },
+	}
+}
+
+func toNodeLabelSyncJob(namespace string) func(context.Context, client.Object) []reconcile.Request {
+	return func(context.Context, client.Object) []reconcile.Request {
+		return []reconcile.Request{{
+			NamespacedName: client.ObjectKey{Name: nodeLabelSyncJobName, Namespace: namespace},
+		}}
+	}
+}
+
+func nodeLabelSyncJobPredicate(targetNamespace string) predicate.Funcs {
+	isNodeLabelSyncJob := func(obj runtime.Object) bool {
+		job, ok := obj.(*batchv1.Job)
+		return ok && job.GetNamespace() == targetNamespace && job.GetName() == nodeLabelSyncJobName
+	}
+
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return isNodeLabelSyncJob(e.Object) },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return isNodeLabelSyncJob(e.ObjectNew) },
+		GenericFunc: func(e event.GenericEvent) bool { return isNodeLabelSyncJob(e.Object) },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return isNodeLabelSyncJob(e.Object) },
 	}
 }
 
