@@ -425,7 +425,7 @@ var managedSgModeNLBTests = []loadBalancerTestCases{
 					framework.Logf("Waiting for ENIs to be detached from security group...")
 					gomega.Eventually(ctx, func() error {
 						return deleteSecurityGroup(ctx, cfg.byoSecurityGroupID)
-					}, 2*time.Minute, 5*time.Second).Should(gomega.Succeed(), "Failed to delete BYO security group")
+					}, 6*time.Minute, 10*time.Second).Should(gomega.Succeed(), "Failed to delete BYO security group")
 					framework.Logf("✓ Deleted BYO security group: %s", cfg.byoSecurityGroupID)
 				}
 			})
@@ -485,7 +485,7 @@ var managedSgModeNLBTests = []loadBalancerTestCases{
 					framework.Logf("Waiting for ENIs to be detached from security group...")
 					gomega.Eventually(ctx, func() error {
 						return deleteSecurityGroup(ctx, cfg.byoSecurityGroupID)
-					}, 2*time.Minute, 5*time.Second).Should(gomega.Succeed(), "Failed to delete BYO security group after waiting for ENI detachment")
+					}, 6*time.Minute, 10*time.Second).Should(gomega.Succeed(), "Failed to delete BYO security group after waiting for ENI detachment")
 					framework.Logf("✓ Deleted BYO security group: %s", cfg.byoSecurityGroupID)
 				}
 			})
@@ -567,7 +567,7 @@ var managedSgModeNLBTests = []loadBalancerTestCases{
 					framework.Logf("Waiting for ENIs to be detached from security group...")
 					gomega.Eventually(ctx, func() error {
 						return deleteSecurityGroup(ctx, cfg.byoSecurityGroupID)
-					}, 2*time.Minute, 5*time.Second).Should(gomega.Succeed(), "Failed to delete BYO security group after waiting for ENI detachment")
+					}, 6*time.Minute, 10*time.Second).Should(gomega.Succeed(), "Failed to delete BYO security group after waiting for ENI detachment")
 					framework.Logf("✓ Deleted BYO security group: %s", cfg.byoSecurityGroupID)
 				}
 			})
