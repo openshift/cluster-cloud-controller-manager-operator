@@ -7,17 +7,16 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/golangci/golangci-lint v1.62.2
 	github.com/onsi/ginkgo/v2 v2.25.1
-	github.com/onsi/gomega v1.38.1
-	github.com/openshift/api v0.0.0-20251015095338-264e80a2b6e7
-	github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235
+	github.com/onsi/gomega v1.38.2
+	github.com/openshift/api v0.0.0-20260923123118-eb96322bf522
+	github.com/openshift/client-go v0.0.0-20251205093018-96a6cbc1420c
 	github.com/openshift/cluster-api-actuator-pkg/testutils v0.0.0-20250122171707-86066d47a264
-	github.com/openshift/library-go v0.0.0-20251029104758-277736d6f195
+	github.com/openshift/library-go v0.0.0-20260923164615-b73b343a0b0b
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.7
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/ini.v1 v1.67.0
-	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.34.1
 	k8s.io/apiextensions-apiserver v0.34.1
 	k8s.io/apimachinery v0.34.1
@@ -279,6 +278,7 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.5.1 // indirect
 	k8s.io/apiserver v0.34.1 // indirect
@@ -292,3 +292,7 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 )
+
+replace github.com/openshift/api => github.com/vr4manta/api v0.0.0-20260911155742-70bf3908e3bb
+
+replace github.com/openshift/library-go => github.com/vr4manta/library-go v0.0.0-20260910194651-916192a04267
