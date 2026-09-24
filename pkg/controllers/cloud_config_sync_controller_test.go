@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/api/features"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,6 +32,27 @@ const (
 
 	defaultAzureConfig = `{"cloud":"AzurePublicCloud","tenantId":"0000000-0000-0000-0000-000000000000","Entries":null,"subscriptionId":"0000000-0000-0000-0000-000000000000","vmType":"standard","putVMSSVMBatchSize":0,"enableMigrateToIPBasedBackendPoolAPI":false,"clusterServiceLoadBalancerHealthProbeMode":"shared"}`
 	defaultAWSConfig   = `[Global]
+`
+	defaultVSphereINIConfig = `[Global]
+server = vcenter.example.com
+port = 443
+insecure-flag = true
+datacenters = dc1
+
+[VirtualCenter "vcenter.example.com"]
+datacenters = dc1
+`
+	defaultVSphereYAMLConfig = `global:
+  server: vcenter.example.com
+  port: 443
+  insecureFlag: true
+  datacenters:
+  - dc1
+vcenter:
+  vcenter.example.com:
+    server: vcenter.example.com
+    datacenters:
+    - dc1
 `
 )
 
@@ -594,5 +616,204 @@ var _ = Describe("Cloud config sync reconciler", func() {
 		Expect(cl.Create(ctx, infraResource)).To(Succeed())
 		_, err := reconciler.Reconcile(context.TODO(), ctrl.Request{})
 		Expect(err.Error()).Should(BeEquivalentTo("platformStatus is required"))
+	})
+})
+
+var _ = Describe("vSphere managed config sync", func() {
+	var reconciler *CloudConfigReconciler
+	ctx := context.Background()
+	targetNamespaceName := testManagedNamespace
+
+	BeforeEach(func() {
+		reconciler = &CloudConfigReconciler{
+			ClusterOperatorStatusClient: ClusterOperatorStatusClient{
+				Client:           cl,
+				Clock:            clocktesting.NewFakePassiveClock(time.Now()),
+				ManagedNamespace: targetNamespaceName,
+			},
+			Scheme:            scheme.Scheme,
+			FeatureGateAccess: featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil),
+		}
+	})
+
+	AfterEach(func() {
+		deleteOptions := &client.DeleteOptions{
+			GracePeriodSeconds: ptr.To[int64](0),
+		}
+
+		allCMs := &corev1.ConfigMapList{}
+		Expect(cl.List(ctx, allCMs, client.InNamespace(OpenshiftManagedConfigNamespace))).To(Succeed())
+		for _, cm := range allCMs.Items {
+			Expect(cl.Delete(ctx, cm.DeepCopy(), deleteOptions)).To(Succeed())
+			Eventually(func() error {
+				return cl.Get(ctx, client.ObjectKeyFromObject(cm.DeepCopy()), &corev1.ConfigMap{})
+			}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+		}
+	})
+
+	Context("syncManagedCloudConfig method", func() {
+		It("should create managed cloud config if it doesn't exist", func() {
+			sourceCM := &corev1.ConfigMap{
+				Data: map[string]string{
+					"cloud.conf": "global:\n  server: test\n",
+				},
+			}
+
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify the managed CM was created
+			managedCM := &corev1.ConfigMap{}
+			managedKey := client.ObjectKey{
+				Name:      managedCloudConfigMapName,
+				Namespace: OpenshiftManagedConfigNamespace,
+			}
+			Expect(cl.Get(ctx, managedKey, managedCM)).To(Succeed())
+			Expect(managedCM.Data["cloud.conf"]).To(Equal("global:\n  server: test\n"))
+		})
+
+		It("should update managed cloud config if it exists with different data", func() {
+			// Create initial managed CM
+			initialCM := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      managedCloudConfigMapName,
+					Namespace: OpenshiftManagedConfigNamespace,
+				},
+				Data: map[string]string{
+					"cloud.conf": "old config",
+				},
+			}
+			Expect(cl.Create(ctx, initialCM)).To(Succeed())
+
+			// Update with new source
+			sourceCM := &corev1.ConfigMap{
+				Data: map[string]string{
+					"cloud.conf": "new config",
+				},
+			}
+
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify the managed CM was updated
+			managedCM := &corev1.ConfigMap{}
+			managedKey := client.ObjectKey{
+				Name:      managedCloudConfigMapName,
+				Namespace: OpenshiftManagedConfigNamespace,
+			}
+			Expect(cl.Get(ctx, managedKey, managedCM)).To(Succeed())
+			Expect(managedCM.Data["cloud.conf"]).To(Equal("new config"))
+		})
+
+		It("should not update managed cloud config if data is identical", func() {
+			// Create managed CM
+			initialCM := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      managedCloudConfigMapName,
+					Namespace: OpenshiftManagedConfigNamespace,
+				},
+				Data: map[string]string{
+					"cloud.conf": "same config",
+				},
+			}
+			Expect(cl.Create(ctx, initialCM)).To(Succeed())
+
+			// Get the resource version
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(initialCM), initialCM)).To(Succeed())
+			originalResourceVersion := initialCM.ResourceVersion
+
+			// Try to sync with identical data
+			sourceCM := &corev1.ConfigMap{
+				Data: map[string]string{
+					"cloud.conf": "same config",
+				},
+			}
+
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify the resource version didn't change (no update)
+			updatedCM := &corev1.ConfigMap{}
+			Expect(cl.Get(ctx, client.ObjectKeyFromObject(initialCM), updatedCM)).To(Succeed())
+			Expect(updatedCM.ResourceVersion).To(Equal(originalResourceVersion))
+		})
+
+		It("should return error if source configmap is nil", func() {
+			err := reconciler.syncManagedCloudConfig(ctx, nil)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("source configmap is nil"))
+		})
+
+		It("should return error if source configmap has no data", func() {
+			sourceCM := &corev1.ConfigMap{}
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("has no data"))
+		})
+
+		It("should return error if source configmap missing cloud.conf key", func() {
+			sourceCM := &corev1.ConfigMap{
+				Data: map[string]string{
+					"wrong-key": "some data",
+				},
+			}
+			err := reconciler.syncManagedCloudConfig(ctx, sourceCM)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("missing required key"))
+		})
+	})
+
+	Context("shouldManageManagedConfigMap function", func() {
+		It("should return true for vSphere when feature gate is enabled", func() {
+			// Create feature gate with VSphereMultiVCenterDay2 enabled
+			featuresEnabled := featuregates.NewHardcodedFeatureGateAccessForTesting(
+				[]configv1.FeatureGateName{features.FeatureGateVSphereMultiVCenterDay2},
+				nil,
+				nil,
+				nil,
+			)
+			features, err := featuresEnabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.VSpherePlatformType, features)).To(BeTrue())
+		})
+
+		It("should return false for vSphere when feature gate is disabled", func() {
+			// Create feature gate without VSphereMultiVCenterDay2
+			featuresDisabled := featuregates.NewHardcodedFeatureGateAccessForTesting(
+				nil,
+				[]configv1.FeatureGateName{features.FeatureGateVSphereMultiVCenterDay2},
+				nil,
+				nil,
+			)
+			features, err := featuresDisabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.VSpherePlatformType, features)).To(BeFalse())
+		})
+
+		It("should return false for AWS (not yet migrated)", func() {
+			featuresEnabled := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil)
+			features, err := featuresEnabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.AWSPlatformType, features)).To(BeFalse())
+		})
+
+		It("should return false for Azure (not yet migrated)", func() {
+			featuresEnabled := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil)
+			features, err := featuresEnabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.AzurePlatformType, features)).To(BeFalse())
+		})
+
+		It("should return false for GCP", func() {
+			featuresEnabled := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, nil, nil)
+			features, err := featuresEnabled.CurrentFeatureGates()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(shouldManageManagedConfigMap(configv1.GCPPlatformType, features)).To(BeFalse())
+		})
 	})
 })
