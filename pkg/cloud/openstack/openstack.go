@@ -14,6 +14,7 @@ import (
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 const providerName = "openstack"
@@ -142,7 +143,7 @@ func NewProviderAssets(config config.OperatorConfig) (common.CloudProviderAssets
 // modifies it to be compatible with the external cloud provider. It returns
 // an error if the platform is not OpenStackPlatformType or if any errors are
 // encountered while attempting to rework the configuration.
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error) {
 	if infra.Status.PlatformStatus == nil ||
 		infra.Status.PlatformStatus.Type != configv1.OpenStackPlatformType {
 		return "", fmt.Errorf("invalid platform, expected to be %s", configv1.OpenStackPlatformType)

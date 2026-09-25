@@ -20,6 +20,7 @@ import (
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/common"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 const providerName = "azure"
@@ -136,7 +137,7 @@ func IsAzure(infra *configv1.Infrastructure) bool {
 	return false
 }
 
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error) {
 	if !IsAzure(infra) {
 		return "", fmt.Errorf("invalid platform, expected CloudName to be %s", configv1.AzurePublicCloud)
 	}
