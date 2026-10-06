@@ -7,7 +7,8 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"k8s.io/utils/net"
 
-	ccmConfig "github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud/vsphere/vsphere_cloud_config"
+	ccmConfig "github.com/openshift/library-go/pkg/cloudprovider/vsphere"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 // Well-known OCP-specific vSphere tags. These values are going to the "labels" sections in CCM cloud-config.
@@ -27,7 +28,7 @@ const (
 // Currently, CloudConfigTransformer is responsible to populate vcenters, labels, and node networking parameters from
 // the Infrastructure resource.
 // Also, this function converts legacy deprecated INI configuration format to a YAML-based one.
-func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network) (string, error) {
+func CloudConfigTransformer(source string, infra *configv1.Infrastructure, network *configv1.Network, features featuregates.FeatureGate) (string, error) {
 	if infra.Status.PlatformStatus == nil ||
 		infra.Status.PlatformStatus.Type != configv1.VSpherePlatformType {
 		return "", fmt.Errorf("invalid platform, expected to be %s", configv1.VSpherePlatformType)
@@ -51,6 +52,10 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 		// labels should only be applied if length of failuredomains is
 		// greater than one so existing single (or non-zonal) installs function.
 		if len(infra.Spec.PlatformSpec.VSphere.FailureDomains) > 1 {
+			// Initialize Labels if it's nil (happens when the input config doesn't have a labels: section)
+			if cpiCfg.Labels == nil {
+				cpiCfg.Labels = &ccmConfig.Labels{}
+			}
 			cpiCfg.Labels.Zone = zoneLabelValue
 			cpiCfg.Labels.Region = regionLabelValue
 		}
@@ -72,6 +77,9 @@ func setNodes(cfg *ccmConfig.CPIConfig, nodeNetworking *configv1.VSpherePlatform
 
 // setVirtualCenters sets vcenter server sections according passed VSpherePlatformSpec
 func setVirtualCenters(cfg *ccmConfig.CPIConfig, vSphereSpec *configv1.VSpherePlatformSpec) {
+	// Clear existing vcenters to ensure removed vcenters are not carried over
+	cfg.Vcenter = make(map[string]*ccmConfig.VirtualCenterConfig)
+
 	for _, vcenter := range vSphereSpec.VCenters {
 		cfg.Vcenter[vcenter.Server] = &ccmConfig.VirtualCenterConfig{
 			VCenterIP:   vcenter.Server,
