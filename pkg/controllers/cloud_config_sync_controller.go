@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/api/features"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/cloud"
@@ -30,6 +31,48 @@ const (
 	cloudConfigControllerAvailableCondition = "CloudConfigControllerAvailable"
 	cloudConfigControllerDegradedCondition  = "CloudConfigControllerDegraded"
 )
+
+// shouldManageManagedConfigMap returns true if CCCMO should manage the
+// openshift-config-managed/kube-cloud-config ConfigMap for the given platform.
+// This indicates ownership has been migrated from CCO to CCCMO.
+//
+// For vSphere, this requires the VSphereMultiVCenterDay2 feature gate to be enabled.
+func shouldManageManagedConfigMap(platformType configv1.PlatformType, featureGates featuregates.FeatureGate) bool {
+	switch platformType {
+	case configv1.VSpherePlatformType:
+		// Only manage the configmap if the feature gate is enabled
+		return featureGates.Enabled(features.FeatureGateVSphereMultiVCenterDay2)
+	// Future: Add other platforms as they migrate from CCO
+	// case configv1.AWSPlatformType:
+	//     return true
+	// case configv1.AzurePlatformType:
+	//     return true
+	default:
+		return false
+	}
+}
+
+// getMinimalConfigForPlatform returns a minimal valid config for platforms whose
+// CloudConfigTransformer requires non-empty input. For platforms that accept empty
+// input, this returns an empty string.
+// The returned config will be populated by the transformer from the Infrastructure object.
+func getMinimalConfigForPlatform(platformType configv1.PlatformType) string {
+	switch platformType {
+	case configv1.VSpherePlatformType:
+		// vSphere's ReadConfig explicitly rejects empty input.
+		// Provide a minimal valid YAML that satisfies the parser.
+		// The transformer will populate this from Infrastructure.Spec.PlatformSpec.VSphere
+		return "global: {}\nvcenter: {}\n"
+	// Future: Add other platforms as they migrate from CCO and require non-empty config
+	// case configv1.AWSPlatformType:
+	//     return "<minimal AWS config>"
+	// case configv1.AzurePlatformType:
+	//     return "<minimal Azure config>"
+	default:
+		// For platforms that accept empty config, return empty string
+		return ""
+	}
+}
 
 type CloudConfigReconciler struct {
 	ClusterOperatorStatusClient
@@ -72,6 +115,24 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	// Check if FeatureGateAccess is configured (needed early for transformer)
+	if r.FeatureGateAccess == nil {
+		klog.Errorf("FeatureGateAccess is not configured")
+		if err := r.setDegradedCondition(ctx); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+		}
+		return ctrl.Result{}, fmt.Errorf("FeatureGateAccess is not configured")
+	}
+
+	features, err := r.FeatureGateAccess.CurrentFeatureGates()
+	if err != nil {
+		klog.Errorf("unable to get feature gates: %v", err)
+		if errD := r.setDegradedCondition(ctx); errD != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", errD)
+		}
+		return ctrl.Result{}, err
+	}
+
 	cloudConfigTransformerFn, needsManagedConfigLookup, err := cloud.GetCloudConfigTransformer(infra.Status.PlatformStatus)
 	if err != nil {
 		klog.Errorf("unable to get cloud config transformer function; unsupported platform")
@@ -81,6 +142,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	platformType := infra.Status.PlatformStatus.Type
 	sourceCM := &corev1.ConfigMap{}
 	managedConfigFound := false
 
@@ -110,20 +172,29 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	// Only look for an unmanaged config if the managed one isn't found and a name was specified.
+	// Fallback: Look for config in openshift-config namespace if not found in managed namespace
+	// For platforms we manage (e.g., vSphere), we'll use this as the source to populate openshift-config-managed
 	if !managedConfigFound && infra.Spec.CloudConfig.Name != "" {
 		openshiftUnmanagedCMKey := client.ObjectKey{
 			Name:      infra.Spec.CloudConfig.Name,
 			Namespace: OpenshiftConfigNamespace,
 		}
 		if err := r.Get(ctx, openshiftUnmanagedCMKey, sourceCM); errors.IsNotFound(err) {
-			klog.Warningf("managed cloud-config is not found, falling back to default cloud config.")
+			klog.Warningf("cloud-config not found in either openshift-config-managed or openshift-config namespace")
+			// For platforms we manage, create a minimal valid config that will be populated by the transformer
+			if shouldManageManagedConfigMap(platformType, features) {
+				klog.Infof("Initializing minimal config for platform %s", platformType)
+				minimalConfig := getMinimalConfigForPlatform(platformType)
+				sourceCM.Data = map[string]string{defaultConfigKey: minimalConfig}
+			}
 		} else if err != nil {
 			klog.Errorf("unable to get cloud-config for sync: %v", err)
 			if err := r.setDegradedCondition(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
 			}
 			return ctrl.Result{}, err
+		} else {
+			klog.V(3).Infof("Found config in openshift-config namespace for platform %s", platformType)
 		}
 	}
 
@@ -135,24 +206,7 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Check if FeatureGateAccess is configured
-	if r.FeatureGateAccess == nil {
-		klog.Errorf("FeatureGateAccess is not configured")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, fmt.Errorf("FeatureGateAccess is not configured")
-	}
-
-	features, err := r.FeatureGateAccess.CurrentFeatureGates()
-	if err != nil {
-		klog.Errorf("unable to get feature gates: %v", err)
-		if errD := r.setDegradedCondition(ctx); errD != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", errD)
-		}
-		return ctrl.Result{}, err
-	}
-
+	// Apply transformer if needed
 	if cloudConfigTransformerFn != nil {
 		// We ignore stuff in sourceCM.BinaryData. This isn't allowed to
 		// contain any key that overlaps with those found in sourceCM.Data and
@@ -167,31 +221,20 @@ func (r *CloudConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		sourceCM.Data[defaultConfigKey] = output
 	}
 
-	targetCM := &corev1.ConfigMap{}
-	targetConfigMapKey := client.ObjectKey{
-		Namespace: r.ManagedNamespace,
-		Name:      syncedCloudConfigMapName,
-	}
-
-	// If the config does not exist, it will be created later, so we can ignore a Not Found error
-	if err := r.Get(ctx, targetConfigMapKey, targetCM); err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("unable to get target cloud-config for sync")
-		if err := r.setDegradedCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+	// For platforms managed by CCCMO, update openshift-config-managed/kube-cloud-config
+	// with the transformed config so other operators can read from a consistent location
+	if shouldManageManagedConfigMap(platformType, features) {
+		if err := r.syncManagedCloudConfig(ctx, sourceCM); err != nil {
+			klog.Errorf("failed to sync managed cloud config: %v", err)
+			if err := r.setDegradedCondition(ctx); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
+			}
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
 	}
 
-	// Note that the source config map is actually a *transformed* source config map
-	if r.isCloudConfigEqual(sourceCM, targetCM) {
-		klog.V(1).Infof("source and target cloud-config content are equal, no sync needed")
-		if err := r.setAvailableCondition(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
-		}
-		return ctrl.Result{}, nil
-	}
-
-	if err := r.syncCloudConfigData(ctx, sourceCM, targetCM); err != nil {
+	// Sync the transformed config to the target configmap for CCM consumption
+	if err := r.syncCloudConfigData(ctx, sourceCM); err != nil {
 		klog.Errorf("unable to sync cloud config")
 		if err := r.setDegradedCondition(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set conditions for cloud config controller: %v", err)
@@ -264,28 +307,95 @@ func (r *CloudConfigReconciler) prepareSourceConfigMap(source *corev1.ConfigMap,
 	return cloudConfCm, nil
 }
 
+// isCloudConfigEqual compares two ConfigMaps to determine if their content is equal.
+// It performs a deep comparison of the Data, BinaryData, and Immutable fields.
+//
+// This function is used to avoid unnecessary updates when the cloud configuration
+// content hasn't changed. Metadata fields (labels, annotations, resourceVersion, etc.)
+// are intentionally ignored as they don't affect the actual configuration data.
+//
+// Returns true if both ConfigMaps have identical Data, BinaryData, and Immutable values.
 func (r *CloudConfigReconciler) isCloudConfigEqual(source *corev1.ConfigMap, target *corev1.ConfigMap) bool {
 	return source.Immutable == target.Immutable &&
 		reflect.DeepEqual(source.Data, target.Data) && reflect.DeepEqual(source.BinaryData, target.BinaryData)
 }
 
-func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source *corev1.ConfigMap, target *corev1.ConfigMap) error {
-	target.SetName(syncedCloudConfigMapName)
-	target.SetNamespace(r.ManagedNamespace)
-	target.Data = source.Data
-	target.BinaryData = source.BinaryData
-	target.Immutable = source.Immutable
-
-	// check if target config exists, create if not
-	err := r.Get(ctx, client.ObjectKeyFromObject(target), &corev1.ConfigMap{})
-
-	if err != nil && errors.IsNotFound(err) {
-		return r.Create(ctx, target)
-	} else if err != nil {
-		return err
+// syncConfigMapToTarget is a generic helper that syncs a source ConfigMap to a target namespace/name.
+// It handles create-or-update logic with optional equality checking to avoid unnecessary updates.
+func (r *CloudConfigReconciler) syncConfigMapToTarget(ctx context.Context, source *corev1.ConfigMap, targetName, targetNamespace string, checkEquality bool) error {
+	if source == nil || source.Data == nil {
+		return fmt.Errorf("source configmap is nil or has no data")
 	}
 
-	return r.Update(ctx, target)
+	targetCM := &corev1.ConfigMap{}
+	targetKey := client.ObjectKey{
+		Name:      targetName,
+		Namespace: targetNamespace,
+	}
+
+	// Check if target exists
+	err := r.Get(ctx, targetKey, targetCM)
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to get target configmap %s/%s: %w", targetNamespace, targetName, err)
+	}
+
+	targetExists := err == nil
+
+	// Check if update is needed (if requested)
+	if targetExists && checkEquality {
+		if r.isCloudConfigEqual(source, targetCM) {
+			klog.V(3).Infof("Target configmap %s/%s is already up to date", targetNamespace, targetName)
+			return nil
+		}
+	}
+
+	// Prepare the target configmap
+	targetCM.SetName(targetName)
+	targetCM.SetNamespace(targetNamespace)
+	targetCM.Data = source.Data
+	targetCM.BinaryData = source.BinaryData
+	targetCM.Immutable = source.Immutable
+
+	// Create or update
+	if !targetExists {
+		klog.Infof("Creating configmap %s/%s", targetNamespace, targetName)
+		if err := r.Create(ctx, targetCM); err != nil {
+			return fmt.Errorf("failed to create configmap %s/%s: %w", targetNamespace, targetName, err)
+		}
+		return nil
+	}
+
+	klog.V(3).Infof("Updating configmap %s/%s", targetNamespace, targetName)
+	if err := r.Update(ctx, targetCM); err != nil {
+		return fmt.Errorf("failed to update configmap %s/%s: %w", targetNamespace, targetName, err)
+	}
+	return nil
+}
+
+func (r *CloudConfigReconciler) syncCloudConfigData(ctx context.Context, source *corev1.ConfigMap) error {
+	// Use the generic helper, no equality check (always update for target CM)
+	return r.syncConfigMapToTarget(ctx, source, syncedCloudConfigMapName, r.ManagedNamespace, false)
+}
+
+// syncManagedCloudConfig updates openshift-config-managed/kube-cloud-config with the
+// transformed cloud config. This makes the transformed config available to other operators
+// while maintaining CCCMO as the owner of this ConfigMap (migrated from CCO).
+//
+// This function handles the migration of ownership from CCO to CCCMO by:
+//   - Creating the ConfigMap if it doesn't exist (initial migration)
+//   - Updating it with transformed config from user source (openshift-config)
+//   - Making it the single source of truth for other operators
+func (r *CloudConfigReconciler) syncManagedCloudConfig(ctx context.Context, source *corev1.ConfigMap) error {
+	// Validate source has required key
+	if source != nil && source.Data != nil {
+		if _, ok := source.Data[defaultConfigKey]; !ok {
+			return fmt.Errorf("source configmap missing required key: %s", defaultConfigKey)
+		}
+	}
+
+	// Use the generic helper with equality check (avoid unnecessary updates)
+	// For managed config, we want to check equality to reduce churn
+	return r.syncConfigMapToTarget(ctx, source, managedCloudConfigMapName, OpenshiftManagedConfigNamespace, true)
 }
 
 // SetupWithManager sets up the controller with the Manager.
