@@ -89,6 +89,9 @@ spec:
               exec /bin/azure-cloud-node-manager \
                 --node-name=$(NODE_NAME) \
                 --wait-routes=false \
+                {{- if .nodeIPFamilies }}
+                --node-ip-families={{ .nodeIPFamilies }} \
+                {{- end }}
                 --enable-deprecated-beta-topology-labels
           ports:
           - containerPort: 10263

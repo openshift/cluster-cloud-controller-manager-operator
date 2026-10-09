@@ -17,4 +17,6 @@ const (
 	nodeLabelSyncJobName = "node-label-sync"
 
 	proxyResourceName = "cluster"
+
+	networkResourceName = "cluster"
 )
