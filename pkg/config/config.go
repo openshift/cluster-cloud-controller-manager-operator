@@ -42,8 +42,11 @@ type OperatorConfig struct {
 	InfrastructureName string
 	PlatformStatus     *configv1.PlatformStatus
 	ClusterProxy       *configv1.Proxy
-	FeatureGates       string
-	OCPFeatureGates    featuregates.FeatureGate
+	// Network is the cluster network config. Providers use it to derive the
+	// cluster's IP families and their ordering from the service network.
+	Network         *configv1.Network
+	FeatureGates    string
+	OCPFeatureGates featuregates.FeatureGate
 	// TLSCipherSuites is a comma-separated list of TLS cipher suites for CCM --tls-cipher-suites flag
 	TLSCipherSuites string
 	// TLSMinVersion is the minimum TLS version for CCM --tls-min-version flag
@@ -86,7 +89,7 @@ func getImagesFromJSONFile(filePath string) (ImagesReference, error) {
 }
 
 // ComposeConfig creates a Config for operator
-func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess, tlsConfig func(*tls.Config)) (OperatorConfig, error) {
+func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *configv1.Proxy, network *configv1.Network, imagesFile, managedNamespace string, featureGateAccessor featuregates.FeatureGateAccess, tlsConfig func(*tls.Config)) (OperatorConfig, error) {
 	err := checkInfrastructureResource(infrastructure)
 	if err != nil {
 		klog.Errorf("Unable to get platform from infrastructure: %s", err)
@@ -130,6 +133,7 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 	config := OperatorConfig{
 		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
 		ClusterProxy:       clusterProxy,
+		Network:            network,
 		ManagedNamespace:   managedNamespace,
 		ImagesReference:    images,
 		InfrastructureName: infrastructure.Status.InfrastructureName,
