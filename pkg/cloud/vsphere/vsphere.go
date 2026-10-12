@@ -59,6 +59,7 @@ var templateValuesValidationMap = map[string]interface{}{
 	"featureGates":               "type(string)",
 	"additionalLabels":           "type(string)",
 	"tlsCipherSuites":            "type(string)",
+	"tlsCurvePreferences":        "type(string)",
 	"tlsMinVersion":              "type(string)",
 }
 
@@ -87,6 +88,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 		"featureGates":               operatorConfig.FeatureGates,
 		"additionalLabels":           additionalLabels,
 		"tlsCipherSuites":            operatorConfig.TLSCipherSuites,
+		"tlsCurvePreferences":        operatorConfig.TLSCurvePreferencesFor(config.VSphereCCM),
 		"tlsMinVersion":              operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)

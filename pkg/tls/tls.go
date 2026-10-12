@@ -48,9 +48,9 @@ type TLSConfigResult struct {
 // take precedence over the cluster-wide TLS profile. When not set, the profile
 // from apiservers.config.openshift.io/cluster is fetched and applied if the
 // adherence policy requires it.
-func ResolveTLSConfig(ctx context.Context, restConfig *rest.Config, tlsMinVersion string, tlsCipherSuites []string) (TLSConfigResult, error) {
-	if tlsMinVersion != "" || len(tlsCipherSuites) > 0 {
-		return resolveTLSConfigFromFlags(tlsMinVersion, tlsCipherSuites)
+func ResolveTLSConfig(ctx context.Context, restConfig *rest.Config, tlsMinVersion string, tlsCipherSuites []string, tlsCurvePreferences []int32) (TLSConfigResult, error) {
+	if HasTLSOverrides(tlsMinVersion, tlsCipherSuites, tlsCurvePreferences) {
+		return resolveTLSConfigFromFlags(tlsMinVersion, tlsCipherSuites, tlsCurvePreferences)
 	}
 
 	return resolveClusterTLSConfig(ctx, restConfig)
@@ -58,7 +58,7 @@ func ResolveTLSConfig(ctx context.Context, restConfig *rest.Config, tlsMinVersio
 
 // resolveTLSConfigFromFlags builds a TLS configuration from CLI flag values,
 // bypassing the cluster-wide TLS profile.
-func resolveTLSConfigFromFlags(tlsMinVersion string, tlsCipherSuites []string) (TLSConfigResult, error) {
+func resolveTLSConfigFromFlags(tlsMinVersion string, tlsCipherSuites []string, tlsCurvePreferences []int32) (TLSConfigResult, error) {
 	klog.Info("TLS configuration overridden via CLI flags, skipping honoring the cluster-wide TLS profile")
 
 	minVersion, err := cliflag.TLSVersion(tlsMinVersion)
@@ -71,8 +71,16 @@ func resolveTLSConfigFromFlags(tlsMinVersion string, tlsCipherSuites []string) (
 		return TLSConfigResult{}, fmt.Errorf("invalid --tls-cipher-suites value: %w", err)
 	}
 
+	curvePreferences, err := cliflag.TLSCurvePreferences(tlsCurvePreferences)
+	if err != nil {
+		return TLSConfigResult{}, fmt.Errorf("invalid --tls-curve-preferences value: %w", err)
+	}
+
 	return TLSConfigResult{
 		TLSConfig: func(cfg *tls.Config) {
+			if len(curvePreferences) > 0 {
+				cfg.CurvePreferences = curvePreferences
+			}
 			cfg.MinVersion = minVersion
 			// Only set CipherSuites when MinVersion is below TLS 1.3, as Go's TLS 1.3 implementation
 			// does not allow configuring cipher suites - all TLS 1.3 ciphers are always enabled.
@@ -100,6 +108,10 @@ func resolveClusterTLSConfig(ctx context.Context, restConfig *rest.Config) (TLSC
 		return TLSConfigResult{}, fmt.Errorf("unable to create Kubernetes client: %w", err)
 	}
 
+	return resolveTLSConfigFromClient(ctx, k8sClient)
+}
+
+func resolveTLSConfigFromClient(ctx context.Context, k8sClient client.Client) (TLSConfigResult, error) {
 	tlsAdherencePolicy, err := utiltls.FetchAPIServerTLSAdherencePolicy(ctx, k8sClient)
 	if err != nil {
 		klog.Errorf("unable to get TLS adherence policy from API server: %v", err)
@@ -119,16 +131,16 @@ func resolveClusterTLSConfig(ctx context.Context, restConfig *rest.Config) (TLSC
 	var tlsConfig func(*tls.Config)
 
 	if libgocrypto.ShouldHonorClusterTLSProfile(tlsAdherencePolicy) {
-		profileTLSConfig, unsupportedCiphers := utiltls.NewTLSConfigFromProfile(tlsProfileSpec)
-		if len(unsupportedCiphers) > 0 {
-			klog.Infof("TLS configuration contains unsupported ciphers that will be ignored: %v", unsupportedCiphers)
+		profileTLSConfig, unsupportedValues := utiltls.NewTLSConfigFromProfile(tlsProfileSpec)
+		if len(unsupportedValues) > 0 {
+			klog.Infof("TLS configuration contains unsupported ciphers or groups that will be ignored: %v", unsupportedValues)
 		}
 
 		tlsConfig = profileTLSConfig
 	} else {
-		defaultTLSConfig, unsupportedCiphers := utiltls.NewTLSConfigFromProfile(*configv1.TLSProfiles[libgocrypto.DefaultTLSProfileType])
-		if len(unsupportedCiphers) > 0 {
-			klog.Infof("TLS configuration contains unsupported ciphers that will be ignored: %v", unsupportedCiphers)
+		defaultTLSConfig, unsupportedValues := utiltls.NewTLSConfigFromProfile(*configv1.TLSProfiles[libgocrypto.DefaultTLSProfileType])
+		if len(unsupportedValues) > 0 {
+			klog.Infof("TLS configuration contains unsupported ciphers or groups that will be ignored: %v", unsupportedValues)
 		}
 
 		tlsConfig = defaultTLSConfig
@@ -139,4 +151,8 @@ func resolveClusterTLSConfig(ctx context.Context, restConfig *rest.Config) (TLSC
 		TLSAdherencePolicy: tlsAdherencePolicy,
 		TLSProfileSpec:     tlsProfileSpec,
 	}, nil
+}
+
+func HasTLSOverrides(tlsMinVersion string, tlsCipherSuites []string, tlsCurvePreferences []int32) bool {
+	return tlsMinVersion != "" || len(tlsCipherSuites) > 0 || len(tlsCurvePreferences) > 0
 }

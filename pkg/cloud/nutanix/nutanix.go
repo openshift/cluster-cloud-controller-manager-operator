@@ -43,6 +43,7 @@ var templateValuesValidationMap = map[string]interface{}{
 	"globalCredsSecretName":      "required,type(string)",
 	"cloudproviderName":          "required,type(string)",
 	"tlsCipherSuites":            "type(string)",
+	"tlsCurvePreferences":        "type(string)",
 	"tlsMinVersion":              "type(string)",
 }
 
@@ -63,6 +64,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 		"globalCredsSecretName":      globalCredsSecretName,
 		"cloudproviderName":          operatorConfig.GetPlatformNameString(),
 		"tlsCipherSuites":            operatorConfig.TLSCipherSuites,
+		"tlsCurvePreferences":        operatorConfig.TLSCurvePreferencesFor(config.NutanixCCM),
 		"tlsMinVersion":              operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
