@@ -78,6 +78,15 @@ spec:
                 source /etc/kubernetes/apiserver-url.env
               fi
               exec /bin/azure-cloud-node-manager \
+                {{- if .tlsMinVersion }}
+                --tls-min-version={{ .tlsMinVersion }} \
+                {{- end }}
+                {{- if .tlsCipherSuites }}
+                --tls-cipher-suites={{ .tlsCipherSuites }} \
+                {{- end }}
+                {{- if .nodeManagerTLSCurvePreferences }}
+                --tls-curve-preferences={{ .nodeManagerTLSCurvePreferences }} \
+                {{- end }}
                 --node-name=$(NODE_NAME) \
                 --wait-routes=false \
                 --use-instance-metadata=false \

@@ -27,10 +27,11 @@ type imagesReference struct {
 }
 
 var templateValuesValidationMap = map[string]interface{}{
-	"images":            "required",
-	"cloudproviderName": "required,type(string)",
-	"tlsCipherSuites":   "type(string)",
-	"tlsMinVersion":     "type(string)",
+	"images":              "required",
+	"cloudproviderName":   "required,type(string)",
+	"tlsCipherSuites":     "type(string)",
+	"tlsCurvePreferences": "type(string)",
+	"tlsMinVersion":       "type(string)",
 }
 
 type powerVSAssets struct {
@@ -44,10 +45,11 @@ func (assets *powerVSAssets) GetRenderedResources() []client.Object {
 
 func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
 	values := common.TemplateValues{
-		"images":            images,
-		"cloudproviderName": operatorConfig.GetPlatformNameString(),
-		"tlsCipherSuites":   operatorConfig.TLSCipherSuites,
-		"tlsMinVersion":     operatorConfig.TLSMinVersion,
+		"images":              images,
+		"cloudproviderName":   operatorConfig.GetPlatformNameString(),
+		"tlsCipherSuites":     operatorConfig.TLSCipherSuites,
+		"tlsCurvePreferences": operatorConfig.TLSCurvePreferencesFor(config.PowerVSCCM),
+		"tlsMinVersion":       operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
