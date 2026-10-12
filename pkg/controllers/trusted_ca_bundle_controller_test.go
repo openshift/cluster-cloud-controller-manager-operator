@@ -478,6 +478,19 @@ var _ = Describe("Trusted CA bundle reconciler unit tests", func() {
 		reconciler.trustBundlePath = systemCAValid
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{})
 		Expect(err).NotTo(HaveOccurred(), "full successful reconcile should not error")
+		trustedCA := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      trustedCAConfigMapName,
+				Namespace: testManagedNamespace,
+			},
+		}
+		DeferCleanup(func() {
+			Expect(cl.Delete(ctx, trustedCA)).To(Succeed())
+			Eventually(func() error {
+				return cl.Get(ctx, client.ObjectKeyFromObject(trustedCA), &corev1.ConfigMap{})
+			}).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
+			By("Confirmed generated trusted-CA ConfigMap deletion")
+		})
 		Expect(reconciler.failures.consecutiveFailureSince).To(BeNil(),
 			"full successful reconcile should clear the failure window")
 	})
