@@ -32,8 +32,8 @@ plain X25519 is filtered at handshake time under Go 1.26 FIPS policy.
 The compile-time gates in `pkg/config/tls_capabilities.go` are based on the
 amd64 payload `5.1.0-0.nightly-2026-10-07-133149`, digest
 `sha256:557b844bec22a806ea47b62e1ae0f62f8fc4055c816ab65d0bdb532fdcd2ac42`.
-Its [public release page](https://amd64.ocp.releases.ci.openshift.org/releasestream/5.1.0-0.nightly/release/5.1.0-0.nightly-2026-10-07-133149)
-maps exact component digests to source commits. Module and flag-registration
+Public release metadata for this snapshot maps exact component digests to
+source commits. Module and flag-registration
 source at those commits supports the decisions below. This is source evidence:
 no image binaries, startup, rollout, or handshake checks were executed in this
 audit. It is not a release acceptance recommendation.
