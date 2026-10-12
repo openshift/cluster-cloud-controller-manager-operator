@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/cluster-cloud-controller-manager-operator/pkg/config"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 )
 
 const (
@@ -172,7 +173,7 @@ use-octavia            = false
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
-			actual, err := CloudConfigTransformer(tc.source, tc.infra, tc.network)
+			actual, err := CloudConfigTransformer(tc.source, tc.infra, tc.network, featuregates.NewFeatureGate(nil, nil))
 			if tc.errMsg != "" {
 				g.Expect(err).Should(MatchError(tc.errMsg))
 				return
