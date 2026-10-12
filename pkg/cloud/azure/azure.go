@@ -73,6 +73,7 @@ var templateValuesValidationMap = map[string]interface{}{
 	"cloudproviderName":  "required,notnull,type(string)",
 	"tlsCipherSuites":    "type(string)",
 	"tlsMinVersion":      "type(string)",
+	"nodeIPFamilies":     "type(string)",
 }
 
 type azureAssets struct {
@@ -84,6 +85,30 @@ func (assets *azureAssets) GetRenderedResources() []client.Object {
 	return assets.renderedResources
 }
 
+// nodeIPFamilies renders the --node-ip-families argument for the cloud node
+// manager from the cluster's configured IP family.
+//
+// The cloud node manager, not kubelet, is the author of a node's
+// status.addresses on Azure, and it reports IPv4 first unless told otherwise.
+// The first family listed becomes the node's primary address and therefore the
+// family of its status.hostIP, which must agree with the primary family of the
+// service CIDR. An empty string leaves the cloud node manager's default in
+// place and omits the argument entirely.
+func nodeIPFamilies(platformStatus *configv1.PlatformStatus) string {
+	if platformStatus == nil || platformStatus.Azure == nil {
+		return ""
+	}
+
+	switch platformStatus.Azure.IPFamily {
+	case configv1.DualStackIPv6Primary:
+		return "ipv6,ipv4"
+	case configv1.DualStackIPv4Primary:
+		return "ipv4,ipv6"
+	default:
+		return ""
+	}
+}
+
 func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
 	values := common.TemplateValues{
 		"images":             images,
@@ -91,6 +116,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 		"cloudproviderName":  operatorConfig.GetPlatformNameString(),
 		"tlsCipherSuites":    operatorConfig.TLSCipherSuites,
 		"tlsMinVersion":      operatorConfig.TLSMinVersion,
+		"nodeIPFamilies":     nodeIPFamilies(operatorConfig.PlatformStatus),
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
