@@ -38,11 +38,13 @@ type imagesReference struct {
 }
 
 var templateValuesValidationMap = map[string]interface{}{
-	"images":             "required",
-	"infrastructureName": "required,type(string)",
-	"cloudproviderName":  "required,type(string)",
-	"tlsCipherSuites":    "type(string)",
-	"tlsMinVersion":      "type(string)",
+	"images":                         "required",
+	"infrastructureName":             "required,type(string)",
+	"cloudproviderName":              "required,type(string)",
+	"tlsCipherSuites":                "type(string)",
+	"nodeManagerTLSCurvePreferences": "type(string)",
+	"tlsCurvePreferences":            "type(string)",
+	"tlsMinVersion":                  "type(string)",
 }
 
 type azurestackAssets struct {
@@ -56,11 +58,13 @@ func (assets *azurestackAssets) GetRenderedResources() []client.Object {
 
 func getTemplateValues(images imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
 	values := common.TemplateValues{
-		"images":             images,
-		"infrastructureName": operatorConfig.InfrastructureName,
-		"cloudproviderName":  operatorConfig.GetPlatformNameString(),
-		"tlsCipherSuites":    operatorConfig.TLSCipherSuites,
-		"tlsMinVersion":      operatorConfig.TLSMinVersion,
+		"images":                         images,
+		"infrastructureName":             operatorConfig.InfrastructureName,
+		"cloudproviderName":              operatorConfig.GetPlatformNameString(),
+		"tlsCipherSuites":                operatorConfig.TLSCipherSuites,
+		"nodeManagerTLSCurvePreferences": operatorConfig.TLSCurvePreferencesFor(config.AzureStackNodeManager),
+		"tlsCurvePreferences":            operatorConfig.TLSCurvePreferencesFor(config.AzureStackCCM),
+		"tlsMinVersion":                  operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {

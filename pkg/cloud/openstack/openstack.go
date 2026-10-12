@@ -33,12 +33,13 @@ type imagesReference struct {
 }
 
 var templateValuesValidationMap = map[string]interface{}{
-	"images":             "required",
-	"cloudproviderName":  "required,type(string)",
-	"featureGates":       "type(string)",
-	"infrastructureName": "required,type(string)",
-	"tlsCipherSuites":    "type(string)",
-	"tlsMinVersion":      "type(string)",
+	"images":              "required",
+	"cloudproviderName":   "required,type(string)",
+	"featureGates":        "type(string)",
+	"infrastructureName":  "required,type(string)",
+	"tlsCipherSuites":     "type(string)",
+	"tlsCurvePreferences": "type(string)",
+	"tlsMinVersion":       "type(string)",
 }
 
 type openstackAssets struct {
@@ -52,12 +53,13 @@ func (o *openstackAssets) GetRenderedResources() []client.Object {
 
 func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
 	values := common.TemplateValues{
-		"images":             images,
-		"cloudproviderName":  operatorConfig.GetPlatformNameString(),
-		"featureGates":       operatorConfig.FeatureGates,
-		"infrastructureName": operatorConfig.InfrastructureName,
-		"tlsCipherSuites":    operatorConfig.TLSCipherSuites,
-		"tlsMinVersion":      operatorConfig.TLSMinVersion,
+		"images":              images,
+		"cloudproviderName":   operatorConfig.GetPlatformNameString(),
+		"featureGates":        operatorConfig.FeatureGates,
+		"infrastructureName":  operatorConfig.InfrastructureName,
+		"tlsCipherSuites":     operatorConfig.TLSCipherSuites,
+		"tlsCurvePreferences": operatorConfig.TLSCurvePreferencesFor(config.OpenStackCCM),
+		"tlsMinVersion":       operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {
