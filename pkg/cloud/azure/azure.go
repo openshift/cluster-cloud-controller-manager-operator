@@ -49,6 +49,7 @@ var (
 		configv1.AzureChinaCloud:        struct{}{},
 		configv1.AzureGermanCloud:       struct{}{},
 		configv1.AzureStackCloud:        struct{}{},
+		configv1.AzureUSSecCloud:        struct{}{},
 	}
 
 	validAzureCloudNameValues = func() []string {
