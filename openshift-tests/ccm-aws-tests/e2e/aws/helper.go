@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	ec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	elb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/openshift/cluster-cloud-controller-manager-operator/openshift-tests/ccm-aws-tests/e2e/common"
@@ -182,6 +183,61 @@ func securityGroupExists(ctx context.Context, ec2Client *ec2.Client, sgID string
 
 	framework.Logf("security group %s exists", sgID)
 	return true, nil
+}
+
+// ─── CLB (Classic Load Balancer / ELB v1) helpers ───────────────────────────
+
+// createAWSClientCLB creates an ELB v1 client for Classic Load Balancer operations.
+func createAWSClientCLB(ctx context.Context) (*elb.Client, error) {
+	cfg, err := loadAWSConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return elb.NewFromConfig(cfg, func(o *elb.Options) {
+		o.Retryer = retry.AddWithMaxAttempts(o.Retryer, 5)
+	}), nil
+}
+
+// getCLBByDNSName finds a Classic Load Balancer by its DNS name.
+// Returns the LB name (used for subsequent API calls) and the DNS name.
+func getCLBByDNSName(ctx context.Context, elbClient *elb.Client, dnsName string) (string, error) {
+	var marker *string
+	for {
+		input := &elb.DescribeLoadBalancersInput{Marker: marker}
+		output, err := elbClient.DescribeLoadBalancers(ctx, input)
+		if err != nil {
+			return "", fmt.Errorf("describe CLBs: %w", err)
+		}
+		framework.Logf("found %d CLBs in page", len(output.LoadBalancerDescriptions))
+		for _, lb := range output.LoadBalancerDescriptions {
+			if aws.ToString(lb.DNSName) == dnsName {
+				name := aws.ToString(lb.LoadBalancerName)
+				framework.Logf("found CLB %s with DNS %s", name, dnsName)
+				return name, nil
+			}
+		}
+		if output.NextMarker == nil {
+			break
+		}
+		marker = output.NextMarker
+	}
+	return "", fmt.Errorf("CLB with DNS %s not found", dnsName)
+}
+
+// getCLBByDNSNameWithRetry retries getCLBByDNSName until the CLB is found
+// or the timeout is reached. CLB provisioning can take time.
+func getCLBByDNSNameWithRetry(ctx context.Context, elbClient *elb.Client, dnsName string) (string, error) {
+	var lbName string
+	err := wait.PollUntilContextTimeout(ctx, 10*time.Second, 15*time.Minute, true, func(ctx context.Context) (bool, error) {
+		name, err := getCLBByDNSName(ctx, elbClient, dnsName)
+		if err != nil {
+			framework.Logf("CLB not found yet: %v", err)
+			return false, nil
+		}
+		lbName = name
+		return true, nil
+	})
+	return lbName, err
 }
 
 // ec2IsNotFoundError checks if an error is an EC2 "not found" error.
