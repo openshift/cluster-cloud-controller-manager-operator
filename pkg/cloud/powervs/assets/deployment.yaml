@@ -89,6 +89,9 @@ spec:
             {{- if .tlsMinVersion }}
             --tls-min-version={{ .tlsMinVersion }} \
             {{- end }}
+            {{- if .tlsCurvePreferences }}
+            --tls-curve-preferences={{ .tlsCurvePreferences }} \
+            {{- end }}
             --v=2
         livenessProbe:
           httpGet:
