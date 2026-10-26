@@ -182,6 +182,7 @@ func TestComposeConfig(t *testing.T) {
 		namespace     string
 		infra         *configv1.Infrastructure
 		clusterProxy  *configv1.Proxy
+		network       *configv1.Network
 		imagesContent string
 		expectConfig  OperatorConfig
 		expectError   string
@@ -322,7 +323,7 @@ func TestComposeConfig(t *testing.T) {
 			_, err = file.WriteString(tc.imagesContent)
 			assert.NoError(t, err)
 
-			config, err := ComposeConfig(tc.infra, tc.clusterProxy, path, tc.namespace, tc.featureGates, tc.tlsConfig)
+			config, err := ComposeConfig(tc.infra, tc.clusterProxy, tc.network, path, tc.namespace, tc.featureGates, tc.tlsConfig)
 			if tc.expectError != "" {
 				assert.EqualError(t, err, tc.expectError)
 			} else {

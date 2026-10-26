@@ -3,6 +3,7 @@ package azure
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -12,6 +13,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/stretchr/testify/assert"
 
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -269,6 +271,126 @@ func TestCloudConfigTransformer(t *testing.T) {
 				g.Expect(json.Unmarshal([]byte(actual), &observed)).To(Succeed(), "Unmarshal of observed data should succeed")
 				g.Expect(observed).Should(Equal(tc.expected))
 			}
+		})
+	}
+}
+
+func TestNodeIPFamilies(t *testing.T) {
+	makeNetwork := func(serviceNetwork ...string) *configv1.Network {
+		return &configv1.Network{
+			ObjectMeta: metav1.ObjectMeta{Name: "cluster"},
+			Spec:       configv1.NetworkSpec{ServiceNetwork: serviceNetwork},
+		}
+	}
+
+	tc := []struct {
+		name     string
+		network  *configv1.Network
+		expected string
+	}{
+		{
+			name:     "nil network omits the flag",
+			network:  nil,
+			expected: "",
+		}, {
+			name:     "single-stack IPv4 omits the flag",
+			network:  makeNetwork("172.30.0.0/16"),
+			expected: "",
+		}, {
+			name:     "single-stack IPv6 omits the flag",
+			network:  makeNetwork("fd02::/112"),
+			expected: "",
+		}, {
+			name:     "IPv4-primary dual-stack omits the flag, the provider default already matches",
+			network:  makeNetwork("172.30.0.0/16", "fd02::/112"),
+			expected: "",
+		}, {
+			name:     "IPv6-primary dual-stack requests IPv6-first node addresses",
+			network:  makeNetwork("fd02::/112", "172.30.0.0/16"),
+			expected: "ipv6,ipv4",
+		}, {
+			name:     "empty service network omits the flag",
+			network:  makeNetwork(),
+			expected: "",
+		},
+	}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, nodeIPFamilies(tc.network))
+		})
+	}
+}
+
+// TestCloudNodeManagerNodeIPFamiliesFlag asserts that the --node-ip-families flag
+// only reaches the rendered cloud-node-manager DaemonSet on an IPv6-primary
+// dual-stack cluster, so that every other topology keeps the DaemonSet it has
+// today and never depends on the flag being supported by the operand image.
+func TestCloudNodeManagerNodeIPFamiliesFlag(t *testing.T) {
+	baseConfig := func(serviceNetwork ...string) config.OperatorConfig {
+		cfg := config.OperatorConfig{
+			ManagedNamespace: "my-cool-namespace",
+			ImagesReference: config.ImagesReference{
+				CloudControllerManagerAzure:    "CloudControllerManagerAzure",
+				CloudNodeManagerAzure:          "CloudNodeManagerAzure",
+				CloudControllerManagerOperator: "CloudControllerManagerOperator",
+			},
+			PlatformStatus:     &configv1.PlatformStatus{Type: configv1.AzurePlatformType},
+			InfrastructureName: "infra",
+		}
+		if serviceNetwork != nil {
+			cfg.Network = &configv1.Network{
+				ObjectMeta: metav1.ObjectMeta{Name: "cluster"},
+				Spec:       configv1.NetworkSpec{ServiceNetwork: serviceNetwork},
+			}
+		}
+		return cfg
+	}
+
+	tc := []struct {
+		name       string
+		config     config.OperatorConfig
+		expectFlag string
+	}{
+		{
+			name:       "no network config",
+			config:     baseConfig(),
+			expectFlag: "",
+		}, {
+			name:       "IPv4-primary dual-stack",
+			config:     baseConfig("172.30.0.0/16", "fd02::/112"),
+			expectFlag: "",
+		}, {
+			name:       "IPv6-primary dual-stack",
+			config:     baseConfig("fd02::/112", "172.30.0.0/16"),
+			expectFlag: "--node-ip-families=ipv6,ipv4",
+		},
+	}
+
+	for _, tc := range tc {
+		t.Run(tc.name, func(t *testing.T) {
+			assets, err := NewProviderAssets(tc.config)
+			assert.NoError(t, err)
+
+			var daemonSet *appsv1.DaemonSet
+			for _, resource := range assets.GetRenderedResources() {
+				if ds, ok := resource.(*appsv1.DaemonSet); ok {
+					daemonSet = ds
+					break
+				}
+			}
+			assert.NotNil(t, daemonSet, "expected a cloud-node-manager DaemonSet to be rendered")
+
+			command := strings.Join(daemonSet.Spec.Template.Spec.Containers[0].Command, "\n")
+			if tc.expectFlag == "" {
+				assert.NotContains(t, command, "--node-ip-families")
+			} else {
+				assert.Contains(t, command, tc.expectFlag)
+			}
+			// The flag must never displace the arguments already on the DaemonSet.
+			assert.Contains(t, command, "--node-name=$(NODE_NAME)")
+			assert.Contains(t, command, "--wait-routes=false")
+			assert.Contains(t, command, "--enable-deprecated-beta-topology-labels")
 		})
 	}
 }
