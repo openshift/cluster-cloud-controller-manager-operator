@@ -85,7 +85,12 @@ spec:
             {{- if .tlsMinVersion }}
             --tls-min-version={{ .tlsMinVersion }} \
             {{- end }}
-            --secure-port=0
+            {{- if .tlsCipherSuites }}
+            --webhook-tls-cipher-suites={{ .tlsCipherSuites }} \
+            {{- end }}
+            {{- if .tlsMinVersion }}
+            --webhook-tls-min-version={{ .tlsMinVersion }}
+            {{- end }}
           ports:
           - containerPort: 10258
             name: https
