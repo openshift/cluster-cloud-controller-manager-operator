@@ -131,37 +131,6 @@ func main() {
 	}
 }
 
-// getRegionFromEnv gets the region from environment variables, validating
-// that the value looks like a real AWS region. When no valid region is
-// found in the environment (e.g. HyperShift CI where LEASED_RESOURCE is
-// a UUID), it falls back to the cluster's Infrastructure object.
-func getRegionFromEnv() string {
-	for _, env := range []string{"LEASED_RESOURCE", "AWS_REGION", "AWS_DEFAULT_REGION"} {
-		if v := os.Getenv(env); common.AWSRegionPattern.MatchString(v) {
-			log.Infof("Using region from %s: %s", env, v)
-			if err := os.Setenv("AWS_REGION", v); err != nil {
-				log.Warnf("Failed to set AWS_REGION from %s: %v", env, err)
-				return ""
-			}
-			return v
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	region, err := common.GetRegionFromInfrastructure(ctx)
-	if err != nil {
-		log.Warnf("Failed to get region from Infrastructure: %v", err)
-		return ""
-	}
-	log.Infof("Using region from Infrastructure object: %s", region)
-	if err := os.Setenv("AWS_REGION", region); err != nil {
-		log.Warnf("Failed to set AWS_REGION from Infrastructure: %v", err)
-		return ""
-	}
-	return region
-}
-
 // initFrameworkForTests initializes the framework for the tests globally.
 func initFrameworkForTests() error {
 	if len(os.Getenv("KUBECONFIG")) == 0 {
@@ -176,9 +145,14 @@ func initFrameworkForTests() error {
 	testContext.Provider = "local" // TODO: OTE supports local or skeleton
 	testContext.KubeConfig = os.Getenv("KUBECONFIG")
 
-	// Set up AWS cloud configuration when environment variables are set.
-	region := getRegionFromEnv()
+	// Resolve the AWS region for the tests and export it as AWS_REGION.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	region := common.ResolveRegion(ctx)
 	if len(region) > 0 {
+		if err := os.Setenv("AWS_REGION", region); err != nil {
+			log.Warnf("Failed to set AWS_REGION: %v", err)
+		}
 		testContext.CloudConfig = framework.CloudConfig{Region: region}
 	}
 

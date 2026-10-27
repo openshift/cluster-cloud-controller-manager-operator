@@ -36,7 +36,8 @@ const (
 var AWSRegionPattern = regexp.MustCompile(`^[a-z]{2,4}(?:-[a-z0-9]+)+-\d+$`)
 
 // GetRegionFromInfrastructure reads the AWS region from the cluster's
-// Infrastructure resource (status.platformStatus.aws.region).
+// Infrastructure resource (status.platformStatus.aws.region). The value
+// is only returned when it looks like a valid AWS region.
 func GetRegionFromInfrastructure(ctx context.Context) (string, error) {
 	oc, err := GetOcClient(ctx)
 	if err != nil {
@@ -50,10 +51,33 @@ func GetRegionFromInfrastructure(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("Infrastructure platformStatus.aws is nil")
 	}
 	region := infra.Status.PlatformStatus.AWS.Region
-	if region == "" {
-		return "", fmt.Errorf("Infrastructure platformStatus.aws.region is empty")
+	if !AWSRegionPattern.MatchString(region) {
+		return "", fmt.Errorf("Infrastructure platformStatus.aws.region is empty or does not look like a valid AWS region")
 	}
 	return region, nil
+}
+
+// ResolveRegion gets the region from the cluster's Infrastructure object,
+// falling back to environment variables and validating that the value looks
+// like a real AWS region. It returns an empty string when no valid region
+// can be resolved; applying the result, e.g. exporting it as AWS_REGION, is
+// left to the caller.
+func ResolveRegion(ctx context.Context) string {
+	region, err := GetRegionFromInfrastructure(ctx)
+	if err != nil {
+		framework.Logf("Failed to get a valid region from Infrastructure, falling back to environment variables")
+	} else {
+		framework.Logf("Using region from Infrastructure object: %s", region)
+		return region
+	}
+
+	for _, env := range []string{"AWS_REGION", "AWS_DEFAULT_REGION", "LEASED_RESOURCE"} {
+		if v := os.Getenv(env); AWSRegionPattern.MatchString(v) {
+			framework.Logf("Using region from %s: %s", env, v)
+			return v
+		}
+	}
+	return ""
 }
 
 // GetOcClient returns an OpenShift config/v1 API client (FeatureGates, Infrastructures, etc.).

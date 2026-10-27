@@ -19,24 +19,22 @@ import (
 )
 
 // loadAWSConfig loads the default AWS SDK configuration.
-// The region is discovered from the Infrastructure object and forced
-// to the client (from test binar), falling back to the cfg.Region when it is valid,
-// preveting invalid AWS region usually set through CI environment variables
-// (e.g. a CI lease UUID on Hypershift jobs), which usually runs outside cluster's
-// VPC endpoints.
+// The region resolved by ResolveRegion (the cluster's Infrastructure object
+// first, then the environment) takes precedence over the SDK's own
+// resolution; the SDK's region is kept only when it looks like a valid AWS
+// region. This prevents invalid AWS regions usually set through CI
+// environment variables (e.g. a CI lease UUID on Hypershift jobs), which
+// usually runs outside cluster's VPC endpoints.
 func loadAWSConfig(ctx context.Context) (aws.Config, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return aws.Config{}, fmt.Errorf("unable to load AWS config: %w", err)
 	}
 
-	// Using region defined in the Infrastructure object as source of thruth
-	// to build the AWS client config.
-	region, err := common.GetRegionFromInfrastructure(ctx)
-	if err == nil {
+	if region := common.ResolveRegion(ctx); region != "" {
 		cfg.Region = region
 	} else if !common.AWSRegionPattern.MatchString(cfg.Region) {
-		return aws.Config{}, fmt.Errorf("AWS region %q is not valid and failed to get region from Infrastructure: %w", cfg.Region, err)
+		return aws.Config{}, fmt.Errorf("failed to get a valid AWS region from the Infrastructure object or the environment")
 	}
 
 	framework.Logf("AWS config loaded: region=%s", cfg.Region)
