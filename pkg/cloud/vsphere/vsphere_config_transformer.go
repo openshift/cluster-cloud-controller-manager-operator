@@ -66,6 +66,10 @@ func CloudConfigTransformer(source string, infra *configv1.Infrastructure, netwo
 
 // setNodes sets Nodes section in vsphere-cloud-provider config according passed VSpherePlatformNodeNetworking spec
 func setNodes(cfg *ccmConfig.CPIConfig, nodeNetworking *configv1.VSpherePlatformNodeNetworking) {
+	if cfg.Nodes == nil {
+		cfg.Nodes = &ccmConfig.Nodes{}
+	}
+
 	cfg.Nodes.ExternalVMNetworkName = nodeNetworking.External.Network
 	cfg.Nodes.ExternalNetworkSubnetCIDR = strings.Join(nodeNetworking.External.NetworkSubnetCIDR, ",")
 	cfg.Nodes.ExcludeExternalNetworkSubnetCIDR = strings.Join(nodeNetworking.External.ExcludeNetworkSubnetCIDR, ",")
