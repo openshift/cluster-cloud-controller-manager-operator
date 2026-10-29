@@ -49,6 +49,9 @@ spec:
           {{- if .tlsMinVersion }}
           --tls-min-version={{ .tlsMinVersion }} \
           {{- end }}
+          {{- if .tlsCurvePreferences }}
+          --tls-curve-preferences={{ .tlsCurvePreferences }} \
+          {{- end }}
           --secure-port=0 \
           -v=2
         env:

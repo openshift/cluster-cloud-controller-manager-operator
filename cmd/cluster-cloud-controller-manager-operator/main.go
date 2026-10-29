@@ -22,7 +22,6 @@ import (
 	"errors"
 	"flag"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -35,7 +34,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"
@@ -123,14 +121,11 @@ func main() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	options.BindLeaderElectionFlags(&leaderElectionConfig, pflag.CommandLine)
 
-	tlsMinVersionFlag := pflag.String("tls-min-version", "",
-		"Minimum TLS version supported. When set, overrides the cluster-wide TLS profile. Possible values: "+strings.Join(cliflag.TLSPossibleVersions(), ", "))
-	tlsCipherSuitesFlag := pflag.StringSlice("tls-cipher-suites", nil,
-		"Comma-separated list of cipher suites for the server. When set, overrides the cluster-wide TLS profile. Possible values: "+strings.Join(cliflag.TLSCipherPossibleValues(), ", "))
+	tlsFlags := pkgtls.RegisterTLSFlags(pflag.CommandLine)
 
 	pflag.Parse()
 
-	tlsOverrideFromFlags := *tlsMinVersionFlag != "" || len(*tlsCipherSuitesFlag) > 0
+	tlsOverrideFromFlags := tlsFlags.OverridesProfile()
 
 	ctrl.SetLogger(klog.NewKlogr().WithName("CCMOperator"))
 
@@ -148,7 +143,7 @@ func main() {
 	defer cancel()
 
 	// Resolve the TLS configuration for the server endpoints.
-	tlsResult, err := pkgtls.ResolveTLSConfig(ctx, restConfig, *tlsMinVersionFlag, *tlsCipherSuitesFlag)
+	tlsResult, err := pkgtls.ResolveTLSConfig(ctx, restConfig, tlsFlags.MinVersion, tlsFlags.CipherSuites, tlsFlags.CurvePreferences)
 	if err != nil {
 		setupLog.Error(err, "unable to configure TLS")
 		os.Exit(1)
