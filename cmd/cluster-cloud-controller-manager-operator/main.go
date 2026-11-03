@@ -127,10 +127,12 @@ func main() {
 		"Minimum TLS version supported. When set, overrides the cluster-wide TLS profile. Possible values: "+strings.Join(cliflag.TLSPossibleVersions(), ", "))
 	tlsCipherSuitesFlag := pflag.StringSlice("tls-cipher-suites", nil,
 		"Comma-separated list of cipher suites for the server. When set, overrides the cluster-wide TLS profile. Possible values: "+strings.Join(cliflag.TLSCipherPossibleValues(), ", "))
+	tlsCurvePreferencesFlag := pflag.Int32Slice("tls-curve-preferences", nil,
+		"Comma-separated numeric TLS curve IDs. Any nonempty TLS flag overrides the cluster-wide TLS profile.")
 
 	pflag.Parse()
 
-	tlsOverrideFromFlags := *tlsMinVersionFlag != "" || len(*tlsCipherSuitesFlag) > 0
+	tlsOverrideFromFlags := *tlsMinVersionFlag != "" || len(*tlsCipherSuitesFlag) > 0 || len(*tlsCurvePreferencesFlag) > 0
 
 	ctrl.SetLogger(klog.NewKlogr().WithName("CCMOperator"))
 
@@ -148,7 +150,7 @@ func main() {
 	defer cancel()
 
 	// Resolve the TLS configuration for the server endpoints.
-	tlsResult, err := pkgtls.ResolveTLSConfig(ctx, restConfig, *tlsMinVersionFlag, *tlsCipherSuitesFlag)
+	tlsResult, err := pkgtls.ResolveTLSConfig(ctx, restConfig, *tlsMinVersionFlag, *tlsCipherSuitesFlag, *tlsCurvePreferencesFlag)
 	if err != nil {
 		setupLog.Error(err, "unable to configure TLS")
 		os.Exit(1)

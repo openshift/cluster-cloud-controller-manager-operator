@@ -68,11 +68,12 @@ type imagesReference struct {
 }
 
 var templateValuesValidationMap = map[string]interface{}{
-	"images":             "required",
-	"infrastructureName": "required,type(string)",
-	"cloudproviderName":  "required,notnull,type(string)",
-	"tlsCipherSuites":    "type(string)",
-	"tlsMinVersion":      "type(string)",
+	"images":              "required",
+	"infrastructureName":  "required,type(string)",
+	"cloudproviderName":   "required,notnull,type(string)",
+	"tlsCipherSuites":     "type(string)",
+	"tlsCurvePreferences": "type(string)",
+	"tlsMinVersion":       "type(string)",
 }
 
 type azureAssets struct {
@@ -86,11 +87,12 @@ func (assets *azureAssets) GetRenderedResources() []client.Object {
 
 func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
 	values := common.TemplateValues{
-		"images":             images,
-		"infrastructureName": operatorConfig.InfrastructureName,
-		"cloudproviderName":  operatorConfig.GetPlatformNameString(),
-		"tlsCipherSuites":    operatorConfig.TLSCipherSuites,
-		"tlsMinVersion":      operatorConfig.TLSMinVersion,
+		"images":              images,
+		"infrastructureName":  operatorConfig.InfrastructureName,
+		"cloudproviderName":   operatorConfig.GetPlatformNameString(),
+		"tlsCipherSuites":     operatorConfig.TLSCipherSuites,
+		"tlsCurvePreferences": operatorConfig.TLSCurvePreferences,
+		"tlsMinVersion":       operatorConfig.TLSMinVersion,
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {

@@ -171,6 +171,7 @@ func TestComposeConfig(t *testing.T) {
 
 	testTLSConfig := func(cfg *tls.Config) {
 		cfg.MinVersion = tls.VersionTLS12
+		cfg.CurvePreferences = []tls.CurveID{tls.X25519, tls.CurveP384}
 		cfg.CipherSuites = []uint16{
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -200,11 +201,12 @@ func TestComposeConfig(t *testing.T) {
 		},
 		imagesContent: defaultImagesFileContent,
 		expectConfig: OperatorConfig{
-			ImagesReference:  defaultImagesReference,
-			ManagedNamespace: defaultManagementNamespace,
-			PlatformStatus:   &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
-			TLSCipherSuites:  "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-			TLSMinVersion:    "VersionTLS12",
+			ImagesReference:     defaultImagesReference,
+			ManagedNamespace:    defaultManagementNamespace,
+			PlatformStatus:      &configv1.PlatformStatus{Type: configv1.AWSPlatformType},
+			TLSCipherSuites:     "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+			TLSMinVersion:       "VersionTLS12",
+			TLSCurvePreferences: "29,24",
 		},
 	}, {
 		name:      "Broken JSON is rejected",
@@ -256,8 +258,9 @@ func TestComposeConfig(t *testing.T) {
 				[]configv1.FeatureGateName{"CloudControllerManagerWebhook", "ChocobombVanilla", "ChocobombStrawberry"},
 				[]configv1.FeatureGateName{"ChocobombBlueberry", "ChocobombBanana"},
 			),
-			TLSCipherSuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-			TLSMinVersion:   "VersionTLS12",
+			TLSCipherSuites:     "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+			TLSMinVersion:       "VersionTLS12",
+			TLSCurvePreferences: "29,24",
 		},
 	}, {
 		name:        "Empty infrastructure should return error",
