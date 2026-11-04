@@ -11,7 +11,7 @@ require (
 	github.com/openshift/api v0.0.0-20261002115817-f8795cdde518
 	github.com/openshift/client-go v0.0.0-20261001003915-dcaad1dc7fe8
 	github.com/openshift/cluster-api-actuator-pkg/testutils v0.0.0-20260929140943-2355afea5804
-	github.com/openshift/controller-runtime-common v0.0.0-20260428152732-64ee174f5e2e
+	github.com/openshift/controller-runtime-common v0.0.0-20260813135806-e1187ec555fc
 	github.com/openshift/library-go v0.0.0-20261001144932-192662696fc7
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10

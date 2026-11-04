@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -47,7 +48,8 @@ type OperatorConfig struct {
 	// TLSCipherSuites is a comma-separated list of TLS cipher suites for CCM --tls-cipher-suites flag
 	TLSCipherSuites string
 	// TLSMinVersion is the minimum TLS version for CCM --tls-min-version flag
-	TLSMinVersion string
+	TLSMinVersion       string
+	TLSCurvePreferences string
 }
 
 func (cfg *OperatorConfig) GetPlatformNameString() string {
@@ -115,10 +117,17 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 
 	var tlsCipherSuites string
 	var tlsMinVersion string
+	var tlsCurvePreferences string
 
 	if tlsConfig != nil {
 		resolved := &tls.Config{}
 		tlsConfig(resolved)
+
+		curveIDs := make([]string, len(resolved.CurvePreferences))
+		for index, curve := range resolved.CurvePreferences {
+			curveIDs[index] = strconv.FormatUint(uint64(curve), 10)
+		}
+		tlsCurvePreferences = strings.Join(curveIDs, ",")
 
 		tlsMinVersion = libgocrypto.TLSVersionToNameOrDie(resolved.MinVersion)
 
@@ -128,16 +137,17 @@ func ComposeConfig(infrastructure *configv1.Infrastructure, clusterProxy *config
 	}
 
 	config := OperatorConfig{
-		PlatformStatus:     infrastructure.Status.PlatformStatus.DeepCopy(),
-		ClusterProxy:       clusterProxy,
-		ManagedNamespace:   managedNamespace,
-		ImagesReference:    images,
-		InfrastructureName: infrastructure.Status.InfrastructureName,
-		IsSingleReplica:    infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
-		FeatureGates:       featureGatesString,
-		OCPFeatureGates:    features,
-		TLSCipherSuites:    tlsCipherSuites,
-		TLSMinVersion:      tlsMinVersion,
+		PlatformStatus:      infrastructure.Status.PlatformStatus.DeepCopy(),
+		ClusterProxy:        clusterProxy,
+		ManagedNamespace:    managedNamespace,
+		ImagesReference:     images,
+		InfrastructureName:  infrastructure.Status.InfrastructureName,
+		IsSingleReplica:     infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode,
+		FeatureGates:        featureGatesString,
+		OCPFeatureGates:     features,
+		TLSCipherSuites:     tlsCipherSuites,
+		TLSMinVersion:       tlsMinVersion,
+		TLSCurvePreferences: tlsCurvePreferences,
 	}
 
 	return config, nil

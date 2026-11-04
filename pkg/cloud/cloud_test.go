@@ -352,28 +352,46 @@ func TestRenderedResources(t *testing.T) {
 	platforms := getPlatforms()
 	for platformName, platform := range platforms {
 		t.Run(platformName, func(t *testing.T) {
-			resources, err := GetResources(platform.getOperatorConfig())
-			assert.NoError(t, err)
+			cfg := platform.getOperatorConfig()
+			cfg.TLSMinVersion = "VersionTLS12"
+			cfg.TLSCipherSuites = "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+			for _, curves := range []string{"29,24", ""} {
+				cfg.TLSCurvePreferences = curves
+				resources, err := GetResources(cfg)
+				assert.NoError(t, err)
 
-			for _, resource := range resources {
-				var podSpec corev1.PodSpec
-				switch obj := resource.(type) {
-				case *corev1.Pod:
-					podSpec = obj.Spec
-				case *appsv1.Deployment:
-					podSpec = obj.Spec.Template.Spec
-				case *appsv1.DaemonSet:
-					podSpec = obj.Spec.Template.Spec
-				default:
-					// Nothing to check for non pod producing types
-					continue
+				for _, resource := range resources {
+					var podSpec corev1.PodSpec
+					switch obj := resource.(type) {
+					case *corev1.Pod:
+						podSpec = obj.Spec
+					case *appsv1.Deployment:
+						podSpec = obj.Spec.Template.Spec
+					case *appsv1.DaemonSet:
+						podSpec = obj.Spec.Template.Spec
+					default:
+						continue
+					}
+
+					for _, container := range podSpec.Containers {
+						command := strings.Join(container.Command, " ")
+						assert.Contains(t, command, "--tls-min-version=VersionTLS12")
+						assert.Contains(t, command, "--tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+						if curves == "" {
+							assert.NotContains(t, command, "--tls-curve-preferences=")
+						} else {
+							assert.Contains(t, strings.Fields(command), "--tls-curve-preferences=29,24")
+						}
+					}
+					for _, container := range podSpec.InitContainers {
+						assert.NotContains(t, strings.Join(container.Command, " "), "--tls-")
+					}
+					checkResourceRunsBeforeCNI(t, platformName, podSpec)
+					checkLeaderElection(t, podSpec)
+					checkCloudControllerManagerFlags(t, podSpec)
+					checkTrustedCAMounted(t, podSpec)
+					checkUseServiceAccountCredentials(t, podSpec)
 				}
-
-				checkResourceRunsBeforeCNI(t, platformName, podSpec)
-				checkLeaderElection(t, podSpec)
-				checkCloudControllerManagerFlags(t, podSpec)
-				checkTrustedCAMounted(t, podSpec)
-				checkUseServiceAccountCredentials(t, podSpec)
 			}
 		})
 	}

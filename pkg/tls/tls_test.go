@@ -35,13 +35,14 @@ var _ = Describe("ResolveTLSConfig", func() {
 			result, err := ResolveTLSConfig(ctx, cfg, "VersionTLS12", []string{
 				"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
 				"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-			})
+			}, []int32{29, 24})
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsCfg := &tls.Config{}
 			result.TLSConfig(tlsCfg)
 
 			Expect(tlsCfg.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
+			Expect(tlsCfg.CurvePreferences).To(Equal([]tls.CurveID{tls.X25519, tls.CurveP384}))
 			Expect(tlsCfg.CipherSuites).To(Equal([]uint16{
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -51,7 +52,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 		It("should not set cipher suites when TLS 1.3 is specified", func() {
 			result, err := ResolveTLSConfig(ctx, cfg, "VersionTLS13", []string{
 				"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-			})
+			}, []int32{29, 24})
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsCfg := &tls.Config{}
@@ -59,11 +60,12 @@ var _ = Describe("ResolveTLSConfig", func() {
 
 			Expect(tlsCfg.MinVersion).To(Equal(uint16(tls.VersionTLS13)))
 			Expect(tlsCfg.CipherSuites).To(BeNil())
+			Expect(tlsCfg.CurvePreferences).To(Equal([]tls.CurveID{tls.X25519, tls.CurveP384}))
 		})
 
 		It("should accept TLS 1.3 cipher suites from the Modern profile", func() {
 			modernProfile := configv1.TLSProfiles[configv1.TLSProfileModernType]
-			result, err := ResolveTLSConfig(ctx, cfg, string(modernProfile.MinTLSVersion), modernProfile.Ciphers)
+			result, err := ResolveTLSConfig(ctx, cfg, string(modernProfile.MinTLSVersion), modernProfile.Ciphers, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsCfg := &tls.Config{}
@@ -76,17 +78,36 @@ var _ = Describe("ResolveTLSConfig", func() {
 		It("should not populate TLSAdherencePolicy or TLSProfileSpec", func() {
 			result, err := ResolveTLSConfig(ctx, cfg, "VersionTLS12", []string{
 				"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-			})
+			}, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(result.TLSAdherencePolicy).To(BeEmpty())
 			Expect(result.TLSProfileSpec).To(Equal(configv1.TLSProfileSpec{}))
 		})
 
+		It("should apply curves-only overrides without fetching a cluster profile", func() {
+			result, err := ResolveTLSConfig(ctx, nil, "", nil, []int32{29, 24})
+			Expect(err).NotTo(HaveOccurred())
+			tlsCfg := &tls.Config{}
+			result.TLSConfig(tlsCfg)
+			Expect(tlsCfg.CurvePreferences).To(Equal([]tls.CurveID{tls.X25519, tls.CurveP384}))
+			Expect(result.TLSAdherencePolicy).To(BeEmpty())
+			Expect(result.TLSProfileSpec).To(Equal(configv1.TLSProfileSpec{}))
+		})
+
+		DescribeTable("rejects invalid curve preferences", func(curves []int32) {
+			_, err := ResolveTLSConfig(ctx, nil, "", nil, curves)
+			Expect(err).To(MatchError(ContainSubstring("invalid --tls-curve-preferences")))
+		},
+			Entry("duplicate", []int32{29, 29}),
+			Entry("out of range", []int32{65536}),
+			Entry("unknown", []int32{1234}),
+		)
+
 		It("should return an error for an invalid TLS version", func() {
 			_, err := ResolveTLSConfig(ctx, cfg, "InvalidVersion", []string{
 				"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-			})
+			}, nil)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("invalid --tls-min-version"))
 		})
@@ -94,7 +115,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 		It("should return an error for an invalid cipher suite", func() {
 			_, err := ResolveTLSConfig(ctx, cfg, "VersionTLS12", []string{
 				"INVALID_CIPHER_SUITE",
-			})
+			}, nil)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("invalid --tls-cipher-suites"))
 		})
@@ -125,7 +146,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 				return k8sClient.Create(ctx, apiServer)
 			}).Should(Succeed())
 
-			result, err := ResolveTLSConfig(ctx, cfg, "", nil)
+			result, err := ResolveTLSConfig(ctx, cfg, "", nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsCfg := &tls.Config{}
@@ -134,6 +155,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 			oldProfile := configv1.TLSProfiles[configv1.TLSProfileOldType]
 			expectedMinVersion := libgocrypto.TLSVersionOrDie(string(oldProfile.MinTLSVersion))
 			Expect(tlsCfg.MinVersion).To(Equal(expectedMinVersion))
+			Expect(tlsCfg.CurvePreferences).To(Equal([]tls.CurveID{4588, 29, 23, 24}))
 			Expect(tlsCfg.CipherSuites).NotTo(BeEmpty())
 
 			Expect(result.TLSAdherencePolicy).To(Equal(configv1.TLSAdherencePolicyStrictAllComponents))
@@ -153,7 +175,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 				return k8sClient.Create(ctx, apiServer)
 			}).Should(Succeed())
 
-			result, err := ResolveTLSConfig(ctx, cfg, "", nil)
+			result, err := ResolveTLSConfig(ctx, cfg, "", nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsCfg := &tls.Config{}
@@ -164,6 +186,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 			defaultProfile := configv1.TLSProfiles[libgocrypto.DefaultTLSProfileType]
 			expectedMinVersion := libgocrypto.TLSVersionOrDie(string(defaultProfile.MinTLSVersion))
 			Expect(tlsCfg.MinVersion).To(Equal(expectedMinVersion))
+			Expect(tlsCfg.CurvePreferences).To(Equal([]tls.CurveID{4588, 29, 23, 24}))
 
 			// TLSProfileSpec still reflects what was fetched from the cluster.
 			oldProfile := configv1.TLSProfiles[configv1.TLSProfileOldType]
@@ -184,7 +207,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 				return k8sClient.Create(ctx, apiServer)
 			}).Should(Succeed())
 
-			result, err := ResolveTLSConfig(ctx, cfg, "", nil)
+			result, err := ResolveTLSConfig(ctx, cfg, "", nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsCfg := &tls.Config{}
@@ -193,6 +216,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 			defaultProfile := configv1.TLSProfiles[libgocrypto.DefaultTLSProfileType]
 			expectedMinVersion := libgocrypto.TLSVersionOrDie(string(defaultProfile.MinTLSVersion))
 			Expect(tlsCfg.MinVersion).To(Equal(expectedMinVersion))
+			Expect(tlsCfg.CurvePreferences).To(Equal([]tls.CurveID{4588, 29, 23, 24}))
 
 			Expect(result.TLSAdherencePolicy).To(Equal(configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly))
 		})
@@ -207,6 +231,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 						Custom: &configv1.CustomTLSProfile{
 							TLSProfileSpec: configv1.TLSProfileSpec{
 								Ciphers:       customCiphers,
+								Groups:        []configv1.TLSGroup{configv1.TLSGroupX25519, configv1.TLSGroupSecP384r1},
 								MinTLSVersion: configv1.VersionTLS12,
 							},
 						},
@@ -218,7 +243,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 				return k8sClient.Create(ctx, apiServer)
 			}).Should(Succeed())
 
-			result, err := ResolveTLSConfig(ctx, cfg, "", nil)
+			result, err := ResolveTLSConfig(ctx, cfg, "", nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsCfg := &tls.Config{}
@@ -227,12 +252,13 @@ var _ = Describe("ResolveTLSConfig", func() {
 			Expect(tlsCfg.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
 			Expect(tlsCfg.CipherSuites).NotTo(BeEmpty())
 
+			Expect(tlsCfg.CurvePreferences).To(Equal([]tls.CurveID{tls.X25519, tls.CurveP384}))
 			Expect(result.TLSProfileSpec.Ciphers).To(Equal(customCiphers))
 			Expect(result.TLSProfileSpec.MinTLSVersion).To(Equal(configv1.VersionTLS12))
 		})
 
 		It("should gracefully default when no APIServer resource exists", func() {
-			result, err := ResolveTLSConfig(ctx, cfg, "", nil)
+			result, err := ResolveTLSConfig(ctx, cfg, "", nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsCfg := &tls.Config{}
@@ -242,6 +268,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 			defaultProfile := configv1.TLSProfiles[libgocrypto.DefaultTLSProfileType]
 			expectedMinVersion := libgocrypto.TLSVersionOrDie(string(defaultProfile.MinTLSVersion))
 			Expect(tlsCfg.MinVersion).To(Equal(expectedMinVersion))
+			Expect(tlsCfg.CurvePreferences).To(Equal([]tls.CurveID{4588, 29, 23, 24}))
 
 			Expect(result.TLSAdherencePolicy).To(BeEmpty())
 			Expect(result.TLSProfileSpec).To(Equal(configv1.TLSProfileSpec{}))
@@ -261,7 +288,7 @@ var _ = Describe("ResolveTLSConfig", func() {
 				return k8sClient.Create(ctx, apiServer)
 			}).Should(Succeed())
 
-			result, err := ResolveTLSConfig(ctx, cfg, "", nil)
+			result, err := ResolveTLSConfig(ctx, cfg, "", nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(result.TLSAdherencePolicy).To(Equal(configv1.TLSAdherencePolicyStrictAllComponents))
