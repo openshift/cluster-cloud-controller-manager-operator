@@ -12,6 +12,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/stretchr/testify/assert"
 
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -269,6 +270,111 @@ func TestCloudConfigTransformer(t *testing.T) {
 				g.Expect(json.Unmarshal([]byte(actual), &observed)).To(Succeed(), "Unmarshal of observed data should succeed")
 				g.Expect(observed).Should(Equal(tc.expected))
 			}
+		})
+	}
+}
+
+func TestNodeIPFamilies(t *testing.T) {
+	tc := []struct {
+		name           string
+		platformStatus *configv1.PlatformStatus
+		expected       string
+	}{{
+		name:           "nil platform status",
+		platformStatus: nil,
+		expected:       "",
+	}, {
+		name:           "nil azure platform status",
+		platformStatus: &configv1.PlatformStatus{Type: configv1.AzurePlatformType},
+		expected:       "",
+	}, {
+		name: "unset ipFamily leaves the default in place",
+		platformStatus: &configv1.PlatformStatus{
+			Type:  configv1.AzurePlatformType,
+			Azure: &configv1.AzurePlatformStatus{},
+		},
+		expected: "",
+	}, {
+		name: "single-stack IPv4 leaves the default in place",
+		platformStatus: &configv1.PlatformStatus{
+			Type:  configv1.AzurePlatformType,
+			Azure: &configv1.AzurePlatformStatus{IPFamily: configv1.IPv4},
+		},
+		expected: "",
+	}, {
+		name: "dual-stack IPv6 primary",
+		platformStatus: &configv1.PlatformStatus{
+			Type:  configv1.AzurePlatformType,
+			Azure: &configv1.AzurePlatformStatus{IPFamily: configv1.DualStackIPv6Primary},
+		},
+		expected: "ipv6,ipv4",
+	}, {
+		name: "dual-stack IPv4 primary",
+		platformStatus: &configv1.PlatformStatus{
+			Type:  configv1.AzurePlatformType,
+			Azure: &configv1.AzurePlatformStatus{IPFamily: configv1.DualStackIPv4Primary},
+		},
+		expected: "ipv4,ipv6",
+	}}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, nodeIPFamilies(tt.platformStatus))
+		})
+	}
+}
+
+// TestNodeIPFamiliesRendering asserts that the computed value actually reaches
+// the cloud node manager's command line, and that the argument is omitted
+// entirely when the cluster is not dual-stack.
+func TestNodeIPFamiliesRendering(t *testing.T) {
+	tc := []struct {
+		name     string
+		ipFamily configv1.IPFamilyType
+		expected string
+	}{{
+		name:     "dual-stack IPv6 primary passes the argument",
+		ipFamily: configv1.DualStackIPv6Primary,
+		expected: "--node-ip-families=ipv6,ipv4",
+	}, {
+		name:     "single-stack omits the argument",
+		ipFamily: configv1.IPv4,
+		expected: "",
+	}}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			assets, err := NewProviderAssets(config.OperatorConfig{
+				ManagedNamespace: "my-cool-namespace",
+				ImagesReference: config.ImagesReference{
+					CloudControllerManagerAzure:    "CloudControllerManagerAzure",
+					CloudNodeManagerAzure:          "CloudNodeManagerAzure",
+					CloudControllerManagerOperator: "CloudControllerManagerOperator",
+				},
+				InfrastructureName: "infra",
+				PlatformStatus: &configv1.PlatformStatus{
+					Type:  configv1.AzurePlatformType,
+					Azure: &configv1.AzurePlatformStatus{IPFamily: tt.ipFamily},
+				},
+			})
+			g.Expect(err).NotTo(HaveOccurred())
+
+			var found bool
+			for _, obj := range assets.GetRenderedResources() {
+				ds, ok := obj.(*appsv1.DaemonSet)
+				if !ok || ds.Name != "azure-cloud-node-manager" {
+					continue
+				}
+				found = true
+				cmd := fmt.Sprintf("%v", ds.Spec.Template.Spec.Containers[0].Command)
+				if tt.expected == "" {
+					g.Expect(cmd).NotTo(ContainSubstring("--node-ip-families"))
+				} else {
+					g.Expect(cmd).To(ContainSubstring(tt.expected))
+				}
+			}
+			g.Expect(found).To(BeTrue(), "azure-cloud-node-manager DaemonSet not found in rendered resources")
 		})
 	}
 }
