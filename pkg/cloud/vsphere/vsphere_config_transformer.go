@@ -77,6 +77,14 @@ func setNodes(cfg *ccmConfig.CPIConfig, nodeNetworking *configv1.VSpherePlatform
 
 // setVirtualCenters sets vcenter server sections according passed VSpherePlatformSpec
 func setVirtualCenters(cfg *ccmConfig.CPIConfig, vSphereSpec *configv1.VSpherePlatformSpec) {
+	// Legacy (pre-4.13, non-zonal) installs have no VCenters/FailureDomains in the
+	// Infrastructure resource even though platformSpec.vsphere itself is non-nil (e.g. it
+	// carries nodeNetworking/VIPs). In that case leave the vcenters parsed from the source
+	// cloud-config untouched instead of wiping them out below.
+	if len(vSphereSpec.VCenters) == 0 && len(vSphereSpec.FailureDomains) == 0 {
+		return
+	}
+
 	// Clear existing vcenters to ensure removed vcenters are not carried over
 	cfg.Vcenter = make(map[string]*ccmConfig.VirtualCenterConfig)
 
