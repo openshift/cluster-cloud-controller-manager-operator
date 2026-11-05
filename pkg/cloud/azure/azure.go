@@ -13,6 +13,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/utils/net"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -73,6 +74,7 @@ var templateValuesValidationMap = map[string]interface{}{
 	"cloudproviderName":  "required,notnull,type(string)",
 	"tlsCipherSuites":    "type(string)",
 	"tlsMinVersion":      "type(string)",
+	"nodeIPFamilies":     "type(string)",
 }
 
 type azureAssets struct {
@@ -84,6 +86,35 @@ func (assets *azureAssets) GetRenderedResources() []client.Object {
 	return assets.renderedResources
 }
 
+// nodeIPFamilies returns the value for the cloud-node-manager --node-ip-families
+// flag, or an empty string when the flag should be omitted.
+//
+// The flag orders the addresses the cloud-node-manager writes to a node's
+// status.addresses; the first family becomes the node's primary address and
+// therefore the family of its status.hostIP. kube-apiserver takes its
+// --advertise-address from status.hostIP and refuses to start unless that
+// address matches the primary family of the service CIDR, so on an IPv6-primary
+// dual-stack cluster the node must be IPv6-primary too.
+//
+// Azure nodes are otherwise IPv4-primary regardless of the service CIDR: CAPZ
+// pins the NIC's primary ipconfig to IPv4 and the cloud provider reports that
+// address first. Only the IPv6-primary case needs correcting, so every other
+// topology omits the flag entirely and keeps the cloud provider's default
+// ordering.
+//
+// The service network ordering is validated by the installer, so a dual-stack
+// cluster has exactly two entries and a single-stack cluster exactly one.
+// Ref.: https://github.com/openshift/installer/blob/main/pkg/types/validation/installconfig.go
+func nodeIPFamilies(network *configv1.Network) string {
+	if network == nil || len(network.Spec.ServiceNetwork) != 2 {
+		return ""
+	}
+	if !net.IsIPv6CIDRString(network.Spec.ServiceNetwork[0]) {
+		return ""
+	}
+	return "ipv6,ipv4"
+}
+
 func getTemplateValues(images *imagesReference, operatorConfig config.OperatorConfig) (common.TemplateValues, error) {
 	values := common.TemplateValues{
 		"images":             images,
@@ -91,6 +122,7 @@ func getTemplateValues(images *imagesReference, operatorConfig config.OperatorCo
 		"cloudproviderName":  operatorConfig.GetPlatformNameString(),
 		"tlsCipherSuites":    operatorConfig.TLSCipherSuites,
 		"tlsMinVersion":      operatorConfig.TLSMinVersion,
+		"nodeIPFamilies":     nodeIPFamilies(operatorConfig.Network),
 	}
 	_, err := govalidator.ValidateMap(values, templateValuesValidationMap)
 	if err != nil {

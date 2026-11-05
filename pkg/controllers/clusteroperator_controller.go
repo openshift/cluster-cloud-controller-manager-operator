@@ -116,7 +116,15 @@ func (r *CloudOperatorReconciler) Reconcile(ctx context.Context, _ ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to get Proxy: %w", err)
 	}
 
-	operatorConfig, err := config.ComposeConfig(infra, clusterProxy, r.ImagesFile, r.ManagedNamespace, r.FeatureGateAccess, r.TLSConfig)
+	// The service network determines the cluster's IP families and their ordering,
+	// which some providers need in order to configure their operands.
+	network := &configv1.Network{}
+	if err := r.Get(ctx, client.ObjectKey{Name: networkResourceName}, network); err != nil {
+		klog.Errorf("Unable to retrive Network object: %v", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get Network: %w", err)
+	}
+
+	operatorConfig, err := config.ComposeConfig(infra, clusterProxy, network, r.ImagesFile, r.ManagedNamespace, r.FeatureGateAccess, r.TLSConfig)
 	if err != nil {
 		klog.Errorf("Unable to build operator config %s", err)
 		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("failed to build operator config: %w", err))
@@ -306,6 +314,8 @@ func (r *CloudOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&operatorv1.KubeControllerManager{},
 			handler.EnqueueRequestsFromMapFunc(toClusterOperator),
 			builder.WithPredicates(kcmPredicates())).
+		Watches(&configv1.Network{},
+			handler.EnqueueRequestsFromMapFunc(toClusterOperator)).
 		WatchesRawSource(source.Channel(watcher.EventStream(), handler.EnqueueRequestsFromMapFunc(toClusterOperator))).
 		Watches(&corev1.ConfigMap{}, handler.EnqueueRequestsFromMapFunc(toClusterOperator)).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(toClusterOperator))
