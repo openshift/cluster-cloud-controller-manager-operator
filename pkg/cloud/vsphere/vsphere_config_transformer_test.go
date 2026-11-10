@@ -571,6 +571,18 @@ func TestCloudConfigTransformer(t *testing.T) {
 			equivalentConfig: yamlConfigZonal,
 			features:         featuregates.NewFeatureGate(nil, nil),
 		},
+		{
+			// Regression test for a legacy (pre-4.13, non-zonal) vSphere install whose
+			// Infrastructure resource has a non-nil platformSpec.vsphere (e.g. populated
+			// with nodeNetworking/VIPs) but no VCenters or FailureDomains. setVirtualCenters
+			// must not wipe out the vcenters parsed from the legacy source config in that case.
+			name:             "legacy infra without vcenters or failure domains should not drop vcenters from source config",
+			infraBuilder:     newVsphereInfraBuilder(),
+			networkBuilder:   makeDummyNetworkConfig(),
+			inputConfig:      iniConfigWithWorkspace,
+			equivalentConfig: iniConfigWithoutWorkspace,
+			features:         featuregates.NewFeatureGate(nil, nil),
+		},
 	}
 
 	for _, tc := range testcases {
