@@ -375,13 +375,9 @@ func TestRenderedResources(t *testing.T) {
 
 					for _, container := range podSpec.Containers {
 						command := strings.Join(container.Command, " ")
-						expectedCurves := curves
-						if platformName == string(configv1.NutanixPlatformType) {
-							expectedCurves = ""
-						}
 						assert.Contains(t, command, "--tls-min-version=VersionTLS12")
 						assert.Contains(t, command, "--tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
-						if expectedCurves == "" {
+						if curves == "" {
 							assert.NotContains(t, command, "--tls-curve-preferences=")
 						} else {
 							assert.Contains(t, strings.Fields(command), "--tls-curve-preferences=29,24")
