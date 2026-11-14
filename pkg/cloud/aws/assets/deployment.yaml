@@ -57,6 +57,8 @@ spec:
         env:
         - name: CLOUD_CONFIG
           value: /etc/kubernetes-cloud-config/cloud.conf
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /etc/aws-credentials/credentials
         image: {{ .images.CloudControllerManager }}
         imagePullPolicy: IfNotPresent
         name: cloud-controller-manager
@@ -78,6 +80,12 @@ spec:
           readOnly: true
         - name: trusted-ca
           mountPath: /etc/pki/ca-trust/extracted/pem
+          readOnly: true
+        - name: aws-credentials
+          mountPath: /etc/aws-credentials
+          readOnly: true
+        - name: bound-sa-token
+          mountPath: /var/run/secrets/openshift/serviceaccount
           readOnly: true
       hostNetwork: true
       nodeSelector:
@@ -126,3 +134,12 @@ spec:
         hostPath:
           path: /etc/kubernetes
           type: Directory
+      - name: aws-credentials
+        secret:
+          secretName: cloud-controller-manager-credentials
+      - name: bound-sa-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+              audience: sts.amazonaws.com
