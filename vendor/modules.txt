@@ -5,7 +5,7 @@
 # 4d63.com/gochecknoglobals v0.2.2
 ## explicit; go 1.18
 4d63.com/gochecknoglobals/checknoglobals
-# cel.dev/expr v0.25.1
+# cel.dev/expr v0.25.2
 ## explicit; go 1.23.0
 cel.dev/expr
 # codeberg.org/chavacava/garif v0.2.0
@@ -1820,7 +1820,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.82.1
+# google.golang.org/grpc v1.83.2
 ## explicit; go 1.25.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes
