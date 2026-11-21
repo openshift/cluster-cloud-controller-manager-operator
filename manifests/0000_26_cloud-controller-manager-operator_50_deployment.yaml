@@ -30,6 +30,8 @@ spec:
       containers:
       - name: cluster-cloud-controller-manager
         image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
+        securityContext:
+          readOnlyRootFilesystem: true
         command:
         - /bin/bash
         - -c
@@ -83,6 +85,8 @@ spec:
           readOnly: true
       - name: config-sync-controllers
         image: quay.io/openshift/origin-cluster-cloud-controller-manager-operator
+        securityContext:
+          readOnlyRootFilesystem: true
         command:
           - /bin/bash
           - -c
