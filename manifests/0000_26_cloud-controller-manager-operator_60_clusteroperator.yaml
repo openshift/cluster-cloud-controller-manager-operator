@@ -17,8 +17,65 @@ status:
       name: cloud-controller-manager
       resource: clusteroperators
     - group: ""
-      name: openshift-cloud-controller-manager
-      resource: namespaces
-    - group: ""
       name: openshift-cloud-controller-manager-operator
       resource: namespaces
+    - group: ""
+      name: openshift-cloud-controller-manager
+      resource: namespaces
+    - group: rbac.authorization.k8s.io
+      name: system:openshift:operator:cloud-controller-manager
+      resource: clusterroles
+    - group: rbac.authorization.k8s.io
+      name: cloud-controller-manager
+      resource: clusterroles
+    - group: rbac.authorization.k8s.io
+      name: cloud-node-manager
+      resource: clusterroles
+    - group: rbac.authorization.k8s.io
+      name: system:openshift:operator:cloud-controller-manager
+      resource: clusterrolebindings
+    - group: rbac.authorization.k8s.io
+      name: cloud-controller-manager
+      resource: clusterrolebindings
+    - group: rbac.authorization.k8s.io
+      name: cloud-node-manager
+      resource: clusterrolebindings
+    - group: rbac.authorization.k8s.io
+      name: system:openshift:scc:hostaccess:cloud-controller-manager-operator
+      resource: clusterrolebindings
+    - group: rbac.authorization.k8s.io
+      name: cluster-cloud-controller-manager
+      namespace: openshift-config
+      resource: roles
+    - group: rbac.authorization.k8s.io
+      name: cluster-cloud-controller-manager
+      namespace: openshift-config-managed
+      resource: roles
+    - group: rbac.authorization.k8s.io
+      name: cluster-cloud-controller-manager
+      namespace: kube-system
+      resource: roles
+    - group: rbac.authorization.k8s.io
+      name: cloud-controller-manager
+      namespace: kube-system
+      resource: roles
+    - group: rbac.authorization.k8s.io
+      name: cluster-cloud-controller-manager
+      namespace: openshift-config
+      resource: rolebindings
+    - group: rbac.authorization.k8s.io
+      name: cluster-cloud-controller-manager
+      namespace: openshift-config-managed
+      resource: rolebindings
+    - group: rbac.authorization.k8s.io
+      name: cluster-cloud-controller-manager
+      namespace: kube-system
+      resource: rolebindings
+    - group: rbac.authorization.k8s.io
+      name: cloud-controller-manager
+      namespace: kube-system
+      resource: rolebindings
+    - group: rbac.authorization.k8s.io
+      name: cloud-controller-manager:apiserver-authentication-reader
+      namespace: kube-system
+      resource: rolebindings

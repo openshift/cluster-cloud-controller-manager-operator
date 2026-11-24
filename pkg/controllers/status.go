@@ -215,13 +215,99 @@ func (r *ClusterOperatorStatusClient) getOrCreateClusterOperator(ctx context.Con
 	return co, nil
 }
 
-func (r *ClusterOperatorStatusClient) relatedObjects() []configv1.ObjectReference {
-	// TBD: Add an actual set of object references from getResources method
+// relatedObjectsStatic returns the platform-agnostic relatedObjects that must
+// stay in sync with the ClusterOperator CVO seed manifest.
+func (r *ClusterOperatorStatusClient) relatedObjectsStatic() []configv1.ObjectReference {
 	return []configv1.ObjectReference{
-		{Resource: "namespaces", Name: defaultManagementNamespace},
 		{Group: configv1.GroupName, Resource: "clusteroperators", Name: clusterOperatorName},
-		{Resource: "namespaces", Name: r.ManagedNamespace},
+		{Group: "", Resource: "namespaces", Name: defaultManagementNamespace},
+		{Group: "", Resource: "namespaces", Name: r.ManagedNamespace},
+		// Operator and provider ClusterRoles / ClusterRoleBindings.
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: "system:openshift:operator:" + clusterOperatorName},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: clusterOperatorName},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: "cloud-node-manager"},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "system:openshift:operator:" + clusterOperatorName},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: clusterOperatorName},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "cloud-node-manager"},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "system:openshift:scc:hostaccess:cloud-controller-manager-operator"},
+		// Foreign-namespace Roles / RoleBindings (not covered by CCCMO namespace relatedObjects).
+		{Group: "rbac.authorization.k8s.io", Resource: "roles", Name: "cluster-cloud-controller-manager", Namespace: "openshift-config"},
+		{Group: "rbac.authorization.k8s.io", Resource: "roles", Name: "cluster-cloud-controller-manager", Namespace: "openshift-config-managed"},
+		{Group: "rbac.authorization.k8s.io", Resource: "roles", Name: "cluster-cloud-controller-manager", Namespace: "kube-system"},
+		{Group: "rbac.authorization.k8s.io", Resource: "roles", Name: "cloud-controller-manager", Namespace: "kube-system"},
+		{Group: "rbac.authorization.k8s.io", Resource: "rolebindings", Name: "cluster-cloud-controller-manager", Namespace: "openshift-config"},
+		{Group: "rbac.authorization.k8s.io", Resource: "rolebindings", Name: "cluster-cloud-controller-manager", Namespace: "openshift-config-managed"},
+		{Group: "rbac.authorization.k8s.io", Resource: "rolebindings", Name: "cluster-cloud-controller-manager", Namespace: "kube-system"},
+		{Group: "rbac.authorization.k8s.io", Resource: "rolebindings", Name: "cloud-controller-manager", Namespace: "kube-system"},
+		{Group: "rbac.authorization.k8s.io", Resource: "rolebindings", Name: "cloud-controller-manager:apiserver-authentication-reader", Namespace: "kube-system"},
 	}
+}
+
+// relatedObjectsForPlatform returns cluster-scoped / foreign-NS objects from
+// platform asset YAMLs. Managed-namespace Deployments/DaemonSets/Roles are omitted
+// because namespace relatedObjects already gather those.
+func relatedObjectsForPlatform(platform configv1.PlatformType) []configv1.ObjectReference {
+	switch platform {
+	case configv1.AWSPlatformType:
+		return []configv1.ObjectReference{
+			{Group: "admissionregistration.k8s.io", Resource: "validatingadmissionpolicies", Name: "openshift-cloud-controller-manager-cloud-provider-aws"},
+			{Group: "admissionregistration.k8s.io", Resource: "validatingadmissionpolicybindings", Name: "openshift-cloud-controller-manager-cloud-provider-aws"},
+		}
+	case configv1.AzurePlatformType:
+		return []configv1.ObjectReference{
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: "azure-cloud-controller-manager"},
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "cloud-controller-manager:azure-cloud-controller-manager"},
+			{Group: "rbac.authorization.k8s.io", Resource: "roles", Name: "azure-cloud-provider", Namespace: "kube-system"},
+			{Group: "rbac.authorization.k8s.io", Resource: "rolebindings", Name: "azure-cloud-provider:azure-cloud-provider", Namespace: "kube-system"},
+			{Group: "admissionregistration.k8s.io", Resource: "validatingadmissionpolicies", Name: "openshift-cloud-controller-manager-cloud-provider-azure-node-admission"},
+			{Group: "admissionregistration.k8s.io", Resource: "validatingadmissionpolicybindings", Name: "openshift-cloud-controller-manager-cloud-provider-azure-node-admission"},
+			{Group: "admissionregistration.k8s.io", Resource: "validatingadmissionpolicies", Name: "azure-load-balancer-tcp-idle-timeout-annotation-validation-policy"},
+			{Group: "admissionregistration.k8s.io", Resource: "validatingadmissionpolicybindings", Name: "azure-load-balancer-tcp-idle-timeout-validation-annotation-binding"},
+		}
+	case configv1.GCPPlatformType:
+		return []configv1.ObjectReference{
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: "gcp-cloud-controller-manager"},
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "gcp-cloud-controller-manager:cloud-provider"},
+			{Group: "admissionregistration.k8s.io", Resource: "validatingadmissionpolicies", Name: "network-tier-annotation-validation-policy"},
+			{Group: "admissionregistration.k8s.io", Resource: "validatingadmissionpolicybindings", Name: "network-tier-annotation-binding"},
+		}
+	case configv1.NutanixPlatformType:
+		return []configv1.ObjectReference{
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: "nutanix-cloud-controller-manager"},
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "nutanix-cloud-controller-manager:nutanix-cloud-controller-manager"},
+		}
+	case configv1.VSpherePlatformType:
+		return []configv1.ObjectReference{
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: "vsphere-cloud-controller-manager"},
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "vsphere-cloud-controller-manager:vsphere-cloud-controller-manager"},
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "vsphere-cloud-controller-manager:cloud-controller-manager"},
+		}
+	case configv1.OpenStackPlatformType:
+		return []configv1.ObjectReference{
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: "openstack-cloud-controller-manager"},
+			{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: "openstack-cloud-controller-manager"},
+			{Group: "", Resource: "serviceaccounts", Name: "cloud-controller-manager", Namespace: "kube-system"},
+		}
+	default:
+		return nil
+	}
+}
+
+// relatedObjects returns the static relatedObjects plus any platform-specific
+// objects derived from the Infrastructure platform type. If Infrastructure is
+// missing or cannot be read, only the static core is returned.
+func (r *ClusterOperatorStatusClient) relatedObjects(ctx context.Context) []configv1.ObjectReference {
+	objs := r.relatedObjectsStatic()
+
+	infra := &configv1.Infrastructure{}
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureResourceName}, infra); err != nil {
+		return objs
+	}
+	if infra.Status.PlatformStatus == nil {
+		return objs
+	}
+
+	return append(objs, relatedObjectsForPlatform(infra.Status.PlatformStatus.Type)...)
 }
 
 // syncStatus applies the new condition to the ClusterOperator object.
@@ -235,8 +321,9 @@ func (r *ClusterOperatorStatusClient) syncStatus(ctx context.Context, co *config
 		v1helpers.SetStatusCondition(&co.Status.Conditions, c, r.Clock)
 	}
 
-	if !equality.Semantic.DeepEqual(co.Status.RelatedObjects, r.relatedObjects()) {
-		co.Status.RelatedObjects = r.relatedObjects()
+	related := r.relatedObjects(ctx)
+	if !equality.Semantic.DeepEqual(co.Status.RelatedObjects, related) {
+		co.Status.RelatedObjects = related
 	}
 
 	return r.Status().Update(ctx, co)
